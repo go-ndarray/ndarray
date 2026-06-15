@@ -15,9 +15,11 @@ SIMD variants can drop in without changing callers.
 It is a **standalone, reusable** module and the planned cgo-free ndarray backend
 for [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby).
 
-> ⚠️ **Status: Phase 0.** The float64 core is complete and 100%-covered. See
+> ⚠️ **Status: Phase 0 + axis reductions.** The float64 core and per-axis
+> reductions (`SumAxis`/`ProdAxis`/`MaxAxis`/`MinAxis`/`MeanAxis` with
+> `keepdims`) are complete and 100%-covered. See
 > **[docs/plan-ndarray.md](docs/plan-ndarray.md)** for the architecture and the
-> phased roadmap (dtypes, axis reductions, linalg/matmul, SIMD kernels via
+> phased roadmap (dtypes, broadcasting ufuncs, linalg/matmul, SIMD kernels via
 > go-asmgen, Ruby binding).
 
 ## Why this module?
