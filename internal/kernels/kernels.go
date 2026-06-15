@@ -92,3 +92,89 @@ func Min(a []float64) float64 {
 // Abs returns the absolute value of x. It exists so the parent package can
 // route Abs through Map without importing math directly.
 func Abs(x float64) float64 { return math.Abs(x) }
+
+// Axis reductions.
+//
+// The parent package materialises a strided view into a contiguous []float64
+// laid out conceptually as [outer][axisLen][inner], i.e. the reduced axis sits
+// in the middle and `inner` trailing elements are contiguous. Each kernel
+// reduces the middle axis, writing outer*inner results into dst (also laid out
+// as [outer][inner]).
+//
+// The innermost loop over `inner` walks contiguous memory with unit stride,
+// which is the shape a SIMD kernel wants: Phase 1 can replace each step (the
+// `inner`-length combine of dst[base:] with src[off:]) with a vectorised
+// fused operation across all six 64-bit targets, leaving this scalar version as
+// the reference and fallback. axisLen >= 1 is guaranteed by the caller.
+
+// SumAxis reduces the middle axis by summation.
+func SumAxis(dst, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		base := o * inner
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			dst[base+i] = src[block+i]
+		}
+		for k := 1; k < axisLen; k++ {
+			off := block + k*inner
+			for i := 0; i < inner; i++ {
+				dst[base+i] += src[off+i]
+			}
+		}
+	}
+}
+
+// ProdAxis reduces the middle axis by multiplication.
+func ProdAxis(dst, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		base := o * inner
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			dst[base+i] = src[block+i]
+		}
+		for k := 1; k < axisLen; k++ {
+			off := block + k*inner
+			for i := 0; i < inner; i++ {
+				dst[base+i] *= src[off+i]
+			}
+		}
+	}
+}
+
+// MaxAxis reduces the middle axis by taking the maximum.
+func MaxAxis(dst, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		base := o * inner
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			dst[base+i] = src[block+i]
+		}
+		for k := 1; k < axisLen; k++ {
+			off := block + k*inner
+			for i := 0; i < inner; i++ {
+				if v := src[off+i]; v > dst[base+i] {
+					dst[base+i] = v
+				}
+			}
+		}
+	}
+}
+
+// MinAxis reduces the middle axis by taking the minimum.
+func MinAxis(dst, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		base := o * inner
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			dst[base+i] = src[block+i]
+		}
+		for k := 1; k < axisLen; k++ {
+			off := block + k*inner
+			for i := 0; i < inner; i++ {
+				if v := src[off+i]; v < dst[base+i] {
+					dst[base+i] = v
+				}
+			}
+		}
+	}
+}

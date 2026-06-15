@@ -384,6 +384,152 @@ func TestIsContiguousOversizedData(t *testing.T) {
 	}
 }
 
+func TestAxisReductions2D(t *testing.T) {
+	// b = [[1,2,3],[4,5,6]]; expectations from numpy 2.4.6.
+	b := mustArr(t, ok(FromData([]float64{1, 2, 3, 4, 5, 6}, 2, 3)))
+
+	s0 := mustArr(t, ok(b.SumAxis(0, false)))
+	eqInts(t, s0.Shape(), []int{3})
+	eqFloats(t, s0.materialize(), []float64{5, 7, 9})
+
+	s1 := mustArr(t, ok(b.SumAxis(1, false)))
+	eqInts(t, s1.Shape(), []int{2})
+	eqFloats(t, s1.materialize(), []float64{6, 15})
+
+	// negative axis: -1 == last axis.
+	sNeg := mustArr(t, ok(b.SumAxis(-1, false)))
+	eqFloats(t, sNeg.materialize(), []float64{6, 15})
+
+	p1 := mustArr(t, ok(b.ProdAxis(1, false)))
+	eqFloats(t, p1.materialize(), []float64{6, 120})
+
+	mx1 := mustArr(t, ok(b.MaxAxis(1, false)))
+	eqFloats(t, mx1.materialize(), []float64{3, 6})
+
+	mn0 := mustArr(t, ok(b.MinAxis(0, false)))
+	eqFloats(t, mn0.materialize(), []float64{1, 2, 3})
+
+	mean0 := mustArr(t, ok(b.MeanAxis(0, false)))
+	eqFloats(t, mean0.materialize(), []float64{2.5, 3.5, 4.5})
+	mean1 := mustArr(t, ok(b.MeanAxis(1, false)))
+	eqFloats(t, mean1.materialize(), []float64{2, 5})
+}
+
+func TestAxisReductionsKeepdims(t *testing.T) {
+	b := mustArr(t, ok(FromData([]float64{1, 2, 3, 4, 5, 6}, 2, 3)))
+	k := mustArr(t, ok(b.SumAxis(0, true)))
+	eqInts(t, k.Shape(), []int{1, 3})
+	eqFloats(t, k.materialize(), []float64{5, 7, 9})
+
+	km := mustArr(t, ok(b.MeanAxis(1, true)))
+	eqInts(t, km.Shape(), []int{2, 1})
+	eqFloats(t, km.materialize(), []float64{2, 5})
+}
+
+func TestAxisReductions3D(t *testing.T) {
+	// a = arange(24).reshape(2,3,4); expectations from numpy 2.4.6.
+	data := make([]float64, 24)
+	for i := range data {
+		data[i] = float64(i)
+	}
+	a := mustArr(t, ok(FromData(data, 2, 3, 4)))
+
+	s0 := mustArr(t, ok(a.SumAxis(0, false)))
+	eqInts(t, s0.Shape(), []int{3, 4})
+	eqFloats(t, s0.materialize(),
+		[]float64{12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34})
+
+	s1 := mustArr(t, ok(a.SumAxis(1, false)))
+	eqInts(t, s1.Shape(), []int{2, 4})
+	eqFloats(t, s1.materialize(),
+		[]float64{12, 15, 18, 21, 48, 51, 54, 57})
+
+	s2 := mustArr(t, ok(a.SumAxis(2, false)))
+	eqInts(t, s2.Shape(), []int{2, 3})
+	eqFloats(t, s2.materialize(), []float64{6, 22, 38, 54, 70, 86})
+
+	// negative axis on 3-D, with keepdims shape (2,3,1).
+	sNeg := mustArr(t, ok(a.SumAxis(-1, true)))
+	eqInts(t, sNeg.Shape(), []int{2, 3, 1})
+	eqFloats(t, sNeg.materialize(), []float64{6, 22, 38, 54, 70, 86})
+
+	mx1 := mustArr(t, ok(a.MaxAxis(1, false)))
+	eqFloats(t, mx1.materialize(),
+		[]float64{8, 9, 10, 11, 20, 21, 22, 23})
+	mn1 := mustArr(t, ok(a.MinAxis(1, false)))
+	eqFloats(t, mn1.materialize(),
+		[]float64{0, 1, 2, 3, 12, 13, 14, 15})
+	p1 := mustArr(t, ok(a.ProdAxis(1, false)))
+	eqFloats(t, p1.materialize(),
+		[]float64{0, 45, 120, 231, 3840, 4641, 5544, 6555})
+	mean2 := mustArr(t, ok(a.MeanAxis(2, false)))
+	eqFloats(t, mean2.materialize(),
+		[]float64{1.5, 5.5, 9.5, 13.5, 17.5, 21.5})
+}
+
+func TestAxisReduction1D(t *testing.T) {
+	// Reducing a 1-D array over axis 0 yields a 0-d (scalar) array.
+	c := mustArr(t, ok(FromData([]float64{3, 1, 4, 1, 5}, 5)))
+	s := mustArr(t, ok(c.SumAxis(0, false)))
+	if s.Ndim() != 0 || s.Size() != 1 {
+		t.Fatalf("1-D reduce: Ndim=%d Size=%d", s.Ndim(), s.Size())
+	}
+	eqFloats(t, s.materialize(), []float64{14})
+
+	k := mustArr(t, ok(c.SumAxis(0, true)))
+	eqInts(t, k.Shape(), []int{1})
+	eqFloats(t, k.materialize(), []float64{14})
+}
+
+func TestAxisReductionStridedInput(t *testing.T) {
+	// A transposed (non-contiguous) view must reduce correctly: materialize is
+	// exercised inside reduceAxis. tr of [[1,2,3],[4,5,6]] is [[1,4],[2,5],[3,6]].
+	a := mustArr(t, ok(FromData([]float64{1, 2, 3, 4, 5, 6}, 2, 3)))
+	tr := a.Transpose()
+	eqInts(t, tr.Shape(), []int{3, 2})
+	s := mustArr(t, ok(tr.SumAxis(1, false)))
+	eqInts(t, s.Shape(), []int{3})
+	eqFloats(t, s.materialize(), []float64{5, 7, 9})
+}
+
+func TestAxisReductionErrors(t *testing.T) {
+	a := mustArr(t, ok(FromData([]float64{1, 2, 3, 4}, 2, 2)))
+	if _, err := a.SumAxis(2, false); !errors.Is(err, ErrAxis) {
+		t.Fatalf("axis too high: %v", err)
+	}
+	if _, err := a.SumAxis(-3, false); !errors.Is(err, ErrAxis) {
+		t.Fatalf("axis too low: %v", err)
+	}
+	// Every public reduction shares normalizeAxis; check they all surface ErrAxis.
+	for name, fn := range map[string]func(int, bool) (*Array, error){
+		"Prod": a.ProdAxis, "Max": a.MaxAxis, "Min": a.MinAxis, "Mean": a.MeanAxis,
+	} {
+		if _, err := fn(9, false); !errors.Is(err, ErrAxis) {
+			t.Fatalf("%sAxis bad axis: %v", name, err)
+		}
+	}
+
+	// Reduction along a zero-length axis is rejected (empty-reduction case),
+	// for both the kernel-backed reductions and the Sum-derived Mean.
+	z := mustArr(t, ok(New(0, 3)))
+	if _, err := z.SumAxis(0, false); !errors.Is(err, ErrShapeMismatch) {
+		t.Fatalf("zero-axis Sum: %v", err)
+	}
+	if _, err := z.MeanAxis(0, false); !errors.Is(err, ErrShapeMismatch) {
+		t.Fatalf("zero-axis Mean: %v", err)
+	}
+	// Reducing a non-zero axis of an array that still has zero elements keeps an
+	// empty result rather than erroring (axisLen > 0 but inner produces nothing).
+	zr, err := z.SumAxis(1, false)
+	if err != nil {
+		t.Fatalf("axis-1 reduce of (0,3): %v", err)
+	}
+	eqInts(t, zr.Shape(), []int{0})
+	if zr.Size() != 0 {
+		t.Fatalf("expected empty result, size %d", zr.Size())
+	}
+}
+
 func TestDivByZeroProducesInf(t *testing.T) {
 	a := mustArr(t, ok(FromData([]float64{1}, 1)))
 	z := mustArr(t, ok(FromData([]float64{0}, 1)))

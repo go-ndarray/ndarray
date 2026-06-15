@@ -24,9 +24,11 @@ contiguous-slice API so accelerated variants can drop in unchanged.
 ndarray/
   ndarray.go            public API: Array (data/shape/strides/offset),
                         constructors, introspection, reshape/transpose/copy,
-                        broadcasting binary ops, map/unary, reductions
+                        broadcasting binary ops, map/unary, whole-array and
+                        per-axis reductions
   internal/kernels/     portable scalar inner loops over flat []float64
-                        (Add/Sub/Mul/Div, Map, Sum/Prod/Max/Min, Abs)
+                        (Add/Sub/Mul/Div, Map, Sum/Prod/Max/Min, Abs,
+                        {Sum,Prod,Max,Min}Axis over [outer][axisLen][inner])
   docs/plan-ndarray.md  this roadmap
 ```
 
@@ -58,13 +60,21 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   with full NumPy broadcasting, plus `*Scalar` variants. `Map`, `Neg`, `Abs`.
   Whole-array reductions `Sum`/`Prod`/`Max`/`Min`/`Mean`. Scalar pure-Go kernels
   in `internal/kernels`. 100% statement coverage, CGO=0, six-arch CI.
+- **Axis reductions — DONE.** Per-axis `SumAxis`/`ProdAxis`/`MaxAxis`/`MinAxis`/
+  `MeanAxis(axis, keepdims)` with NumPy semantics (negative axis from the end,
+  `keepdims` retains the reduced axis as length 1). The reduced data is viewed
+  as `[outer][axisLen][inner]` and reduced by `{Sum,Prod,Max,Min}Axis` kernels
+  whose innermost loop is unit-stride contiguous (SIMD-ready). Differentially
+  checked against numpy 2.4.6; committed tests carry hardcoded expectations.
 - **Phase 1 — SIMD kernels via go-asmgen.** Per-arch accelerated kernels behind
-  the existing API; runtime dispatch; benchmarks vs the scalar fallback and vs
-  gonum on amd64/arm64.
+  the existing API (elementwise *and* the unit-stride axis-reduction inner
+  loop); runtime dispatch; benchmarks vs the scalar fallback and vs gonum on
+  amd64/arm64.
 - **Phase 2 — dtypes.** Generalise beyond `float64` (float32, int64/int32,
   complex128, bool) with a dtype abstraction; typed kernels.
-- **Phase 3 — axis reductions & broadcasting ufuncs.** `Sum(axis)`,
-  `Max(axis)`, `Mean(axis)`, keepdims; a general ufunc framework over views.
+- **Phase 3 — broadcasting ufuncs.** A general ufunc framework over views
+  (the axis-reduction primitives above are the first step); more elementwise
+  and reduction ufuncs.
 - **Phase 4 — linear algebra.** `MatMul`/`Dot`, transpose-aware GEMM,
   decompositions; SIMD/blocked kernels.
 - **Phase 5 — Ruby binding.** Expose the array type to Ruby through

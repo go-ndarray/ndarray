@@ -7,8 +7,9 @@
 
 **A pure-Go (CGO=0) NumPy-style N-dimensional array library.** Row-major
 (C-order) strided arrays with constructors, reshape/transpose/copy, elementwise
-operations with full **NumPy broadcasting**, mapping, and whole-array
-reductions — with the numeric inner loops kept behind a narrow kernel API so
+operations with full **NumPy broadcasting**, mapping, and reductions — both
+whole-array (`Sum`/`Prod`/`Max`/`Min`/`Mean`) and **along an axis** with
+`keepdims` — with the numeric inner loops kept behind a narrow kernel API so
 SIMD variants can drop in without changing callers.
 
 It is a **standalone, reusable** module and the planned cgo-free ndarray backend
@@ -43,6 +44,9 @@ sum, _ := m.Add(row)                // broadcast (2,3)+(3,) -> (2,3)
 
 t := m.Transpose()                  // zero-copy (3,2) view
 total := m.Sum()                    // 15
+
+cols, _ := m.SumAxis(0, false)      // sum down each column -> [3 5 7]
+means, _ := m.MeanAxis(1, true)     // row means, keepdims -> shape (2,1)
 ```
 
 ## License

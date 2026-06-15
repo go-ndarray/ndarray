@@ -486,3 +486,113 @@ func (a *Array) Min() (float64, error) {
 	}
 	return kernels.Min(a.materialize()), nil
 }
+
+// --- axis reductions -------------------------------------------------------
+
+// ErrAxis is returned when an axis argument is out of range for the array.
+var ErrAxis = errors.New("ndarray: axis out of range")
+
+// normalizeAxis maps a possibly-negative axis to its [0, Ndim) form, matching
+// NumPy semantics where axis -1 is the last dimension.
+func (a *Array) normalizeAxis(axis int) (int, error) {
+	n := len(a.shape)
+	if axis < 0 {
+		axis += n
+	}
+	if axis < 0 || axis >= n {
+		return 0, fmt.Errorf("%w: %d for %d-dimensional array", ErrAxis, axis, n)
+	}
+	return axis, nil
+}
+
+// reduceShape returns the output shape after reducing the given (normalized)
+// axis. With keepdims the reduced axis is retained with length 1; otherwise it
+// is removed.
+func (a *Array) reduceShape(axis int, keepdims bool) []int {
+	if keepdims {
+		out := append([]int(nil), a.shape...)
+		out[axis] = 1
+		return out
+	}
+	out := make([]int, 0, len(a.shape)-1)
+	out = append(out, a.shape[:axis]...)
+	out = append(out, a.shape[axis+1:]...)
+	return out
+}
+
+// reduceLayout splits the shape around a normalized axis into the
+// (outer, axisLen, inner) triple used by the axis-reduction kernels, where the
+// materialised row-major data is viewed as [outer][axisLen][inner].
+func (a *Array) reduceLayout(axis int) (outer, axisLen, inner int) {
+	outer = prod(a.shape[:axis])
+	axisLen = a.shape[axis]
+	inner = prod(a.shape[axis+1:])
+	return
+}
+
+// reduceAxis is the shared driver for the axis reductions. It validates the
+// axis, materialises the data, runs the supplied kernel, and wraps the result
+// in an array of the reduced shape. It rejects reduction along a zero-length
+// axis (the empty-reduction case), matching this package's whole-array
+// reductions which error on empty input.
+func (a *Array) reduceAxis(
+	axis int, keepdims bool,
+	kernel func(dst, src []float64, outer, axisLen, inner int),
+) (*Array, error) {
+	axis, err := a.normalizeAxis(axis)
+	if err != nil {
+		return nil, err
+	}
+	outer, axisLen, inner := a.reduceLayout(axis)
+	if axisLen == 0 {
+		return nil, fmt.Errorf("%w: reduction along zero-length axis %d",
+			ErrShapeMismatch, axis)
+	}
+	src := a.materialize()
+	dst := make([]float64, outer*inner)
+	kernel(dst, src, outer, axisLen, inner)
+	shape := a.reduceShape(axis, keepdims)
+	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}, nil
+}
+
+// SumAxis returns the sum along the given axis. With keepdims the reduced axis
+// is kept with length 1 (e.g. (2,3) summed over axis 0 -> (1,3)); otherwise it
+// is removed (-> (3,)). A negative axis counts from the end.
+func (a *Array) SumAxis(axis int, keepdims bool) (*Array, error) {
+	return a.reduceAxis(axis, keepdims, kernels.SumAxis)
+}
+
+// ProdAxis returns the product along the given axis. See SumAxis for the
+// axis/keepdims semantics.
+func (a *Array) ProdAxis(axis int, keepdims bool) (*Array, error) {
+	return a.reduceAxis(axis, keepdims, kernels.ProdAxis)
+}
+
+// MaxAxis returns the maximum along the given axis. See SumAxis for the
+// axis/keepdims semantics.
+func (a *Array) MaxAxis(axis int, keepdims bool) (*Array, error) {
+	return a.reduceAxis(axis, keepdims, kernels.MaxAxis)
+}
+
+// MinAxis returns the minimum along the given axis. See SumAxis for the
+// axis/keepdims semantics.
+func (a *Array) MinAxis(axis int, keepdims bool) (*Array, error) {
+	return a.reduceAxis(axis, keepdims, kernels.MinAxis)
+}
+
+// MeanAxis returns the arithmetic mean along the given axis. See SumAxis for the
+// axis/keepdims semantics.
+func (a *Array) MeanAxis(axis int, keepdims bool) (*Array, error) {
+	r, err := a.SumAxis(axis, keepdims)
+	if err != nil {
+		return nil, err
+	}
+	// The reduced axis length is positive (SumAxis rejected zero-length axes),
+	// so this scaling is well-defined.
+	ax, _ := a.normalizeAxis(axis)
+	n := float64(a.shape[ax])
+	for i := range r.data {
+		r.data[i] /= n
+	}
+	return r, nil
+}
