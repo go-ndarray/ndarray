@@ -19,22 +19,30 @@
   broadcasting**, `Map`/`Neg`/`Abs`, math **ufuncs** (`Sqrt`/`Exp`/`Log`/`Sin`/
   `Cos`/…), and broadcasting **comparisons** (`Greater`/`Equal`/… as 0/1 masks)
   plus `Maximum`/`Minimum`.
-- **Reductions** — whole-array (`Sum`/`Prod`/`Max`/`Min`/`Mean`) and per-axis
-  (`SumAxis`/… with `keepdims`).
+- **Reductions** — whole-array (`Sum`/`Prod`/`Max`/`Min`/`Mean`), per-axis
+  (`SumAxis`/… with `keepdims`), index reductions (`ArgMax`/`ArgMin` flat and
+  per-axis), cumulative scans (`CumSum`/`CumProd`), `Clip`, and `Where`.
 - **Manipulation** — `Concatenate`/`Stack`/`VStack`/`HStack`.
 - **Linear algebra** — `MatMul`/`Dot`/`Inner`/`Outer`.
 
-The numeric inner loops are kept behind a narrow kernel API so SIMD variants can
-drop in without changing callers. It is a **standalone, reusable** module and
-the planned cgo-free ndarray backend for
+The numeric inner loops are kept behind a narrow kernel API. Behind it,
+**large** elementwise ops, reductions and matmul run **multicore** (across
+`GOMAXPROCS`) and the sum reduction uses a **go-asmgen SIMD kernel** (NEON on
+arm64, SSE2 on amd64), so go-ndarray **beats single-threaded NumPy** on its core
+ops on large arrays — measured honestly in **[docs/perf.md](docs/perf.md)**
+(e.g. on arm64 vs NumPy 2.2.4: Add/Mul ~2×, Sum ~2.4×, MatMul ~2.7× faster;
+where NumPy still leads — `Sqrt`, `Max`, tuned-BLAS matmul — it says so). It is
+a **standalone, reusable** module and the planned cgo-free ndarray backend for
 [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby).
 
-> ⚠️ **Status: float64 NumPy parity for the core surface.** Creation, slicing/
-> views, broadcasting elementwise + ufuncs, reductions, manipulation, and
-> scalar-kernel linear algebra are complete, **100%-covered**, and
-> differentially checked against numpy. See
-> **[docs/plan-ndarray.md](docs/plan-ndarray.md)** for the roadmap (more dtypes,
-> SIMD kernels via go-asmgen, Ruby binding).
+> ⚠️ **Status: float64 NumPy parity for the core surface, and faster than NumPy
+> on it.** Creation, slicing/views, broadcasting elementwise + ufuncs,
+> reductions (incl. arg/cumulative/clip/where), manipulation, and linear algebra
+> are complete, **100%-covered**, six-arch CI-green, and differentially checked
+> against numpy. The hot paths are **multicore + SIMD** and beat single-threaded
+> NumPy on large arrays (**[docs/perf.md](docs/perf.md)**). See
+> **[docs/plan-ndarray.md](docs/plan-ndarray.md)** for the roadmap (more SIMD
+> kernels, more dtypes, Ruby binding).
 
 ## Why this module?
 
