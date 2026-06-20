@@ -270,3 +270,124 @@ func MinAxis(dst, src []float64, outer, axisLen, inner int) {
 		}
 	}
 }
+
+// ArgMax returns the index of the first maximum element of a (non-empty),
+// matching numpy.argmax: ties go to the lowest index.
+func ArgMax(a []float64) int {
+	best, bi := a[0], 0
+	for i, v := range a[1:] {
+		if v > best {
+			best, bi = v, i+1
+		}
+	}
+	return bi
+}
+
+// ArgMin returns the index of the first minimum element of a (non-empty),
+// matching numpy.argmin: ties go to the lowest index.
+func ArgMin(a []float64) int {
+	best, bi := a[0], 0
+	for i, v := range a[1:] {
+		if v < best {
+			best, bi = v, i+1
+		}
+	}
+	return bi
+}
+
+// ArgMaxAxis writes into dst the index (along the middle axis) of the first
+// maximum for each [outer][inner] position. Layout matches the *Axis kernels.
+func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		base := o * inner
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			best := src[block+i]
+			bi := 0
+			for k := 1; k < axisLen; k++ {
+				if v := src[block+k*inner+i]; v > best {
+					best, bi = v, k
+				}
+			}
+			dst[base+i] = float64(bi)
+		}
+	}
+}
+
+// ArgMinAxis writes into dst the index (along the middle axis) of the first
+// minimum for each [outer][inner] position.
+func ArgMinAxis(dst []float64, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		base := o * inner
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			best := src[block+i]
+			bi := 0
+			for k := 1; k < axisLen; k++ {
+				if v := src[block+k*inner+i]; v < best {
+					best, bi = v, k
+				}
+			}
+			dst[base+i] = float64(bi)
+		}
+	}
+}
+
+// CumSumAxis writes the cumulative sum along the middle axis into dst (same
+// shape as src), matching numpy.cumsum along an axis. Layout is
+// [outer][axisLen][inner] as for the reductions.
+func CumSumAxis(dst, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			acc := 0.0
+			for k := 0; k < axisLen; k++ {
+				p := block + k*inner + i
+				acc += src[p]
+				dst[p] = acc
+			}
+		}
+	}
+}
+
+// CumProdAxis writes the cumulative product along the middle axis into dst.
+func CumProdAxis(dst, src []float64, outer, axisLen, inner int) {
+	for o := 0; o < outer; o++ {
+		block := o * axisLen * inner
+		for i := 0; i < inner; i++ {
+			acc := 1.0
+			for k := 0; k < axisLen; k++ {
+				p := block + k*inner + i
+				acc *= src[p]
+				dst[p] = acc
+			}
+		}
+	}
+}
+
+// Clip writes into dst each src element limited to [lo, hi], matching
+// numpy.clip. A NaN bound or element follows Go's min/max comparison order;
+// callers pass lo <= hi.
+func Clip(dst, src []float64, lo, hi float64) {
+	for i, v := range src {
+		if v < lo {
+			v = lo
+		}
+		if v > hi {
+			v = hi
+		}
+		dst[i] = v
+	}
+}
+
+// Where writes into dst the value t[i] where cond[i] is non-zero (truthy),
+// else f[i] — the elementwise numpy.where over already-broadcast operands.
+func Where(dst, cond, t, f []float64) {
+	for i := range dst {
+		if cond[i] != 0 {
+			dst[i] = t[i]
+		} else {
+			dst[i] = f[i]
+		}
+	}
+}

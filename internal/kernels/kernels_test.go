@@ -112,6 +112,49 @@ func BenchmarkSumAxis(b *testing.B) {
 	}
 }
 
+func TestArgAndScan(t *testing.T) {
+	// ArgMax/ArgMin with the extreme appearing AFTER index 0 (exercises the
+	// update branch) and ties resolving to the lowest index.
+	a := []float64{3, 1, 9, 9, 0, 0}
+	if got := ArgMax(a); got != 2 {
+		t.Errorf("ArgMax = %d, want 2", got)
+	}
+	if got := ArgMin(a); got != 4 {
+		t.Errorf("ArgMin = %d, want 4", got)
+	}
+	// Monotonic ascending/descending so neither update branch is skipped.
+	if got := ArgMax([]float64{1, 2, 3}); got != 2 {
+		t.Errorf("ArgMax asc = %d, want 2", got)
+	}
+	if got := ArgMin([]float64{3, 2, 1}); got != 2 {
+		t.Errorf("ArgMin desc = %d, want 2", got)
+	}
+
+	// Axis variants over [outer=1][axisLen=3][inner=2]: columns {3,1},{9,5} etc.
+	src := []float64{3, 1, 9, 5, 0, 7}
+	dst := make([]float64, 2)
+	ArgMaxAxis(dst, src, 1, 3, 2)
+	eqSlice(t, dst, []float64{1, 2}) // col0 max at k=1 (9); col1 max at k=2 (7)
+	ArgMinAxis(dst, src, 1, 3, 2)
+	eqSlice(t, dst, []float64{2, 0}) // col0 min at k=2 (0); col1 min at k=0 (1)
+
+	cs := make([]float64, 6)
+	CumSumAxis(cs, src, 1, 3, 2)
+	eqSlice(t, cs, []float64{3, 1, 12, 6, 12, 13})
+	cp := make([]float64, 6)
+	CumProdAxis(cp, src, 1, 3, 2)
+	eqSlice(t, cp, []float64{3, 1, 27, 5, 0, 35})
+}
+
+func TestClipAndWhere(t *testing.T) {
+	dst := make([]float64, 5)
+	Clip(dst, []float64{-2, 0, 3, 7, 10}, 0, 6)
+	eqSlice(t, dst, []float64{0, 0, 3, 6, 6})
+
+	Where(dst, []float64{1, 0, 1, 0, 2}, []float64{10, 11, 12, 13, 14}, []float64{-1, -2, -3, -4, -5})
+	eqSlice(t, dst, []float64{10, -2, 12, -4, 14})
+}
+
 func TestAbs(t *testing.T) {
 	if got := Abs(-3.5); got != 3.5 {
 		t.Errorf("Abs = %v, want 3.5", got)
