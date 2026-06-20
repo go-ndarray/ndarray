@@ -120,6 +120,11 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
 - **More reductions — DONE.** `ArgMax`/`ArgMin` (flat and per-axis with
   keepdims), `CumSum`/`CumProd` (per-axis scans + flat), `Clip(lo,hi)`, and the
   three-operand broadcasting `Where(cond,t,f)`. Match numpy 2.2.4.
+- **Boolean / fancy indexing — DONE (on 0/1 float masks).** `MaskSelect`
+  (`a[mask]`), `Nonzero` (`np.flatnonzero`), and `Take` (integer fancy index
+  into the flattened array, negative indices from the end). These give NumPy
+  boolean indexing today using the 0/1 masks the comparison ufuncs return; a
+  first-class bool dtype (so masks are real booleans) remains Phase 2.
 - **Phase 2 — dtypes.** Generalise beyond `float64` (float32, int64/int32,
   complex128, bool) with a dtype abstraction; typed kernels.
 - **Phase 3 — broadcasting ufuncs.** A general ufunc framework over views

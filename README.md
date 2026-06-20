@@ -22,6 +22,8 @@
 - **Reductions** — whole-array (`Sum`/`Prod`/`Max`/`Min`/`Mean`), per-axis
   (`SumAxis`/… with `keepdims`), index reductions (`ArgMax`/`ArgMin` flat and
   per-axis), cumulative scans (`CumSum`/`CumProd`), `Clip`, and `Where`.
+- **Indexing** — basic-indexing `Slice` views plus **boolean/fancy indexing**:
+  `MaskSelect` (`a[mask]`), `Nonzero` (`flatnonzero`), and `Take`.
 - **Manipulation** — `Concatenate`/`Stack`/`VStack`/`HStack`.
 - **Linear algebra** — `MatMul`/`Dot`/`Inner`/`Outer`.
 
