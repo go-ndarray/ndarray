@@ -237,6 +237,30 @@ func gemmSig() arm64.Signature {
 	)
 }
 
+// fmlaElem returns the Plan 9 line for the by-element (indexed) double FMLA
+//
+//	FMLA V{acc}.2D, V{breg}.2D, V{areg}.D[idx]   =>  V{acc} += V{breg} * V{areg}[idx]
+//
+// which Go's arm64 assembler cannot name, emitted as its raw 32-bit encoding via
+// WORD. The encoding (Advanced SIMD, FMLA by element, FP64, ARM C7-2: Q=1, sz=1,
+// L=0) is
+//
+//	0|1|0|01111|1|1|0|M|Rm[3:0]|0001|H|0|Rn|Rd
+//
+// with the element index = H (sz=1 so L is unused) and Rm = M:Rm[3:0]. The result
+// includes a trailing comment naming the human-readable instruction so the
+// generated .s stays auditable; the encoding is cross-checked against objdump in
+// the asmgen tests. areg/breg/acc are V-register numbers, idx in {0,1}.
+func fmlaElem(acc, breg, areg, idx int) string {
+	const base = 0x4FC01000 // Q=1, sz=1, opcode 0001, base for FMLA-by-elem .2D
+	M := (areg >> 4) & 1
+	Rm := areg & 0xF
+	H := idx & 1
+	word := base | (M << 20) | (Rm << 16) | (H << 11) | (breg << 5) | acc
+	return fmt.Sprintf("WORD $0x%08X // FMLA V%d.2D, V%d.2D, V%d.D[%d]",
+		word, acc, breg, areg, idx)
+}
+
 // gemmKernel builds gemmMicro4x8(kc int, pa, pb, c *float64, ldc int): the NEON
 // 4x8 register-blocked GEMM micro-kernel at the heart of the packed GEMM.
 //
@@ -251,23 +275,27 @@ func gemmSig() arm64.Signature {
 // that defeated the earlier un-packed register-blocked attempt.
 //
 // Register map: the 4x8 C tile lives in V0..V15 (4 rows x 4 D2 = 16 accumulators);
-// the per-step B row in V16..V19 (8 doubles), the four broadcast A values in
-// V20..V23, and a vector of 1.0 in V31 for the final C += acc.
+// the per-step B row in V16..V19 (8 doubles), the four A values in V20,V21 (two
+// D2 vectors, two A doubles each), and a vector of 1.0 in V31 for the final
+// C += acc.
 //
 // Two arm64-assembler constraints shape the kernel (both noted at point of use):
-//  1. Go's arm64 assembler has no by-lane FMLA (FMLA Vd.2d, Vn.2d, Vm.d[i]), the
-//     instruction every hand-tuned dgemm uses to broadcast one A lane. So each A
-//     scalar is moved to a GP register and VDUP'd into a full D2 vector, then a
-//     plain vector-by-vector VFMLA is issued. The dup is amortized across all 8
-//     B columns of the row. (A WORD-encoded by-element FMLA was prototyped and
-//     measured — it is *slower* on this Apple-silicon core, where the indexed
-//     form serialises on the Vm read; the VDUP'd independent FMLAs win. See the
-//     ceiling analysis in docs/perf.md.)
-//  2. There is no plain vector FP add either (only VFMLA/VFMLS), so the closing
-//     C += acc is done as C = C + acc*1.0 via VFMLA against V31=[1.0,1.0].
-//     Multiplying by exactly 1.0 is exact and FMA(acc,1.0,C) rounds identically
-//     to C+acc (C is the only inexact addend), so this is a true add — the tile
-//     result is bit-identical to the scalar oracle's ikj accumulation order.
+//  1. THE BY-LANE FMLA. Every hand-tuned arm64 dgemm broadcasts one A lane
+//     straight into the FMA with FMLA Vd.2d, Vn.2d, Vm.d[i]. Go's arm64 assembler
+//     cannot *name* this indexed-element form ("illegal combination ... ELEM"),
+//     so it is emitted by its raw WORD encoding (fmlaElem below: cross-checked
+//     against objdump). The four packed A doubles of a k-step are loaded as two
+//     D2 vectors (V20=[a0,a1], V21=[a2,a3]) and each row's FMA reads its A scalar
+//     by lane — eliminating the MOVD-to-GP + VDUP round-trip the prior kernel
+//     paid per A value every k-step. Measured on this Apple-silicon core this is
+//     ~1.28x faster on the L1-resident micro-kernel (44 -> 58 GFLOP/s/core);
+//     the earlier note claiming the indexed form is "slower" was wrong (it was
+//     never actually measured against a correct encoding). See docs/perf.md.
+//  2. There is no plain vector FP add (only VFMLA/VFMLS), so the closing C += acc
+//     is done as C = C + acc*1.0 via VFMLA against V31=[1.0,1.0]. Multiplying by
+//     exactly 1.0 is exact and FMA(acc,1.0,C) rounds identically to C+acc (C is
+//     the only inexact addend), so this is a true add — the tile result is
+//     bit-identical to the scalar oracle's ikj accumulation order.
 func gemmKernel() *emit.Function {
 	b := arm64.NewFunc("gemmMicro4x8", gemmSig(), 0)
 	b.LoadArg("kc", "R0").
@@ -297,33 +325,27 @@ func gemmKernel() *emit.Function {
 		Raw("gkloop:").
 		// B row: 8 contiguous doubles into V16..V19.
 		Raw("VLD1.P 64(R2), [V16.D2, V17.D2, V18.D2, V19.D2]").
-		// A col: 4 contiguous doubles, each broadcast to a D2 vector (no by-lane
-		// FMLA available — see header note 1).
-		Raw("MOVD.P 8(R1), R7").
-		Raw("VDUP R7, V20.D2").
-		Raw("MOVD.P 8(R1), R7").
-		Raw("VDUP R7, V21.D2").
-		Raw("MOVD.P 8(R1), R7").
-		Raw("VDUP R7, V22.D2").
-		Raw("MOVD.P 8(R1), R7").
-		Raw("VDUP R7, V23.D2").
-		// VFMLA Va, Vb, Vacc => Vacc += Va*Vb.  Cacc += Brow * Abroadcast.
-		Raw("VFMLA V16.D2, V20.D2, V0.D2"). // row0
-		Raw("VFMLA V17.D2, V20.D2, V1.D2").
-		Raw("VFMLA V18.D2, V20.D2, V2.D2").
-		Raw("VFMLA V19.D2, V20.D2, V3.D2").
-		Raw("VFMLA V16.D2, V21.D2, V4.D2"). // row1
-		Raw("VFMLA V17.D2, V21.D2, V5.D2").
-		Raw("VFMLA V18.D2, V21.D2, V6.D2").
-		Raw("VFMLA V19.D2, V21.D2, V7.D2").
-		Raw("VFMLA V16.D2, V22.D2, V8.D2"). // row2
-		Raw("VFMLA V17.D2, V22.D2, V9.D2").
-		Raw("VFMLA V18.D2, V22.D2, V10.D2").
-		Raw("VFMLA V19.D2, V22.D2, V11.D2").
-		Raw("VFMLA V16.D2, V23.D2, V12.D2"). // row3
-		Raw("VFMLA V17.D2, V23.D2, V13.D2").
-		Raw("VFMLA V18.D2, V23.D2, V14.D2").
-		Raw("VFMLA V19.D2, V23.D2, V15.D2").
+		// A col: 4 contiguous doubles into two D2 vectors V20=[a0,a1], V21=[a2,a3].
+		// Each row's FMA reads its A scalar by lane (header note 1) — no VDUP.
+		Raw("VLD1.P 32(R1), [V20.D2, V21.D2]").
+		// FMLA Vacc.2D, Vb.2D, Va.D[i] => Vacc += Vb * Va[i].  row r uses A lane
+		// (r&1) of V20 (r<2) or V21 (r>=2).
+		Raw(fmlaElem(0, 16, 20, 0)). // row0 = a0
+		Raw(fmlaElem(1, 17, 20, 0)).
+		Raw(fmlaElem(2, 18, 20, 0)).
+		Raw(fmlaElem(3, 19, 20, 0)).
+		Raw(fmlaElem(4, 16, 20, 1)). // row1 = a1
+		Raw(fmlaElem(5, 17, 20, 1)).
+		Raw(fmlaElem(6, 18, 20, 1)).
+		Raw(fmlaElem(7, 19, 20, 1)).
+		Raw(fmlaElem(8, 16, 21, 0)). // row2 = a2
+		Raw(fmlaElem(9, 17, 21, 0)).
+		Raw(fmlaElem(10, 18, 21, 0)).
+		Raw(fmlaElem(11, 19, 21, 0)).
+		Raw(fmlaElem(12, 16, 21, 1)). // row3 = a3
+		Raw(fmlaElem(13, 17, 21, 1)).
+		Raw(fmlaElem(14, 18, 21, 1)).
+		Raw(fmlaElem(15, 19, 21, 1)).
 		Raw("SUB $1, R0").
 		Raw("CBNZ R0, gkloop").
 		// C += acc, row by row, via VFMLA against V31=[1.0,1.0] (no vector FP add
