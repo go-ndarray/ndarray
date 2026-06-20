@@ -167,7 +167,7 @@ func TestReshape(t *testing.T) {
 	if _, err := a.Reshape(4); !errors.Is(err, ErrShapeMismatch) {
 		t.Fatalf("bad reshape: %v", err)
 	}
-	if _, err := a.Reshape(-1); !errors.Is(err, ErrShapeMismatch) {
+	if _, err := a.Reshape(-2); !errors.Is(err, ErrShapeMismatch) {
 		t.Fatalf("negative reshape: %v", err)
 	}
 }

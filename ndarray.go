@@ -245,10 +245,44 @@ func (a *Array) Copy() *Array {
 	}
 }
 
+// inferReshape resolves a reshape target that may contain a single -1, which is
+// inferred so the total size is preserved (NumPy semantics). Other dimensions
+// must be non-negative; the inferred dimension must divide the remaining size.
+func inferReshape(shape []int, size int) ([]int, error) {
+	negAt := -1
+	known := 1
+	for i, d := range shape {
+		switch {
+		case d == -1:
+			if negAt >= 0 {
+				return nil, fmt.Errorf("%w: can only specify one unknown (-1) dimension in %v",
+					ErrShapeMismatch, shape)
+			}
+			negAt = i
+		case d < 0:
+			return nil, fmt.Errorf("%w: negative dimension %d", ErrShapeMismatch, d)
+		default:
+			known *= d
+		}
+	}
+	out := append([]int(nil), shape...)
+	if negAt < 0 {
+		return out, nil
+	}
+	if known == 0 || size%known != 0 {
+		return nil, fmt.Errorf("%w: cannot infer -1 reshaping size %d into %v",
+			ErrShapeMismatch, size, shape)
+	}
+	out[negAt] = size / known
+	return out, nil
+}
+
 // Reshape returns a view (or copy) of the array with a new shape of the same
-// total size. The data is preserved in row-major order.
+// total size. The data is preserved in row-major order. At most one dimension
+// may be -1, which is inferred from the total size (NumPy semantics).
 func (a *Array) Reshape(shape ...int) (*Array, error) {
-	if err := validateShape(shape); err != nil {
+	shape, err := inferReshape(shape, a.Size())
+	if err != nil {
 		return nil, err
 	}
 	if prod(shape) != a.Size() {
