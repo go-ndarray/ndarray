@@ -5,24 +5,36 @@
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-013243)](https://go-ndarray.github.io/docs/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26.4%2B-00ADD8)](https://go.dev/dl/)
-[![Status](https://img.shields.io/badge/status-phase%200-9a6700)](docs/plan-ndarray.md)
+[![Status](https://img.shields.io/badge/status-numpy%20parity%20(float64)-9a6700)](docs/plan-ndarray.md)
 
 **A pure-Go (CGO=0) NumPy-style N-dimensional array library.** Row-major
-(C-order) strided arrays with constructors, reshape/transpose/copy, elementwise
-operations with full **NumPy broadcasting**, mapping, and reductions — both
-whole-array (`Sum`/`Prod`/`Max`/`Min`/`Mean`) and **along an axis** with
-`keepdims` — with the numeric inner loops kept behind a narrow kernel API so
-SIMD variants can drop in without changing callers.
+(C-order) strided arrays with:
 
-It is a **standalone, reusable** module and the planned cgo-free ndarray backend
-for [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby).
+- **Creation** — `New`/`Zeros`/`Ones`/`Full`/`FromData`/`Arange`/`Linspace`/
+  `Eye`/`Identity`.
+- **Shape & views** — `Reshape` (with `-1` inference), `Ravel`/`Flatten`,
+  `Transpose`, `Squeeze`/`ExpandDims`, and **NumPy basic-indexing `Slice`**
+  returning strided views that share data.
+- **Elementwise** — `Add`/`Sub`/`Mul`/`Div` (+ scalar) with full **NumPy
+  broadcasting**, `Map`/`Neg`/`Abs`, math **ufuncs** (`Sqrt`/`Exp`/`Log`/`Sin`/
+  `Cos`/…), and broadcasting **comparisons** (`Greater`/`Equal`/… as 0/1 masks)
+  plus `Maximum`/`Minimum`.
+- **Reductions** — whole-array (`Sum`/`Prod`/`Max`/`Min`/`Mean`) and per-axis
+  (`SumAxis`/… with `keepdims`).
+- **Manipulation** — `Concatenate`/`Stack`/`VStack`/`HStack`.
+- **Linear algebra** — `MatMul`/`Dot`/`Inner`/`Outer`.
 
-> ⚠️ **Status: Phase 0 + axis reductions.** The float64 core and per-axis
-> reductions (`SumAxis`/`ProdAxis`/`MaxAxis`/`MinAxis`/`MeanAxis` with
-> `keepdims`) are complete and 100%-covered. See
-> **[docs/plan-ndarray.md](docs/plan-ndarray.md)** for the architecture and the
-> phased roadmap (dtypes, broadcasting ufuncs, linalg/matmul, SIMD kernels via
-> go-asmgen, Ruby binding).
+The numeric inner loops are kept behind a narrow kernel API so SIMD variants can
+drop in without changing callers. It is a **standalone, reusable** module and
+the planned cgo-free ndarray backend for
+[go-embedded-ruby](https://github.com/go-embedded-ruby/ruby).
+
+> ⚠️ **Status: float64 NumPy parity for the core surface.** Creation, slicing/
+> views, broadcasting elementwise + ufuncs, reductions, manipulation, and
+> scalar-kernel linear algebra are complete, **100%-covered**, and
+> differentially checked against numpy. See
+> **[docs/plan-ndarray.md](docs/plan-ndarray.md)** for the roadmap (more dtypes,
+> SIMD kernels via go-asmgen, Ruby binding).
 
 ## Why this module?
 
@@ -41,16 +53,28 @@ runtime, behind the same API and the same tests.
 import "github.com/go-ndarray/ndarray"
 
 a, _ := ndarray.Arange(0, 6, 1)     // [0 1 2 3 4 5]
-m, _ := a.Reshape(2, 3)             // [[0 1 2] [3 4 5]]
+m, _ := a.Reshape(2, -1)            // -1 inferred -> [[0 1 2] [3 4 5]]
 
 row, _ := ndarray.FromData([]float64{10, 20, 30}, 3)
 sum, _ := m.Add(row)                // broadcast (2,3)+(3,) -> (2,3)
 
 t := m.Transpose()                  // zero-copy (3,2) view
 total := m.Sum()                    // 15
-
 cols, _ := m.SumAxis(0, false)      // sum down each column -> [3 5 7]
-means, _ := m.MeanAxis(1, true)     // row means, keepdims -> shape (2,1)
+
+// NumPy basic-indexing views (share data):
+col0, _ := m.Slice(ndarray.All(), ndarray.A(0))     // m[:,0] -> [0 3]
+sub, _ := m.Slice(ndarray.R(0, 2), ndarray.Step(2)) // m[0:2, ::2]
+
+// ufuncs and masks
+roots := m.Sqrt()
+two, _ := ndarray.Full(2, 1)
+mask, _ := m.Greater(two)                           // broadcast 0/1 mask of m > 2
+
+// linear algebra
+b, _ := ndarray.Arange(0, 6, 1)
+b, _ = b.Reshape(3, 2)
+prod, _ := m.MatMul(b)              // (2,3)·(3,2) -> (2,2)
 ```
 
 ## License

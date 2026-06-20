@@ -26,9 +26,15 @@ ndarray/
                         constructors, introspection, reshape/transpose/copy,
                         broadcasting binary ops, map/unary, whole-array and
                         per-axis reductions
+  slicing.go            NumPy basic-indexing Slice(...Index) -> strided views
+  creation.go           Linspace, Eye/Identity (Reshape -1 lives in ndarray.go)
+  ufunc.go              unary math ufuncs + broadcasting comparison/min-max ops
+  manipulation.go       Flatten/Squeeze/ExpandDims/Concatenate/Stack/V+HStack
+  linalg.go             MatMul/Dot/Inner/Outer
   internal/kernels/     portable scalar inner loops over flat []float64
-                        (Add/Sub/Mul/Div, Map, Sum/Prod/Max/Min, Abs,
-                        {Sum,Prod,Max,Min}Axis over [outer][axisLen][inner])
+                        (Add/Sub/Mul/Div, Map, comparisons, Maximum/Minimum,
+                        Sum/Prod/Max/Min, Abs, {Sum,Prod,Max,Min}Axis over
+                        [outer][axisLen][inner], MatMul GEMM, Dot1D)
   docs/plan-ndarray.md  this roadmap
 ```
 
@@ -66,6 +72,31 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   as `[outer][axisLen][inner]` and reduced by `{Sum,Prod,Max,Min}Axis` kernels
   whose innermost loop is unit-stride contiguous (SIMD-ready). Differentially
   checked against numpy 2.4.6; committed tests carry hardcoded expectations.
+- **Slicing / views — DONE.** `Slice(...Index)` with NumPy basic-indexing
+  semantics: integer indices (`A`) drop their axis; range indices
+  (`All`/`R`/`Rng`/`From`/`To`/`Step`) keep the axis as a strided view that
+  shares the backing data (write-through both ways). Negative bounds count from
+  the end, unset bounds default to the natural extreme for the step sign,
+  bounds clamp into range, negative steps reverse. Matches numpy 2.2.4.
+- **More creation — DONE.** `Linspace(start,stop,num)` (endpoint inclusive,
+  final sample pinned to stop), `Eye(n,m,k)` / `Identity(n)` (k-th diagonal,
+  non-positive m defaults to square), and `Reshape` `-1` dimension inference.
+- **Ufuncs — DONE.** Unary math via the `Map` seam (`Sqrt`/`Exp`/`Log`/`Log2`/
+  `Log10`/`Sin`/`Cos`/`Tan`/`Floor`/`Ceil`/`Round`/`Square`/`Power`) and
+  broadcasting comparisons returning 0/1 float masks (`Equal`/`NotEqual`/
+  `Greater`/`GreaterEqual`/`Less`/`LessEqual`) plus pairwise `Maximum`/`Minimum`.
+  (`Round` is math.Round / half-away-from-zero, unlike numpy's banker's
+  rounding — documented.) A bool dtype for true masks is deferred to Phase 2.
+- **Manipulation — DONE.** `Flatten` (always copy), `ExpandDims`/`Squeeze`
+  (length-1 axis views), `Concatenate` (existing axis), `Stack` (new axis), and
+  the `VStack`/`HStack` conveniences with 1-D promotion. Negative axes
+  throughout. Matches numpy 2.2.4.
+- **Linear algebra — DONE (scalar).** `MatMul` (2-D GEMM, ikj order, unit-stride
+  inner loop), `Dot` (numpy.dot across 1-D/2-D: inner product, matmul,
+  matrix-vector, vector-matrix), `Inner` (sum over last axis) and `Outer`. The
+  GEMM/dot kernels live in `internal/kernels` for the Phase 1 SIMD path. Matches
+  numpy 2.2.4. Blocked/transpose-aware and decomposition variants remain in
+  Phase 4.
 - **Phase 1 — SIMD kernels via go-asmgen.** Per-arch accelerated kernels behind
   the existing API (elementwise *and* the unit-stride axis-reduction inner
   loop); runtime dispatch; benchmarks vs the scalar fallback and vs gonum on
