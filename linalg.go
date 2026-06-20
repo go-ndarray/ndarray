@@ -16,7 +16,7 @@ var ErrLinalg = fmt.Errorf("ndarray: incompatible shapes for linear algebra")
 // views work transparently.
 func matmul2D(a, b *Array, m, k, n int) *Array {
 	dst := make([]float64, m*n)
-	kernels.MatMul(dst, a.materialize(), b.materialize(), m, k, n)
+	kernels.MatMulP(dst, a.contiguousData(), b.contiguousData(), m, k, n)
 	shape := []int{m, n}
 	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}
 }

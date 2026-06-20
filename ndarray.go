@@ -426,32 +426,47 @@ func (a *Array) broadcastTo(shape []int) []float64 {
 	return out
 }
 
+// operandFor returns a contiguous []float64 of length prod(shape) holding the
+// receiver's elements in the broadcast shape. When the receiver already has
+// exactly that shape and is contiguous (the overwhelmingly common same-shape
+// case), its backing data is returned directly with no copy — the kernel only
+// reads it, so sharing is safe and the per-op allocation drops from three full
+// buffers to one (just dst). Otherwise it materialises the broadcast view.
+func (a *Array) operandFor(shape []int) []float64 {
+	if a.isContiguous() && sameShape(a.shape, shape) {
+		return a.data
+	}
+	return a.broadcastTo(shape)
+}
+
 // binOp applies a contiguous-slice kernel to two arrays with NumPy
-// broadcasting, returning a new contiguous array of the broadcast shape.
+// broadcasting, returning a new contiguous array of the broadcast shape. The
+// kernel must only read its x/y inputs (it may not alias them into dst), since
+// operandFor can hand it the operands' live backing slices uncopied.
 func (a *Array) binOp(b *Array, kernel func(dst, x, y []float64)) (*Array, error) {
 	shape, err := broadcastShape(a.shape, b.shape)
 	if err != nil {
 		return nil, err
 	}
-	x := a.broadcastTo(shape)
-	y := b.broadcastTo(shape)
-	dst := make([]float64, len(x))
+	x := a.operandFor(shape)
+	y := b.operandFor(shape)
+	dst := make([]float64, prod(shape))
 	kernel(dst, x, y)
 	cp := append([]int(nil), shape...)
 	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}, nil
 }
 
 // Add returns the elementwise sum a+b with broadcasting.
-func (a *Array) Add(b *Array) (*Array, error) { return a.binOp(b, kernels.Add) }
+func (a *Array) Add(b *Array) (*Array, error) { return a.binOp(b, kernels.AddP) }
 
 // Sub returns the elementwise difference a-b with broadcasting.
-func (a *Array) Sub(b *Array) (*Array, error) { return a.binOp(b, kernels.Sub) }
+func (a *Array) Sub(b *Array) (*Array, error) { return a.binOp(b, kernels.SubP) }
 
 // Mul returns the elementwise product a*b with broadcasting.
-func (a *Array) Mul(b *Array) (*Array, error) { return a.binOp(b, kernels.Mul) }
+func (a *Array) Mul(b *Array) (*Array, error) { return a.binOp(b, kernels.MulP) }
 
 // Div returns the elementwise quotient a/b with broadcasting.
-func (a *Array) Div(b *Array) (*Array, error) { return a.binOp(b, kernels.Div) }
+func (a *Array) Div(b *Array) (*Array, error) { return a.binOp(b, kernels.DivP) }
 
 // scalarArray wraps a scalar as a 0-d array so it broadcasts against anything.
 func scalarArray(v float64) *Array {
@@ -472,13 +487,26 @@ func (a *Array) DivScalar(v float64) *Array { r, _ := a.Div(scalarArray(v)); ret
 
 // --- unary / map -----------------------------------------------------------
 
-// Map returns a new contiguous array with f applied to every element.
+// Map returns a new contiguous array with f applied to every element. For a
+// contiguous receiver the elements are read in place (no materialise copy); the
+// elementwise pass is parallelised across cores above the kernel threshold. f
+// must be safe to call concurrently (the package's math ufuncs are).
 func (a *Array) Map(f func(float64) float64) *Array {
-	src := a.materialize()
+	src := a.contiguousData()
 	dst := make([]float64, len(src))
-	kernels.Map(dst, src, f)
+	kernels.MapP(dst, src, f)
 	cp := append([]int(nil), a.shape...)
 	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}
+}
+
+// contiguousData returns the receiver's elements as a contiguous row-major
+// slice for read-only kernel input, sharing the backing data when the receiver
+// is already contiguous and copying (materialising) only for strided views.
+func (a *Array) contiguousData() []float64 {
+	if a.isContiguous() {
+		return a.data
+	}
+	return a.materialize()
 }
 
 // Neg returns the elementwise negation.
@@ -489,11 +517,14 @@ func (a *Array) Abs() *Array { return a.Map(kernels.Abs) }
 
 // --- reductions ------------------------------------------------------------
 
-// Sum returns the sum of all elements (0 for an empty array).
-func (a *Array) Sum() float64 { return kernels.Sum(a.materialize()) }
+// Sum returns the sum of all elements (0 for an empty array). Large sums are
+// computed as a tree of per-core partials, so the result can differ from a
+// strictly left-to-right sum by a few ULP (floating-point addition is not
+// associative) — the same trade-off NumPy's pairwise summation makes.
+func (a *Array) Sum() float64 { return kernels.SumP(a.contiguousData()) }
 
 // Prod returns the product of all elements (1 for an empty array).
-func (a *Array) Prod() float64 { return kernels.Prod(a.materialize()) }
+func (a *Array) Prod() float64 { return kernels.Prod(a.contiguousData()) }
 
 // Mean returns the arithmetic mean of all elements. It returns an error for an
 // empty array.
@@ -510,7 +541,7 @@ func (a *Array) Max() (float64, error) {
 	if a.Size() == 0 {
 		return 0, fmt.Errorf("%w: max of empty array", ErrShapeMismatch)
 	}
-	return kernels.Max(a.materialize()), nil
+	return kernels.MaxP(a.contiguousData()), nil
 }
 
 // Min returns the minimum element. It returns an error for an empty array.
@@ -518,7 +549,7 @@ func (a *Array) Min() (float64, error) {
 	if a.Size() == 0 {
 		return 0, fmt.Errorf("%w: min of empty array", ErrShapeMismatch)
 	}
-	return kernels.Min(a.materialize()), nil
+	return kernels.MinP(a.contiguousData()), nil
 }
 
 // --- axis reductions -------------------------------------------------------
