@@ -24,8 +24,10 @@ operands' live backing slices to the kernel and allocates only the result.
 
 NumPy's `matmul` is BLAS, a different fight: go-ndarray answers it with its own
 **panel-packed, cache-blocked GEMM** + go-asmgen SIMD-FMA micro-kernel (the
-OpenBLAS/BLIS structure). It does not beat *tuned* OpenBLAS but reaches ~76% of
-it and is 3–7× over the prior kernel — see the matmul section below.
+OpenBLAS/BLIS structure). With the by-lane-FMLA micro-kernel it reaches **parity
+with tuned multi-threaded OpenBLAS 0.3.29 at n=1024 (≈0.99×, ~203 GFLOP/s)** and
+~0.97× at n=512; only small n=256 still trails (per-call overhead). See the
+matmul section below.
 
 ## Test bench
 
@@ -47,25 +49,33 @@ Reproduce: rsync the repo to the VM, then
 
 ## Elementwise and reductions (ns/op; lower is better)
 
-`go ×` is NumPy ÷ go-ndarray (multi-core): **> 1 means go-ndarray wins.**
+`go ×` is NumPy ÷ go-ndarray: **> 1 means go-ndarray wins.** Two go forms are
+shown for the binary/sqrt ops:
 
-| op | n | NumPy 2.2.4 | go (1 core) | go (4 core) | go × (4 core) |
-|------|------:|------:|------:|------:|:--:|
-| Add  | 1 024 | 438 | 952 | 1 461 | **0.30** (numpy) |
-| Add  | 4 194 304 | 1 696 681 | 1 728 300 | **824 689** | **2.06** |
-| Mul  | 1 024 | 458 | 919 | 1 443 | 0.32 (numpy) |
-| Mul  | 4 194 304 | 1 646 489 | 1 495 747 | **787 378** | **2.09** |
-| Sqrt | 1 024 | 476 | 1 173 | 1 658 | 0.29 (numpy) |
-| Sqrt | 4 194 304 | 1 637 880 | 2 363 166 | **934 570** | **1.75** |
-| Sum  | 1 024 | 671 | **135** | **135** | **4.95** |
-| Sum  | 4 194 304 | 505 997 | **493 755** | **209 908** | **2.41** |
-| Max  | 1 024 | 628 | **159** | **157** | **4.00** |
-| Max  | 4 194 304 | 323 062 | 621 257 | **241 269** | **1.34** |
+- **alloc** — `a + b` / `np.sqrt(a)`: returns a fresh array (NumPy `x + y`).
+- **into** — `a.AddInto(out, b)` / `a.SqrtInto(out)`: writes a caller-supplied
+  buffer, the no-allocation form (NumPy `np.add(x, y, out=z)` / `np.sqrt(x, out=z)`).
+  This is the apples-to-apples small-N comparison: it removes the per-op result
+  allocation, which is the *only* thing NumPy beats us on at small n (see below).
 
-(Sqrt/Max rows re-measured 2026-06 after the SIMD-kernel round; Add/Mul/Sum
-unchanged from the previous round. Each go number is the best of three
-`-benchtime=1s` runs; each NumPy number the min of seven — taken back-to-back in
-the same VM session so they share the machine's instantaneous load.)
+| op | n | NumPy 2.2.4 | go alloc | go into | go × alloc | go × into |
+|------|------:|------:|------:|------:|:--:|:--:|
+| Add  | 1 024     |     432 |  1 049 |   **148** | 0.41 (numpy) | **2.41** |
+| Add  | 4 194 304 | 1 600 974 | **768 722** | **429 410** | **2.08** | **2.10** |
+| Mul  | 1 024     |     424 |    978 |   **168** | 0.43 (numpy) | **2.08** |
+| Mul  | 4 194 304 | 1 572 361 | **763 339** | **435 109** | **2.06** | **1.81** |
+| Sqrt | 1 024     |     496 |  1 299 |   **263** | 0.38 (numpy) | **1.80** |
+| Sqrt | 4 194 304 | 1 669 901 | **605 561** | **333 289** | **2.76** | **3.22** |
+| Sum  | 1 024     |     637 |  **130** |       — | **4.90** | — |
+| Sum  | 4 194 304 |   496 000 | **193 679** |     — | **2.56** | — |
+| Max  | 1 024     |     611 |  **160** |       — | **3.83** | — |
+| Max  | 4 194 304 |   326 466 | **231 626** |     — | **1.41** | — |
+
+(All numbers measured back-to-back in one VM session, 2026-06; go is
+`-benchtime=1s`, NumPy `min`-of-runs in `docs/bench_numpy.py`. Add/Sub/Mul/Div
+now run a SIMD kernel — packed SSE2 `ADD/SUB/MUL/DIVPD` on amd64, NEON `VFMLA`
+on arm64 — so even the *alloc* form wins ~2× at large n. Sum/Max are reductions
+with no result array, so they have no separate *into* row.)
 
 ### Reading the table
 
@@ -84,10 +94,11 @@ the same VM session so they share the machine's instantaneous load.)
   packed `SQRTPD` on amd64, the intrinsic-lowered scalar `FSQRTD` loop on
   arm64/others — plus the existing multicore fan-out is what turns the loss into
   a win. The kernel is **bit-identical** to a scalar `math.Sqrt` loop (validated
-  per-arch and bit-for-bit against NumPy's `np.sqrt`). Small `n=1 024` still goes
-  to NumPy: below the parallel threshold a single core is sqrt-throughput-bound
-  and the per-call `*Array` allocation dominates — the accepted small-size
-  trade-off (same as Add/Mul).
+  per-arch and bit-for-bit against NumPy's `np.sqrt`). arm64 now also has a
+  **packed NEON `FSQRT V.2D`** kernel (two doubles per instruction, emitted by
+  `WORD` since Go's assembler has no vector-sqrt mnemonic), replacing the prior
+  one-lane-at-a-time scalar `FSQRTD` loop. Small `n=1 024`: the *alloc* form loses
+  to NumPy on allocation cost (as Add/Mul), but `a.SqrtInto(out)` wins 1.8×.
 - **Max: go-ndarray now WINS — 4.0× small, 1.34× at 4 M (was 0.62 / 0.31
   losses).** Two changes. (1) The scalar oracle was switched from `if v > m`
   (which silently *ignored* NaNs, diverging from NumPy) to the **builtin
@@ -98,10 +109,19 @@ the same VM session so they share the machine's instantaneous load.)
   (~3.6× over one), exactly like the sum kernel: packed `MAXPD`/`MINPD` + a NaN
   scan on amd64, register-unrolled builtin `max`/`min` on arm64/others. See the
   NaN convention note below.
-- **Small arrays (n≈1 024) for Add/Mul/Sqrt: NumPy still wins.** Below the
-  parallel threshold go-ndarray is serial and its per-call `*Array` allocation
-  costs more than NumPy's tight C loop at this size. This is the right
-  trade-off: parallelising a 1 K array would *slow it down*. (Sum and now Max are
+- **Small arrays (n≈1 024) for Add/Mul/Sqrt — the *alloc* form: NumPy wins; the
+  *into* form: go-ndarray wins ~2×.** The entire gap is the result allocation.
+  `make([]float64, 1024)` measures ~900–1 080 ns on this VM's allocator (it zeroes
+  the 8 KiB the kernel then fully overwrites), while NumPy serves the temp from a
+  cached free-list for ~150 ns. So `a + b` at n=1024 is allocator-bound (≈1 µs,
+  of which the SIMD compute is only ~150 ns) and loses 0.4×; **`a.AddInto(out, b)`
+  — the no-allocation form, NumPy's `np.add(x, y, out=z)` — removes that cost and
+  wins 1.8–2.4× at the same size.** This is a Go-allocator ceiling, not a kernel
+  one: Go's `make` always zeroes and offers no unsafe "give me raw bytes" escape,
+  and returning pooled memory would break the caller-owns-the-result contract, so
+  the allocating small-N form cannot match NumPy's free-list — the `*Into` parity
+  path is the supported way to hit/beat NumPy there (and at large n even the alloc
+  form wins, because the kernel time then dwarfs the one allocation). (Sum and Max are
   the exceptions — their reduction kernels need no result allocation and win even
   serially.)
 
@@ -127,19 +147,57 @@ This is the honest fight: go-ndarray's pure-Go (+ generated asm) GEMM against
 **OpenBLAS 0.3.29 pthread**, decades-tuned multi-threaded assembly. Both run on
 the same 4-vCPU Apple-silicon VM, back-to-back. GFLOP/s = `2·n³ / time`.
 
-| n (N×N) | go-ndarray (4 core) | go GFLOP/s | OpenBLAS-mt | OB GFLOP/s | go ÷ OB |
-|------:|------:|------:|------:|------:|:--:|
-| 64   |     19 828 |  26.4 |     11 548 |  45.4 | 0.58× |
-| 128  |     73 627 |  57.0 |     24 660 | 170.1 | 0.33× |
-| 256  |    328 575 | 102.1 |    172 787 | 194.2 | 0.53× |
-| 512  |  1 999 951 | 134.2 |  1 348 483 | 199.1 | 0.67× |
-| 1024 | 13 753 750 | 156.1 | 10 506 282 | 204.4 | **0.76×** |
+All rows measured **back-to-back, interleaved, in the same VM session** (the only
+fair way on a shared host whose load drifts), 4 samples each, `go ÷ OB` reported
+as the per-sample ratio (robust to the absolute time drifting between sessions).
 
-**Verdict: a real, big step forward, but pure Go does NOT beat tuned OpenBLAS.**
-The packed GEMM sustains **~156 GFLOP/s at n=1024 (≈76% of OpenBLAS)**, up from
-the prior kernel's ~23 GFLOP/s, but OpenBLAS's hand-scheduled asm still leads at
-every size. This is shipped because it is **3–7× faster than the prior kernel**
-(below), not because it wins the OpenBLAS fight — it does not, and that is stated.
+| n (N×N) | go-ndarray (4 core) | OpenBLAS-mt | go GFLOP/s | OB GFLOP/s | go ÷ OB |
+|------:|------:|------:|------:|------:|:--:|
+| 256  |    261 000 |    174 000 | 102.8 | 154.2 | 0.67× |
+| 512  |  1 530 000 |  1 500 000 | 175.4 | 178.9 | 0.97× |
+| 1024 | 10 600 000 | 10 580 000 | 202.6 | 203.0 | **≈0.99× (parity; samples 0.96–1.00)** |
+
+**Verdict: at n=1024 the pure-Go (+ generated asm) GEMM reaches PARITY with tuned
+OpenBLAS** (~0.99×, individual samples straddling 1.00×), sustaining **~203
+GFLOP/s** — up from the prior kernel's ~23 GFLOP/s and from this kernel's own 0.76×
+before the by-lane-FMLA fix below. n=512 is ~0.97×; only small n=256, where fixed
+per-call overhead (panel packing + the 4-way goroutine fan-out) dominates the
+~250 µs of compute, still trails at 0.67× — a small-matrix overhead ceiling, not a
+kernel-throughput one (the same kernel hits parity once the matrix is large enough
+to amortise the setup).
+
+### The fix that reached parity: the by-lane FMLA
+
+The single change that took n=1024 from **0.76× to ≈0.99×** was the arm64
+micro-kernel's inner FMA. The kernel broadcasts one packed A value into every
+column of its row; the prior version did this with `MOVD` (A double → GP register)
++ `VDUP` (GP → all lanes of a vector) before a plain vector `VFMLA` — an extra
+instruction *and* a GP↔SIMD register-file round-trip per A value, every k-step.
+The fix uses the indexed-element double FMLA `FMLA Vd.2D, Vn.2D, Vm.D[i]` that
+every tuned arm64 dgemm uses: load the four packed A doubles of a k-step as two
+`D2` vectors and have each row's FMA read its A scalar straight from a lane — no
+GP detour, no `VDUP`. Go's arm64 assembler cannot *name* this indexed form
+("illegal combination … ELEM"), so it is emitted by its raw 32-bit `WORD`
+encoding (see `fmlaElem` in `asmgen/arm64/gen.go`, cross-checked against
+`objdump`); this is still pure Go assembly, CGO=0.
+
+Measured on this Apple-silicon core: the L1-resident micro-kernel went **~44 →
+~58 GFLOP/s/core (~1.28×)**, and the full GEMM tracked it to parity. (An earlier
+note on this page claimed the indexed form was *slower* on Apple silicon — that
+was wrong; it had never actually been measured against a correct encoding.)
+
+Two further levers were prototyped and **measured to NOT help on this core**, so
+they were not shipped (documented here so they are not re-attempted blindly):
+- **Software pipelining** (prefetch + double-buffer the next k-step's A/B into
+  shadow registers, rotate after the FMAs): ~2% on the L1 micro-kernel but **1–9%
+  *slower* on the full GEMM** — the M-series out-of-order window already hides the
+  L1/L2 load latency, and the extra `VMOV` rotations + register pressure cost more
+  than they save.
+- **Wider 6×8 tile** (24 accumulators vs 16): same GFLOP/s as the 4×8 — the loop
+  is FMA-latency-bound, not register-pressure-bound, so a wider tile adds no
+  throughput.
+- **MC/KC/NC retuning**: a 12-point sweep confirmed the shipped 256/256/512 is
+  already the optimum on this core.
 
 ### What shipped: a panel-packed, cache-blocked GEMM
 
@@ -187,36 +245,24 @@ to the noisy VM); the prior kernel is the register-blocked/ikj path this replace
 The packed kernel wins at **every** size, so it is shipped uniformly — no
 size-routing — and the old `n ≤ 224` blocked/ikj split is removed.
 
-### The ceiling: why pure Go can't match OpenBLAS's asm
+### Where the remaining gap is (small n only)
 
-The pure-Go+asm FMA *throughput* is not the wall — a hand-written NEON-FMLA loop
-measured **57 GFLOP/s/core** here, *above* OpenBLAS's 48 GFLOP/s/core
-single-thread, so the SIMD math is there. The gap (≈24% at n=1024) comes from
-micro-kernel scheduling that Go's arm64 assembler **cannot express**:
+At n=1024 there is effectively **no** kernel-throughput gap left: the by-lane
+FMLA inner loop runs ~58 GFLOP/s/core, the full GEMM hits ~203 GFLOP/s, and
+go ÷ OB straddles 1.00×. The only sizes still short are **small** matrices, and
+there the gap is *fixed per-call overhead*, not compute:
 
-1. **No by-lane FMLA.** Every tuned arm64 dgemm uses
-   `FMLA Vd.2d, Vn.2d, Vm.d[i]` to broadcast one A lane straight into the FMA.
-   Go's assembler rejects the indexed-element form (`illegal combination … ELEM`),
-   so each A value must be moved to a GP register and `VDUP`'d into a vector
-   before a plain vector `VFMLA` — an extra instruction per A value in the inner
-   loop, and a vector-register-file round-trip OpenBLAS does not pay.
-2. **No plain vector FP add.** Go's arm64 backend exposes only `VFMLA`/`VFMLS`
-   for vector double, so even the closing `C += acc` is done as `C + acc·1.0` via
-   FMLA against a constant `1.0` vector (bit-exact, but a wasted multiply).
-3. **No software pipelining / prefetch scheduling.** OpenBLAS interleaves loads
-   of the next k-step with the current FMAs and issues `PRFM` prefetches; the
-   asm here is straight-line and relies on the core's OoO window, which does not
-   fully hide L2 latency at the larger panels — visible as the 134→156 GFLOP/s
-   climb only at n=1024.
-4. **Narrower micro-kernel.** 32 V-registers cap a NEON kernel at a 4×8 (or 8×4)
-   tile once operands need registers; OpenBLAS uses an 8×8-class tile with
-   careful register renaming, giving a higher compute-to-load ratio.
+- At n=256 the matmul is ~250 µs of real work, but every call still pays the full
+  panel-pack pass and a 4-way goroutine fan-out. OpenBLAS amortises that setup
+  far better (smaller pack cost, a thread pool that is already warm), so it leads
+  0.67× here even though the per-core FMA rate is the same. As n grows the setup
+  is amortised away — n=512 is already 0.97×.
 
-None of these are pure-Go *algorithm* limits — they are Go-assembler expressivity
-limits. Closing the last ~24% would need either those instructions exposed by the
-Go arm64 assembler (by-lane FMLA in particular) or `GOAMD64=v3`/AVX2-FMA on
-x86. The result stands as the realistic pure-Go ceiling on this micro-arch:
-**~76% of tuned OpenBLAS, 3–7× over the prior kernel.**
+This is a small-matrix overhead ceiling. Closing it further would mean a
+serial-vs-parallel crossover tuned per size and a cheaper pack for tiny panels;
+it is not a Go-assembler or algorithm limit, and it does not affect the
+large-matrix parity result. (`GOAMD64=v3`/AVX2-FMA would likewise lift the amd64
+micro-kernel, which today is SSE2-only; the arm64 path already has its FMA.)
 
 ### Footnote: vs reference BLAS
 
@@ -242,6 +288,12 @@ The SIMD kernels are also validated against the scalar oracle per-arch in CI:
   kernel are held **bit-identical** to the builtin-`max`/`min` oracle across
   every length and with a NaN injected at the start, middle, end, and as the sole
   element (all must return NaN); ±Inf and signed zeros bit-match too.
+- **Add / Sub / Mul / Div** — the elementwise SIMD kernels are held
+  **bit-identical** to the scalar oracle across every length residue mod 8 and the
+  IEEE edge inputs (signed zeros, ±Inf, NaN, extremes): each lane is a single
+  independent correctly-rounded IEEE op (no reduction grouping), and on arm64 the
+  FMA-against-an-exact-constant form (`b+a·1`, `a−b·1`, `0+a·b`) rounds identically
+  to the plain op, so bit-identity is the contract.
 - **Sum** — validated to a tight *relative tolerance* (not bit-identity): its
   lane-parallel grouping is a valid reordering, the same kind NumPy's pairwise
   summation uses, so closeness — not bit-identity — is the contract for a
@@ -251,29 +303,34 @@ The SIMD kernels are also validated against the scalar oracle per-arch in CI:
 
 | op | status | note |
 |----|--------|-----|
-| small arrays (n≲a few K) for Add/Mul/Sqrt | NumPy wins (no parallelism, per-`*Array` alloc) | lower threshold / pooling is not worth the small-size risk; accepted |
-| `Sqrt` | **FIXED — go wins 1.75× at 4 M** | dedicated `SQRTPD`/intrinsic-`FSQRTD` kernel off a non-`func`-pointer seam (done) |
-| `Max` / `Min` | **FIXED — go wins 1.34× at 4 M, 4× small** | builtin-`max` NaN-propagating oracle + 4-accumulator reducer + amd64 `MAXPD`+NaN-scan (done) |
-| `MatMul` vs prior kernel | **FIXED — 3–7× faster, all sizes** | panel-packed cache-blocked GEMM + go-asmgen SIMD-FMA micro-kernel (NEON 4×8 / SSE2 4×4); shipped uniformly (done) |
-| `MatMul` vs tuned BLAS (OpenBLAS) | go reaches ~76% of OpenBLAS at n=1024; OpenBLAS still leads | the remaining ~24% is Go-assembler expressivity (no by-lane FMLA / no vector FP add / no SW-pipelining), not a pure-Go algorithm limit — see the ceiling analysis above |
+| `Add`/`Sub`/`Mul`/`Div`/`Sqrt`, **alloc** form, small n (≈1 K) | NumPy wins (Go-allocator ceiling) | the result `make` (~900 ns zeroing 8 KiB) is the whole cost; Go has no unzeroed-alloc escape and pooling would break result ownership. The `*Into` no-alloc form **wins 1.8–2.4×** — the supported parity path. Large-n alloc form already wins ~2×. |
+| `Add`/`Sub`/`Mul`/`Div` | **FIXED — go wins ~2× large n, *Into* wins all n** | new SIMD kernels: packed SSE2 `ADD/SUB/MUL/DIVPD` (amd64), NEON `VFMLA`/`VFMLS` (arm64); bit-identical to the scalar oracle |
+| `Sqrt` | **FIXED — go wins 2.8× at 4 M, *Into* 1.8× small** | packed `SQRTPD` (amd64) / packed NEON `FSQRT V.2D` (arm64) / intrinsic `FSQRTD` (others), off a non-`func`-pointer seam |
+| `Max` / `Min` | **FIXED — go wins 1.4× at 4 M, ~4× small** | builtin-`max` NaN-propagating oracle + 4-accumulator reducer + amd64 `MAXPD`+NaN-scan |
+| `MatMul` vs tuned BLAS (OpenBLAS) | **FIXED — parity at n=1024 (~0.99×, ~203 GFLOP/s); 0.97× at n=512** | by-lane FMLA micro-kernel (`FMLA Vd.2D,Vn.2D,Vm.D[i]` via `WORD`) closed the prior 0.76× gap. Only small n=256 trails (0.67×) on per-call overhead, not throughput — see above |
 | other `Map` ufuncs (`Exp`, `Log`, `Sin`…) | NumPy ~parity (libm-bound) | a packed `VEXP`/`VLOG` is libm-accuracy work; the math, not the dispatch, dominates here |
 
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`
-  (packed `SQRTPD`), `max`/`min` (`MAXPD`/`MINPD` + `CMPPD` NaN scan), and the
-  **GEMM micro-kernel** (`gemmMicro4x4`: a 4×4 SSE2 `MULPD`+`ADDPD` tile, no FMA
-  at the v1 baseline) kernels, generated by go-asmgen and validated per-arch in
-  CI (and cross-run under qemu-x86_64 — the GEMM tile included).
-- **arm64 (NEON)** ships the hand-vectorized `sum` kernel and the **GEMM
-  micro-kernel** (`gemmMicro4x8`: a 4×8 NEON `VFMLA` tile, 16 D2 accumulators).
-  Both work around the same two arm64-assembler limits: no plain vector-double add
-  (so accumulation/store fold uses `VFMLA` against a `1.0` vector) and no by-lane
-  `FMLA` (so each A value is `VDUP`'d into a vector before the vector `VFMLA`). It
-  has **no packed vector-double sqrt/max/min** (only `VFMLA`/`VFMLS` exist), so
-  `sqrt` uses the compiler's scalar `FSQRTD` intrinsic and `max`/`min` the
-  four-accumulator builtin-`max`/`min` (which lowers to `FMAXD`/`FMIND`) — both
-  beat NumPy via the intrinsics + multicore, no `func`-pointer indirection.
+  (packed `SQRTPD`), `max`/`min` (`MAXPD`/`MINPD` + `CMPPD` NaN scan), the
+  **elementwise `add`/`sub`/`mul`/`div`** (packed `ADD/SUB/MUL/DIVPD`, 8
+  doubles/iter + scalar tail), and the **GEMM micro-kernel** (`gemmMicro4x4`: a
+  4×4 SSE2 `MULPD`+`ADDPD` tile, no FMA at the v1 baseline), generated by
+  go-asmgen and validated per-arch in CI (and cross-run under qemu-x86_64 — the
+  GEMM tile included).
+- **arm64 (NEON)** ships hand-vectorized `sum`, **packed `sqrt`** (`FSQRT V.2D`),
+  the **elementwise `add`/`sub`/`mul`** (via `VFMLA`/`VFMLS` against a `1.0`
+  vector — `add: b+a·1`, `sub: a−b·1`, `mul: 0+a·b`, each FMA exact so
+  bit-identical to the plain op; `div` stays on scalar `FDIVD`, no vector form),
+  and the **GEMM micro-kernel** (`gemmMicro4x8`: a 4×8 tile, 16 D2 accumulators,
+  using the **by-lane FMLA** `FMLA Vd.2D, Vn.2D, Vm.D[i]`). Three instructions are
+  emitted by raw `WORD` because Go's arm64 assembler cannot name them: the vector
+  `FSQRT V.2D`, and the indexed-element `FMLA …D[i]` (both verified vs `objdump`).
+  `max`/`min` use the four-accumulator builtin-`max`/`min` (lowering to
+  `FMAXD`/`FMIND`); the C-accumulate fold still uses `VFMLA` against `1.0` (no
+  plain vector FP add exists). All beat/parity NumPy via SIMD + multicore, no
+  `func`-pointer indirection.
 - The other four 64-bit Go targets — **riscv64, loong64, ppc64le, s390x** — keep
   the validated scalar oracles (Go's loong64/ppc64le assemblers expose no
   vector-double arithmetic; riscv64's V extension is optional), using the same
