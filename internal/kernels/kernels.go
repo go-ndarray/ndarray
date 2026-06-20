@@ -157,6 +157,34 @@ func Min(a []float64) float64 {
 // route Abs through Map without importing math directly.
 func Abs(x float64) float64 { return math.Abs(x) }
 
+// MatMul computes the (m x n) row-major matrix product dst = a (m x k) times
+// b (k x n), where all three are flat contiguous []float64. dst must be
+// zeroed by the caller. The innermost loop over n is unit-stride contiguous in
+// both b and dst — the shape a SIMD FMA kernel wants — so Phase 1 can replace
+// the inner accumulation across all six 64-bit targets, leaving this ikj-order
+// scalar version as the reference and fallback.
+func MatMul(dst, a, b []float64, m, k, n int) {
+	for i := 0; i < m; i++ {
+		dstRow := dst[i*n : i*n+n]
+		for p := 0; p < k; p++ {
+			av := a[i*k+p]
+			bRow := b[p*n : p*n+n]
+			for j := 0; j < n; j++ {
+				dstRow[j] += av * bRow[j]
+			}
+		}
+	}
+}
+
+// Dot1D returns the inner product sum(a[i]*b[i]) of two equal-length vectors.
+func Dot1D(a, b []float64) float64 {
+	var s float64
+	for i := range a {
+		s += a[i] * b[i]
+	}
+	return s
+}
+
 // Axis reductions.
 //
 // The parent package materialises a strided view into a contiguous []float64
