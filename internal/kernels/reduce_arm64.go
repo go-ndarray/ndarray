@@ -28,11 +28,18 @@ func sumSIMD(a []float64) float64 {
 	return sumNEON(&a[0], len(a))
 }
 
-// sqrtSIMD writes sqrt(src[i]) into dst[i]. On arm64 this is the direct scalar
-// oracle, which the compiler lowers to the FSQRTD hardware instruction per
-// element (bit-identical to math.Sqrt). It is exported through the same seam so
-// callers and the parallel wrapper are architecture-independent.
-func sqrtSIMD(dst, src []float64) { sqrtScalar(dst, src) }
+// sqrtSIMD writes sqrt(src[i]) into dst[i] with the packed NEON FSQRT V.2D kernel
+// (two doubles per instruction, emitted via WORD because Go's arm64 assembler has
+// no vector-sqrt mnemonic — see asmgen/arm64/gen.go). FSQRT V.2D is correctly-
+// rounded IEEE-754, identical lane-by-lane to the scalar FSQRTD/math.Sqrt, so it
+// is bit-identical to sqrtScalar including negatives->NaN, ±Inf and signed zeros.
+// It supersedes the prior scalar-FSQRTD loop, halving the per-element sqrt count.
+func sqrtSIMD(dst, src []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	sqrtNEON(&dst[0], &src[0], len(dst))
+}
 
 // maxSIMD / minSIMD are the four-accumulator NaN-propagating reducers: the
 // builtin max/min lower to the FMAXD/FMIND hardware instructions and the four
@@ -44,5 +51,51 @@ func sqrtSIMD(dst, src []float64) { sqrtScalar(dst, src) }
 func maxSIMD(a []float64) float64 { return maxUnrolled(a) }
 func minSIMD(a []float64) float64 { return minUnrolled(a) }
 
+// addBin/subBin/mulBin write a[i] OP b[i] into dst[i] with the NEON D2 kernels
+// (8 doubles/iter + scalar tail). Go's arm64 assembler has no plain vector
+// double add/sub/mul (only VFMLA/VFMLS), so each reaches the op through an FMA
+// against an exact constant — add: b+a*1.0, sub: a-b*1.0, mul: 0+a*b — which
+// rounds bit-identically to the plain op (the extra addend is exact), so the
+// result is bit-identical to the scalar Add/Sub/Mul oracle. They are the serial
+// elementwise inner loop the per-op fast path and runBinaryP use. Empty slices
+// are a no-op (no &a[0]).
+func addBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	addNEON(&dst[0], &a[0], &b[0], len(dst))
+}
+
+func subBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	subNEON(&dst[0], &a[0], &b[0], len(dst))
+}
+
+func mulBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	mulNEON(&dst[0], &a[0], &b[0], len(dst))
+}
+
+// divBin stays on the scalar oracle: arm64 has neither a vector-double divide nor
+// an FMA form for division, and the scalar Div loop already lowers to the FDIVD
+// hardware instruction per element (the same throughput-bound op numpy runs).
+func divBin(dst, a, b []float64) { Div(dst, a, b) }
+
 //go:noescape
 func sumNEON(a *float64, n int) float64
+
+//go:noescape
+func sqrtNEON(dst, src *float64, n int)
+
+//go:noescape
+func addNEON(dst, a, b *float64, n int)
+
+//go:noescape
+func subNEON(dst, a, b *float64, n int)
+
+//go:noescape
+func mulNEON(dst, a, b *float64, n int)

@@ -223,6 +223,88 @@ func TestBinOpSameShape(t *testing.T) {
 	eqFloats(t, div.materialize(), []float64{5, 3, 7.0 / 3.0, 2})
 }
 
+func TestBinOpInto(t *testing.T) {
+	a := mustArr(t, ok(FromData([]float64{1, 2, 3, 4}, 2, 2)))
+	b := mustArr(t, ok(FromData([]float64{5, 6, 7, 8}, 2, 2)))
+	out := mustArr(t, ok(New(2, 2)))
+
+	if err := a.AddInto(out, b); err != nil {
+		t.Fatalf("AddInto: %v", err)
+	}
+	eqFloats(t, out.materialize(), []float64{6, 8, 10, 12})
+	if err := a.SubInto(out, b); err != nil {
+		t.Fatalf("SubInto: %v", err)
+	}
+	eqFloats(t, out.materialize(), []float64{-4, -4, -4, -4})
+	if err := a.MulInto(out, b); err != nil {
+		t.Fatalf("MulInto: %v", err)
+	}
+	eqFloats(t, out.materialize(), []float64{5, 12, 21, 32})
+	if err := b.DivInto(out, a); err != nil {
+		t.Fatalf("DivInto: %v", err)
+	}
+	eqFloats(t, out.materialize(), []float64{5, 3, 7.0 / 3.0, 2})
+
+	// Aliasing: out == a is allowed (each index read before written).
+	c := mustArr(t, ok(FromData([]float64{1, 2, 3, 4}, 2, 2)))
+	if err := c.AddInto(c, b); err != nil {
+		t.Fatalf("AddInto alias: %v", err)
+	}
+	eqFloats(t, c.materialize(), []float64{6, 8, 10, 12})
+
+	// Broadcasting operands into a full-shape out.
+	row := mustArr(t, ok(FromData([]float64{10, 20}, 2)))
+	o2 := mustArr(t, ok(New(2, 2)))
+	if err := a.AddInto(o2, row); err != nil {
+		t.Fatalf("AddInto broadcast: %v", err)
+	}
+	eqFloats(t, o2.materialize(), []float64{11, 22, 13, 24})
+}
+
+func TestBinOpIntoErrors(t *testing.T) {
+	a := mustArr(t, ok(FromData([]float64{1, 2, 3, 4}, 2, 2)))
+	b := mustArr(t, ok(FromData([]float64{5, 6, 7, 8}, 2, 2)))
+
+	// Wrong out shape.
+	small := mustArr(t, ok(New(2)))
+	if err := a.AddInto(small, b); !errors.Is(err, ErrBroadcast) {
+		t.Fatalf("expected shape error, got %v", err)
+	}
+	// Non-contiguous out (a transposed view).
+	view := mustArr(t, ok(New(2, 2))).Transpose()
+	if err := a.AddInto(view, b); !errors.Is(err, ErrBroadcast) {
+		t.Fatalf("expected contiguity error, got %v", err)
+	}
+	// Incompatible operand shapes.
+	bad := mustArr(t, ok(FromData([]float64{1, 2, 3}, 3)))
+	out := mustArr(t, ok(New(2, 2)))
+	if err := a.AddInto(out, bad); !errors.Is(err, ErrBroadcast) {
+		t.Fatalf("expected broadcast error, got %v", err)
+	}
+}
+
+func TestSqrtInto(t *testing.T) {
+	a := mustArr(t, ok(FromData([]float64{1, 4, 9, 16}, 2, 2)))
+	out := mustArr(t, ok(New(2, 2)))
+	if err := a.SqrtInto(out); err != nil {
+		t.Fatalf("SqrtInto: %v", err)
+	}
+	eqFloats(t, out.materialize(), []float64{1, 2, 3, 4})
+	// Alias: out == a.
+	if err := a.SqrtInto(a); err != nil {
+		t.Fatalf("SqrtInto alias: %v", err)
+	}
+	eqFloats(t, a.materialize(), []float64{1, 2, 3, 4})
+	// Errors: wrong shape and non-contiguous out.
+	if err := a.SqrtInto(mustArr(t, ok(New(2)))); !errors.Is(err, ErrBroadcast) {
+		t.Fatalf("expected shape error, got %v", err)
+	}
+	view := mustArr(t, ok(New(2, 2))).Transpose()
+	if err := a.SqrtInto(view); !errors.Is(err, ErrBroadcast) {
+		t.Fatalf("expected contiguity error, got %v", err)
+	}
+}
+
 func TestBroadcasting(t *testing.T) {
 	// (2,3) + (3,)  -> row vector broadcast over rows
 	a := mustArr(t, ok(FromData([]float64{1, 2, 3, 4, 5, 6}, 2, 3)))

@@ -32,10 +32,18 @@ def main():
     for n in elem_sizes:
         globals()['x'] = np.arange(n, dtype=np.float64) % 97 * 0.5
         globals()['y'] = np.arange(n, dtype=np.float64) % 97 * 0.5
+        globals()['z'] = np.empty(n, dtype=np.float64)
         num = max(20, 2_000_000 // n)
+        # Allocating ops (x + y returns a fresh array) AND the out= variants
+        # (np.add(x, y, out=z)), which reuse z and so pay no allocation — the
+        # apples-to-apples comparison for go-ndarray's *Into parity path. NumPy's
+        # allocating form is already cheap because of its temp-array free-list.
         for name, stmt in [("Add", "x + y"), ("Mul", "x * y"),
                            ("Sqrt", "np.sqrt(x)"), ("Sum", "x.sum()"),
-                           ("Max", "x.max()")]:
+                           ("Max", "x.max()"),
+                           ("AddInto", "np.add(x, y, out=z)"),
+                           ("MulInto", "np.multiply(x, y, out=z)"),
+                           ("SqrtInto", "np.sqrt(x, out=z)")]:
             print(f"{name:<14}{n:>10}{bench(stmt, '', num):>16.1f}")
 
     for n in [64, 128, 256, 512, 1024]:

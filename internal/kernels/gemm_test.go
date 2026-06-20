@@ -84,7 +84,21 @@ func TestGemmCorrectness(t *testing.T) {
 		withBlocks(MR, 2, NR, func() { assertGemm(t, s.m, s.k, s.n, a, b) })
 		// Asymmetric small blocks.
 		withBlocks(2*MR, 3, 2*NR, func() { assertGemm(t, s.m, s.k, s.n, a, b) })
+		// Block dims that are NOT multiples of MR/NR: the bottom A panel and the
+		// right B panel of each block are then partial and must be zero-padded to
+		// a full MR/NR tile in scratch sized via roundUp — this is the regression
+		// guard for the buffer-overflow bug a non-MR-aligned blockMC exposed.
+		withBlocks(MR+1, 2, NR+1, func() { assertGemm(t, s.m, s.k, s.n, a, b) })
+		withBlocks(3*MR-1, 5, 3*NR-1, func() { assertGemm(t, s.m, s.k, s.n, a, b) })
 	}
+	// A size large enough that the DEFAULT (256/256/512) blocks apply with the
+	// real MR=6 not dividing blockMC=256 — the production configuration that
+	// panicked before the roundUp fix. Crosses the parallel band split too.
+	withThresholds(1<<14, 1, func() {
+		m, k, n := 300, 200, 260
+		a, b := intMat(m, k, 1), intMat(k, n, 2)
+		assertGemm(t, m, k, n, a, b)
+	})
 }
 
 // TestGemmFloatTolerance validates the packed GEMM against the oracle for

@@ -76,17 +76,24 @@ func runBinaryP(k binaryKernel, dst, a, b []float64) {
 	})
 }
 
+// AddP, SubP, MulP, DivP run the SIMD-vectorized elementwise kernel (addBin etc:
+// packed SSE2 on amd64, NEON D2 on arm64, scalar oracle on the other four)
+// serially below ParThreshold and fanned across cores above it. The SIMD kernel
+// is bit-identical to the scalar oracle (each lane is an exact, independent
+// IEEE-754 op — no reduction grouping), so the result matches the serial scalar
+// computation for every input.
+
 // AddP writes a[i]+b[i] into dst[i], parallelised above ParThreshold.
-func AddP(dst, a, b []float64) { runBinaryP(Add, dst, a, b) }
+func AddP(dst, a, b []float64) { runBinaryP(addBin, dst, a, b) }
 
 // SubP writes a[i]-b[i] into dst[i], parallelised above ParThreshold.
-func SubP(dst, a, b []float64) { runBinaryP(Sub, dst, a, b) }
+func SubP(dst, a, b []float64) { runBinaryP(subBin, dst, a, b) }
 
 // MulP writes a[i]*b[i] into dst[i], parallelised above ParThreshold.
-func MulP(dst, a, b []float64) { runBinaryP(Mul, dst, a, b) }
+func MulP(dst, a, b []float64) { runBinaryP(mulBin, dst, a, b) }
 
 // DivP writes a[i]/b[i] into dst[i], parallelised above ParThreshold.
-func DivP(dst, a, b []float64) { runBinaryP(Div, dst, a, b) }
+func DivP(dst, a, b []float64) { runBinaryP(divBin, dst, a, b) }
 
 // MapP applies f to every element of src into dst, parallelised above
 // ParThreshold. f must be safe for concurrent calls (the math ufuncs are).

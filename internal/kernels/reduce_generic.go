@@ -27,3 +27,13 @@ func sumSIMD(a []float64) float64 { return Sum(a) }
 func sqrtSIMD(dst, src []float64) { sqrtScalar(dst, src) }
 func maxSIMD(a []float64) float64 { return maxUnrolled(a) }
 func minSIMD(a []float64) float64 { return minUnrolled(a) }
+
+// addBin/subBin/mulBin/divBin are the scalar elementwise inner loops on the four
+// arches without a vector-double kernel; they alias the scalar oracle so the
+// per-op fast path and runBinaryP are architecture-independent (scalar == scalar
+// here, so the SIMD-vs-oracle test trivially holds and still exercises this
+// dispatch under the per-arch qemu jobs).
+func addBin(dst, a, b []float64) { Add(dst, a, b) }
+func subBin(dst, a, b []float64) { Sub(dst, a, b) }
+func mulBin(dst, a, b []float64) { Mul(dst, a, b) }
+func divBin(dst, a, b []float64) { Div(dst, a, b) }

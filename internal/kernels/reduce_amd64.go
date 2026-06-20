@@ -46,6 +46,40 @@ func minSIMD(a []float64) float64 {
 	return minSSE2(&a[0], len(a))
 }
 
+// addBin/subBin/mulBin/divBin write a[i] OP b[i] into dst[i] with the packed
+// SSE2 kernels (ADDPD/SUBPD/MULPD/DIVPD, 8 doubles/iter + scalar tail). Each
+// lane is an exact, independent IEEE-754 op, so the result is bit-identical to
+// the scalar Add/Sub/Mul/Div oracle (no reduction grouping). They are the
+// serial elementwise inner loop the per-op fast path and runBinaryP use; len
+// agreement is guaranteed by the caller. Empty slices are a no-op (no &a[0]).
+func addBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	addSSE2(&dst[0], &a[0], &b[0], len(dst))
+}
+
+func subBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	subSSE2(&dst[0], &a[0], &b[0], len(dst))
+}
+
+func mulBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	mulSSE2(&dst[0], &a[0], &b[0], len(dst))
+}
+
+func divBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	divSSE2(&dst[0], &a[0], &b[0], len(dst))
+}
+
 //go:noescape
 func sumSSE2(a *float64, n int) float64
 
@@ -57,3 +91,15 @@ func maxSSE2(a *float64, n int) float64
 
 //go:noescape
 func minSSE2(a *float64, n int) float64
+
+//go:noescape
+func addSSE2(dst, a, b *float64, n int)
+
+//go:noescape
+func subSSE2(dst, a, b *float64, n int)
+
+//go:noescape
+func mulSSE2(dst, a, b *float64, n int)
+
+//go:noescape
+func divSSE2(dst, a, b *float64, n int)

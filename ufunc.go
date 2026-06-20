@@ -1,6 +1,7 @@
 package ndarray
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/go-ndarray/ndarray/internal/kernels"
@@ -24,6 +25,25 @@ func (a *Array) Sqrt() *Array {
 	kernels.SqrtP(dst, src)
 	cp := append([]int(nil), a.shape...)
 	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}
+}
+
+// SqrtInto writes the elementwise square root of a into the caller-provided
+// contiguous out array (no allocation), the analogue of np.sqrt(a, out=out) and
+// the parity path for small arrays where Go's per-op make would otherwise cost
+// more than NumPy's cached temp buffer. out must be contiguous and the same
+// shape as a; it may alias a (each index is read before it is written). It
+// routes through the same SIMD sqrt kernel as Sqrt (packed SQRTPD on amd64, the
+// FSQRTD-intrinsic scalar loop on arm64/others), bit-identical to math.Sqrt.
+func (a *Array) SqrtInto(out *Array) error {
+	if !out.isContiguous() {
+		return fmt.Errorf("%w: out must be contiguous", ErrBroadcast)
+	}
+	if !sameShape(out.shape, a.shape) {
+		return fmt.Errorf("%w: out shape %v != a shape %v",
+			ErrBroadcast, out.shape, a.shape)
+	}
+	kernels.SqrtP(out.data, a.contiguousData())
+	return nil
 }
 
 // Exp returns the elementwise base-e exponential.

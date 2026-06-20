@@ -43,6 +43,10 @@ func main() {
 	f.Add(sqrtKernel())
 	f.Add(extremeKernel("maxSSE2", "MAXPD", "MAXSD"))
 	f.Add(extremeKernel("minSSE2", "MINPD", "MINSD"))
+	f.Add(binKernel("addSSE2", "ADDPD", "ADDSD"))
+	f.Add(binKernel("subSSE2", "SUBPD", "SUBSD"))
+	f.Add(binKernel("mulSSE2", "MULPD", "MULSD"))
+	f.Add(binKernel("divSSE2", "DIVPD", "DIVSD"))
 	f.Add(gemmKernel())
 
 	if err := os.WriteFile("sum_amd64.s", []byte(f.String()), 0o644); err != nil {
@@ -216,6 +220,74 @@ func extremeKernel(name, vec, sca string) *emit.Function {
 	b.Raw("MOVSD X1, X0")
 	b.Raw("edone:")
 	b.StoreRet("X0", "ret")
+	b.Ret()
+	return b.Func()
+}
+
+// binKernel builds an elementwise binary float64 kernel
+//
+//	NAME(dst, a, b *float64, n int)   dst[i] = a[i] OP b[i]
+//
+// from the packed (vec) and scalar (sca) SSE2 mnemonics (e.g. ADDPD/ADDSD).
+// The loop processes 8 doubles (64 bytes) per iteration across four XMM
+// registers — enough to keep the unit busy on this memory-bandwidth-bound work
+// without spilling — then a scalar tail handles the (n mod 8) remainder.
+//
+// These ops are exact, lane-independent elementwise arithmetic: SSE2's packed
+// ADD/SUB/MUL/DIV produce the identical IEEE-754 result the scalar oracle does
+// for each element, regardless of grouping (there is no reduction here), so the
+// kernel is bit-identical to the scalar Add/Sub/Mul/Div loop.
+func binKernel(name, vec, sca string) *emit.Function {
+	sig := amd64.Layout(
+		[]string{"dst", "a", "b", "n"},
+		[]amd64.Type{amd64.Ptr, amd64.Ptr, amd64.Ptr, amd64.Int64},
+		nil, nil,
+	)
+	b := amd64.NewFunc(name, sig, 0)
+	b.LoadArg("dst", "DI")
+	b.LoadArg("a", "SI")
+	b.LoadArg("b", "DX")
+	b.LoadArg("n", "CX")
+	// Main loop: 8 doubles per iteration. Load a[0:8] into X0..X3, OP with
+	// b[0:8], store into dst[0:8].
+	b.Raw("bblock:")
+	b.Raw("CMPQ CX, $8")
+	b.Raw("JL btail")
+	b.Raw("MOVUPD (SI), X0")
+	b.Raw("MOVUPD 16(SI), X1")
+	b.Raw("MOVUPD 32(SI), X2")
+	b.Raw("MOVUPD 48(SI), X3")
+	b.Raw("MOVUPD (DX), X4")
+	b.Raw("MOVUPD 16(DX), X5")
+	b.Raw("MOVUPD 32(DX), X6")
+	b.Raw("MOVUPD 48(DX), X7")
+	b.Raw(vec + " X4, X0")
+	b.Raw(vec + " X5, X1")
+	b.Raw(vec + " X6, X2")
+	b.Raw(vec + " X7, X3")
+	b.Raw("MOVUPD X0, (DI)")
+	b.Raw("MOVUPD X1, 16(DI)")
+	b.Raw("MOVUPD X2, 32(DI)")
+	b.Raw("MOVUPD X3, 48(DI)")
+	b.Raw("ADDQ $64, SI")
+	b.Raw("ADDQ $64, DX")
+	b.Raw("ADDQ $64, DI")
+	b.Raw("SUBQ $8, CX")
+	b.Raw("JMP bblock")
+	// Scalar tail: remaining (n mod 8) elements via the scalar mnemonic.
+	b.Raw("btail:")
+	b.Raw("TESTQ CX, CX")
+	b.Raw("JZ bdone")
+	b.Raw("MOVSD (SI), X0")
+	b.Raw("MOVSD (DX), X1")
+	b.Raw(sca + " X1, X0")
+	b.Raw("MOVSD X0, (DI)")
+	b.Raw("ADDQ $8, SI")
+	b.Raw("ADDQ $8, DX")
+	b.Raw("ADDQ $8, DI")
+	b.Raw("DECQ CX")
+	b.Raw("JMP btail")
+	b.Raw("bdone:")
 	b.Ret()
 	return b.Func()
 }

@@ -44,10 +44,23 @@ type packBuf struct {
 	pb []float64
 }
 
+// roundUp returns x rounded up to the next multiple of m (m >= 1).
+func roundUp(x, m int) int { return (x + m - 1) / m * m }
+
+// paCap / pbCap are the pack-buffer capacities. The A buffer holds
+// ceil(MC/MR)*MR-tall panels (each MC row block is tiled into MR-tall panels and
+// the last, partial panel is zero-padded to a full MR), so its row extent must be
+// rounded UP to a multiple of MR — otherwise the bottom edge panel of an MC block
+// whose height is not a multiple of MR would write past the buffer. Likewise the
+// B buffer rounds the column extent up to a multiple of NR. (With the old MR=4
+// and MC=256 the rounding was a no-op since 4 | 256; MR=6 makes it load-bearing.)
+func paCap() int { return roundUp(blockMC, MR) * blockKC }
+func pbCap() int { return blockKC * roundUp(blockNC, NR) }
+
 var packPool = sync.Pool{New: func() any {
 	return &packBuf{
-		pa: make([]float64, blockMC*blockKC),
-		pb: make([]float64, blockKC*blockNC),
+		pa: make([]float64, paCap()),
+		pb: make([]float64, pbCap()),
 	}
 }}
 
@@ -56,14 +69,14 @@ var packPool = sync.Pool{New: func() any {
 // reallocates them, so a test that raises blockMC/KC/NC still gets valid scratch.
 func getPackBuf() *packBuf {
 	b := packPool.Get().(*packBuf)
-	if cap(b.pa) < blockMC*blockKC {
-		b.pa = make([]float64, blockMC*blockKC)
+	if cap(b.pa) < paCap() {
+		b.pa = make([]float64, paCap())
 	}
-	if cap(b.pb) < blockKC*blockNC {
-		b.pb = make([]float64, blockKC*blockNC)
+	if cap(b.pb) < pbCap() {
+		b.pb = make([]float64, pbCap())
 	}
-	b.pa = b.pa[:blockMC*blockKC]
-	b.pb = b.pb[:blockKC*blockNC]
+	b.pa = b.pa[:paCap()]
+	b.pb = b.pb[:pbCap()]
 	return b
 }
 

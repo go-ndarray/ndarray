@@ -77,6 +77,49 @@ func BenchmarkMax(b *testing.B) {
 	}
 }
 
+// The *Into benchmarks are the no-allocation parity path (np.add(x,y,out=z)):
+// they reuse a caller-provided output buffer, so they measure the SIMD kernel
+// without the per-op make that NumPy's temp-array cache avoids. This is where Go
+// reaches and beats NumPy on small contiguous ops.
+
+func BenchmarkAddInto(b *testing.B) {
+	for _, n := range benchElemSizes {
+		x, y := benchVec(n), benchVec(n)
+		out, _ := New(n)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.SetBytes(int64(n * 8))
+			for i := 0; i < b.N; i++ {
+				_ = x.AddInto(out, y)
+			}
+		})
+	}
+}
+
+func BenchmarkMulInto(b *testing.B) {
+	for _, n := range benchElemSizes {
+		x, y := benchVec(n), benchVec(n)
+		out, _ := New(n)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.SetBytes(int64(n * 8))
+			for i := 0; i < b.N; i++ {
+				_ = x.MulInto(out, y)
+			}
+		})
+	}
+}
+
+func BenchmarkSqrtInto(b *testing.B) {
+	for _, n := range benchElemSizes {
+		x := benchVec(n)
+		out, _ := New(n)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = x.SqrtInto(out)
+			}
+		})
+	}
+}
+
 func benchMat(n int) *Array {
 	d := make([]float64, n*n)
 	for i := range d {

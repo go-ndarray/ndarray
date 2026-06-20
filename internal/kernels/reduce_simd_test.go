@@ -40,6 +40,70 @@ func TestSumSIMD(t *testing.T) {
 	}
 }
 
+// TestBinSIMD asserts the SIMD elementwise binary kernels (addBin/subBin/mulBin/
+// divBin) are BIT-IDENTICAL to the scalar Add/Sub/Mul/Div oracle across many
+// lengths (vector body + scalar tail of every residue mod 8) and across IEEE
+// edge inputs (signed zeros, infinities, NaN, extremes). Each lane is a single,
+// independent, correctly-rounded IEEE op with no grouping freedom, so bit-
+// identity (not mere closeness) is the contract — including on arm64, where add/
+// sub/mul are computed via an FMA against an exact constant (b+a*1.0, a-b*1.0,
+// 0+a*b), which rounds identically to the plain op. On the arches without a
+// vector-double kernel the *Bin functions alias the scalar oracle, so this still
+// holds trivially and exercises the dispatch under the per-arch qemu jobs.
+func TestBinSIMD(t *testing.T) {
+	t.Logf("HaveReduceSIMD = %v", HaveReduceSIMD)
+	ops := []struct {
+		name   string
+		simd   func(dst, a, b []float64)
+		scalar func(dst, a, b []float64)
+	}{
+		{"add", addBin, Add},
+		{"sub", subBin, Sub},
+		{"mul", mulBin, Mul},
+		{"div", divBin, Div},
+	}
+	r := rand.New(rand.NewSource(7))
+	for _, n := range []int{0, 1, 2, 3, 7, 8, 9, 15, 16, 31, 64, 100, 1000, 4096, 9999} {
+		a := make([]float64, n)
+		b := make([]float64, n)
+		for i := range a {
+			a[i] = r.NormFloat64() * 1e3
+			b[i] = r.NormFloat64() * 1e3
+			if b[i] == 0 {
+				b[i] = 1 // keep div well-defined for the random body
+			}
+		}
+		for _, op := range ops {
+			got := make([]float64, n)
+			want := make([]float64, n)
+			op.simd(got, a, b)
+			op.scalar(want, a, b)
+			for i := range want {
+				if !bitEq(got[i], want[i]) {
+					t.Fatalf("%s n=%d [%d]: simd=%v, scalar=%v (a=%v b=%v)",
+						op.name, n, i, got[i], want[i], a[i], b[i])
+				}
+			}
+		}
+	}
+	// Edge inputs: signed zeros, infinities, NaN, extremes — paired so each op
+	// hits e.g. Inf-Inf=NaN, 0*Inf=NaN, x/0=Inf, 0/0=NaN, -0 handling, etc.
+	ea := []float64{-0.0, 0.0, 1, -1, math.Inf(1), math.Inf(-1), math.NaN(), 1e308, -1e308, math.MaxFloat64, math.SmallestNonzeroFloat64, 0.0}
+	eb := []float64{0.0, -0.0, math.Inf(1), math.Inf(-1), math.Inf(1), 1, 2, 1e308, 1e308, 2, 2, 0.0}
+	for _, op := range ops {
+		got := make([]float64, len(ea))
+		want := make([]float64, len(ea))
+		op.simd(got, ea, eb)
+		op.scalar(want, ea, eb)
+		for i := range want {
+			if !bitEq(got[i], want[i]) {
+				t.Fatalf("%s edge[%d] a=%v b=%v: simd=%v, scalar=%v",
+					op.name, i, ea[i], eb[i], got[i], want[i])
+			}
+		}
+	}
+}
+
 // bitEq reports whether two float64 are bit-identical, treating all NaNs as
 // equal to each other (we only require "is a NaN", not a specific payload).
 func bitEq(a, b float64) bool {
