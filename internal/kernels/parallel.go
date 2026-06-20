@@ -101,6 +101,23 @@ func MapP(dst, src []float64, f func(float64) float64) {
 	})
 }
 
+// SqrtP writes sqrt(src[i]) into dst[i], routed through the SIMD sqrt kernel
+// (packed SQRTPD on amd64; the intrinsic-lowered scalar FSQRTD loop on
+// arm64/others) and parallelised above ParThreshold. Unlike MapP it does NOT
+// pass math.Sqrt through a func-pointer — that indirection blocks the compiler's
+// FSQRTD intrinsic and the packed SSE2 kernel, the very thing that made Sqrt
+// lose to numpy. The result is bit-identical to a scalar math.Sqrt loop.
+func SqrtP(dst, src []float64) {
+	n := len(dst)
+	if n < ParThreshold {
+		sqrtSIMD(dst, src)
+		return
+	}
+	parallelFor(n, numWorkers(n), func(lo, hi int) {
+		sqrtSIMD(dst[lo:hi], src[lo:hi])
+	})
+}
+
 // mapReduceP computes one partial per worker by applying red to that worker's
 // contiguous chunk, then folds the partials with combine. numWorkers caps the
 // worker count at one per ParThreshold-sized slab, so every chunk is non-empty
@@ -141,12 +158,17 @@ func reduceP(a []float64, red func([]float64) float64) float64 {
 }
 
 // MaxP returns the maximum element of a (non-empty), parallelised above
-// ParThreshold. Max is associative, so the result is exactly the serial Max.
-func MaxP(a []float64) float64 { return reduceP(a, Max) }
+// ParThreshold. It runs the SIMD max kernel (packed MAXPD + NaN scan on amd64;
+// the intrinsic-lowered scalar FMAXD reducer on arm64/others) on each chunk and
+// folds the partials with the same NaN-propagating kernel. Max is associative
+// and NaN-propagating, so the result is exactly the serial Max — including
+// returning NaN whenever any element is NaN (numpy.max semantics).
+func MaxP(a []float64) float64 { return reduceP(a, maxSIMD) }
 
 // MinP returns the minimum element of a (non-empty), parallelised above
-// ParThreshold. Min is associative, so the result is exactly the serial Min.
-func MinP(a []float64) float64 { return reduceP(a, Min) }
+// ParThreshold, via the SIMD min kernel; result identical to the serial Min,
+// NaN-propagating like numpy.min.
+func MinP(a []float64) float64 { return reduceP(a, minSIMD) }
 
 // GemmThreshold is the minimum number of result elements (m*n) at which MatMulP
 // fans the GEMM across goroutines. Small products stay single-threaded.

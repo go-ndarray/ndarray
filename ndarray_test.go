@@ -299,6 +299,38 @@ func TestReductions(t *testing.T) {
 	}
 }
 
+// TestMaxMinNaN locks the NaN convention of the public Max/Min reductions:
+// they are NaN-propagating (any NaN element -> NaN result), matching numpy.max /
+// numpy.min and Go's builtin max/min. This is the documented, corrected
+// semantics (the earlier `if v > m` form silently ignored NaNs).
+func TestMaxMinNaN(t *testing.T) {
+	nan := math.NaN()
+	for _, data := range [][]float64{
+		{nan, 1, 2, 3},
+		{1, 2, nan, 3},
+		{1, 2, 3, nan},
+		{nan},
+	} {
+		a := mustArr(t, ok(FromData(data, len(data))))
+		mx, err := a.Max()
+		if err != nil || !math.IsNaN(mx) {
+			t.Fatalf("Max(%v) = %v, err %v; want NaN", data, mx, err)
+		}
+		mn, err := a.Min()
+		if err != nil || !math.IsNaN(mn) {
+			t.Fatalf("Min(%v) = %v, err %v; want NaN", data, mn, err)
+		}
+	}
+	// Without NaN the extremes are exact, including +/-Inf.
+	a := mustArr(t, ok(FromData([]float64{math.Inf(-1), -5, 0, 5, math.Inf(1)}, 5)))
+	if mx, _ := a.Max(); mx != math.Inf(1) {
+		t.Fatalf("Max with +Inf = %v", mx)
+	}
+	if mn, _ := a.Min(); mn != math.Inf(-1) {
+		t.Fatalf("Min with -Inf = %v", mn)
+	}
+}
+
 func TestReductionEmptyErrors(t *testing.T) {
 	e := mustArr(t, ok(New(0)))
 	if e.Sum() != 0 {

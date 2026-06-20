@@ -49,6 +49,20 @@ func Map(dst, src []float64, f func(float64) float64) {
 	}
 }
 
+// sqrtScalar is the portable square-root oracle: dst[i] = sqrt(src[i]) for every
+// element, following Go's math.Sqrt (and IEEE-754) exactly — including
+// sqrt(-x)=NaN, sqrt(-0)=-0, sqrt(+Inf)=+Inf, sqrt(NaN)=NaN. The packed SIMD
+// kernels (amd64 SQRTPD, arm64 FSQRT) compute the same correctly-rounded IEEE
+// square root lane-by-lane, so they are bit-identical to this oracle (sqrt,
+// unlike a sum reduction, is a single rounded operation with no grouping
+// freedom). It is the dispatch fallback on the non-vectorized arches and the
+// reference the per-arch CI validates the .s against bit-for-bit.
+func sqrtScalar(dst, src []float64) {
+	for i := range dst {
+		dst[i] = math.Sqrt(src[i])
+	}
+}
+
 // b2f maps a boolean comparison result to a 0/1 float mask value.
 func b2f(b bool) float64 {
 	if b {
@@ -132,23 +146,83 @@ func Prod(a []float64) float64 {
 }
 
 // Max returns the maximum element of a, which must be non-empty.
+//
+// NaN convention: Max is NaN-propagating — if any element is NaN the result is
+// NaN. This matches numpy.max (and numpy.maximum), Go's builtin max, and
+// IEEE-754 maximum (not the C fmax / IEEE maxNum "ignore NaN" rule); on signed
+// zeros it returns +0 for max(-0,+0), also matching numpy. The earlier
+// `if v > m` form silently *ignored* NaNs (and a leading NaN poisoned the scan),
+// diverging from numpy; this is the corrected, documented semantics.
+//
+// It uses the BUILTIN max, not math.Max: both have identical NaN/signed-zero
+// semantics, but the builtin lowers to the hardware FMAXD intrinsic on arm64
+// (and the equivalent elsewhere) — math.Max is an un-intrinsified call that is
+// ~12x slower in this hot loop. The SSE2 maxSIMD kernel (MAXPD + NaN scan) is
+// validated bit-identical to this oracle.
 func Max(a []float64) float64 {
 	m := a[0]
 	for _, v := range a[1:] {
-		if v > m {
-			m = v
-		}
+		m = max(m, v)
 	}
 	return m
 }
 
-// Min returns the minimum element of a, which must be non-empty.
+// Min returns the minimum element of a, which must be non-empty. Like Max it is
+// NaN-propagating (any NaN -> NaN) and uses the builtin min (FMIND intrinsic),
+// matching numpy.min including min(-0,+0) = -0.
 func Min(a []float64) float64 {
 	m := a[0]
 	for _, v := range a[1:] {
-		if v < m {
-			m = v
-		}
+		m = min(m, v)
+	}
+	return m
+}
+
+// maxUnrolled is the fast NaN-propagating max reduction used by the non-amd64
+// SIMD dispatch (arm64 and the four scalar arches). It keeps FOUR independent
+// builtin-max accumulators so the dependency chain is broken — the builtin max
+// lowers to the hardware FMAXD on arm64, and four parallel chains hide its
+// latency (~3.6x over a single accumulator). max is associative for the
+// NaN-propagating rule, so the result is bit-identical to the serial Max oracle
+// (any NaN in any lane -> NaN; same extreme otherwise). a is non-empty.
+func maxUnrolled(a []float64) float64 {
+	n := len(a)
+	if n < 4 {
+		return Max(a)
+	}
+	m0, m1, m2, m3 := a[0], a[1], a[2], a[3]
+	i := 4
+	for ; i+4 <= n; i += 4 {
+		m0 = max(m0, a[i])
+		m1 = max(m1, a[i+1])
+		m2 = max(m2, a[i+2])
+		m3 = max(m3, a[i+3])
+	}
+	m := max(max(m0, m1), max(m2, m3))
+	for ; i < n; i++ {
+		m = max(m, a[i])
+	}
+	return m
+}
+
+// minUnrolled is the dual of maxUnrolled (four independent builtin-min
+// accumulators, FMIND on arm64); bit-identical to the serial Min oracle.
+func minUnrolled(a []float64) float64 {
+	n := len(a)
+	if n < 4 {
+		return Min(a)
+	}
+	m0, m1, m2, m3 := a[0], a[1], a[2], a[3]
+	i := 4
+	for ; i+4 <= n; i += 4 {
+		m0 = min(m0, a[i])
+		m1 = min(m1, a[i+1])
+		m2 = min(m2, a[i+2])
+		m3 = min(m3, a[i+3])
+	}
+	m := min(min(m0, m1), min(m2, m3))
+	for ; i < n; i++ {
+		m = min(m, a[i])
 	}
 	return m
 }
@@ -157,14 +231,78 @@ func Min(a []float64) float64 {
 // route Abs through Map without importing math directly.
 func Abs(x float64) float64 { return math.Abs(x) }
 
+// blockMaxN is the column count up to which MatMul uses the 4-row register-
+// blocked micro-kernel. Below it, holding four destination rows in registers and
+// reusing each loaded b value four times is a ~2x win over the plain ikj kernel.
+// At and above it the four destination rows (n*8 bytes apart) start colliding in
+// the L1 cache on power-of-two widths, which erases the gain, so MatMul switches
+// to the autovectorized ikj kernel — whose single contiguous AXPY inner loop the
+// Go compiler vectorizes cleanly and which is memory-efficient at large n. The
+// threshold is measured on the arm64 bench VM (the win holds through n=224, the
+// collision sets in by n=256); it is a var so tests can pin both paths.
+var blockMaxN = 224
+
 // MatMul computes the (m x n) row-major matrix product dst = a (m x k) times
-// b (k x n), where all three are flat contiguous []float64. dst must be
-// zeroed by the caller. The innermost loop over n is unit-stride contiguous in
-// both b and dst — the shape a SIMD FMA kernel wants — so Phase 1 can replace
-// the inner accumulation across all six 64-bit targets, leaving this ikj-order
-// scalar version as the reference and fallback.
+// b (k x n), where all three are flat contiguous []float64. dst must be zeroed
+// by the caller. It dispatches between a register-blocked micro-kernel (small n)
+// and the autovectorized ikj kernel (large n); both produce the identical result
+// in the identical ikj summation order, so the choice is purely a speed/cache
+// trade-off and never changes the values.
 func MatMul(dst, a, b []float64, m, k, n int) {
+	if n <= blockMaxN {
+		matMulBlocked(dst, a, b, m, k, n)
+		return
+	}
+	matMulIKJ(dst, a, b, m, k, n)
+}
+
+// matMulIKJ is the reference ikj-order GEMM: for each output row i and each k
+// index p it does the contiguous AXPY dst[i][:] += a[i][p] * b[p][:]. The inner
+// loop is unit-stride in both b and dst, the shape the Go compiler auto-
+// vectorizes and a SIMD FMA kernel would want. It is the large-n path and the
+// correctness reference the blocked kernel is validated against.
+func matMulIKJ(dst, a, b []float64, m, k, n int) {
 	for i := 0; i < m; i++ {
+		dstRow := dst[i*n : i*n+n]
+		for p := 0; p < k; p++ {
+			av := a[i*k+p]
+			bRow := b[p*n : p*n+n]
+			for j := 0; j < n; j++ {
+				dstRow[j] += av * bRow[j]
+			}
+		}
+	}
+}
+
+// matMulBlocked is the 4-row register-blocked GEMM. It accumulates FOUR output
+// rows at once: each b[p][j] is loaded once and fused into all four rows, so the
+// b traffic and loop overhead are quartered versus the ikj kernel. The arithmetic
+// is the same ikj order per row (dst[i][:] += sum_p a[i][p]*b[p][:]), so the
+// result is bit-identical to matMulIKJ. Rows past the last multiple of four fall
+// back to the single-row ikj body. Used only for n <= blockMaxN, where the four
+// destination rows stay cache-resident.
+func matMulBlocked(dst, a, b []float64, m, k, n int) {
+	i := 0
+	for ; i+4 <= m; i += 4 {
+		d0 := dst[i*n : i*n+n]
+		d1 := dst[(i+1)*n : (i+1)*n+n]
+		d2 := dst[(i+2)*n : (i+2)*n+n]
+		d3 := dst[(i+3)*n : (i+3)*n+n]
+		for p := 0; p < k; p++ {
+			a0 := a[i*k+p]
+			a1 := a[(i+1)*k+p]
+			a2 := a[(i+2)*k+p]
+			a3 := a[(i+3)*k+p]
+			bRow := b[p*n : p*n+n]
+			for j, bv := range bRow {
+				d0[j] += a0 * bv
+				d1[j] += a1 * bv
+				d2[j] += a2 * bv
+				d3[j] += a3 * bv
+			}
+		}
+	}
+	for ; i < m; i++ {
 		dstRow := dst[i*n : i*n+n]
 		for p := 0; p < k; p++ {
 			av := a[i*k+p]

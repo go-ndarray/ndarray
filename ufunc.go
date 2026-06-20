@@ -12,8 +12,19 @@ import (
 // (e.g. Sqrt or Log of a negative) follow Go's math package and yield NaN,
 // matching NumPy's behaviour (NumPy additionally warns; this package does not).
 
-// Sqrt returns the elementwise non-negative square root.
-func (a *Array) Sqrt() *Array { return a.Map(math.Sqrt) }
+// Sqrt returns the elementwise non-negative square root. It is routed through
+// the dedicated SIMD sqrt kernel (packed SQRTPD on amd64; the intrinsic FSQRTD
+// scalar loop on arm64/others) rather than the generic Map, because passing
+// math.Sqrt as a func(float64)float64 blocks both the compiler's FSQRTD
+// intrinsic and the packed kernel. The result is bit-identical to a scalar
+// math.Sqrt loop (sqrt(-x)=NaN, sqrt(+Inf)=+Inf, matching NumPy).
+func (a *Array) Sqrt() *Array {
+	src := a.contiguousData()
+	dst := make([]float64, len(src))
+	kernels.SqrtP(dst, src)
+	cp := append([]int(nil), a.shape...)
+	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}
+}
 
 // Exp returns the elementwise base-e exponential.
 func (a *Array) Exp() *Array { return a.Map(math.Exp) }
