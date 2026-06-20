@@ -49,6 +49,70 @@ func Map(dst, src []float64, f func(float64) float64) {
 	}
 }
 
+// b2f maps a boolean comparison result to a 0/1 float mask value.
+func b2f(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// Equal writes the a[i]==b[i] mask (1/0) into dst[i].
+func Equal(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = b2f(a[i] == b[i])
+	}
+}
+
+// NotEqual writes the a[i]!=b[i] mask (1/0) into dst[i].
+func NotEqual(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = b2f(a[i] != b[i])
+	}
+}
+
+// Greater writes the a[i]>b[i] mask (1/0) into dst[i].
+func Greater(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = b2f(a[i] > b[i])
+	}
+}
+
+// GreaterEqual writes the a[i]>=b[i] mask (1/0) into dst[i].
+func GreaterEqual(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = b2f(a[i] >= b[i])
+	}
+}
+
+// Less writes the a[i]<b[i] mask (1/0) into dst[i].
+func Less(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = b2f(a[i] < b[i])
+	}
+}
+
+// LessEqual writes the a[i]<=b[i] mask (1/0) into dst[i].
+func LessEqual(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = b2f(a[i] <= b[i])
+	}
+}
+
+// Maximum writes the pairwise maximum of a[i] and b[i] into dst[i].
+func Maximum(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = math.Max(a[i], b[i])
+	}
+}
+
+// Minimum writes the pairwise minimum of a[i] and b[i] into dst[i].
+func Minimum(dst, a, b []float64) {
+	for i := range dst {
+		dst[i] = math.Min(a[i], b[i])
+	}
+}
+
 // Sum returns the sum of all elements of a.
 func Sum(a []float64) float64 {
 	var s float64
