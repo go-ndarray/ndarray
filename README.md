@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/go-ndarray/brand/main/social/go-ndarray.png" alt="go-ndarray/ndarray" width="720"></p>
+
 # ndarray — go-ndarray
 
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-013243)](https://go-ndarray.github.io/docs/)
