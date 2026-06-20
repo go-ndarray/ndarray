@@ -87,7 +87,7 @@ func benchMat(n int) *Array {
 }
 
 func BenchmarkMatMul(b *testing.B) {
-	for _, n := range []int{64, 128, 256, 512} {
+	for _, n := range []int{64, 128, 256, 512, 1024} {
 		x, y := benchMat(n), benchMat(n)
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {

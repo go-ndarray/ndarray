@@ -38,7 +38,7 @@ def main():
                            ("Max", "x.max()")]:
             print(f"{name:<14}{n:>10}{bench(stmt, '', num):>16.1f}")
 
-    for n in [64, 128, 256, 512]:
+    for n in [64, 128, 256, 512, 1024]:
         globals()['A'] = (np.arange(n * n, dtype=np.float64) % 101 * 0.25).reshape(n, n)
         globals()['B'] = (np.arange(n * n, dtype=np.float64) % 101 * 0.25).reshape(n, n)
         num = max(5, 50_000_000 // (n * n * n // 100))

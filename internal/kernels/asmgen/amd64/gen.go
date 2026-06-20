@@ -43,6 +43,7 @@ func main() {
 	f.Add(sqrtKernel())
 	f.Add(extremeKernel("maxSSE2", "MAXPD", "MAXSD"))
 	f.Add(extremeKernel("minSSE2", "MINPD", "MINSD"))
+	f.Add(gemmKernel())
 
 	if err := os.WriteFile("sum_amd64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -217,6 +218,99 @@ func extremeKernel(name, vec, sca string) *emit.Function {
 	b.StoreRet("X0", "ret")
 	b.Ret()
 	return b.Func()
+}
+
+// gemmKernel builds gemmMicro4x4(kc int, pa, pb, c *float64, ldc int): the SSE2
+// 4x4 register-blocked GEMM micro-kernel for the packed GEMM.
+//
+// It computes a 4-row x 4-col tile of C from packed panels and ADDS it into C:
+//
+//	for p in [0,kc):  C[r][col] += pa[p*4+r] * pb[p*4+col]   (r<4, col<4)
+//
+// pa is the packed A panel (MR=4 contiguous A values per k step), pb the packed
+// B panel (NR=4 contiguous B values per k step) — both unit-stride, so the loads
+// are conflict-free regardless of the source matrices' strides (the point of
+// packing: it removes the power-of-two L1 set-conflicts that defeat an unpacked
+// register-blocked kernel).
+//
+// amd64 baseline is SSE2 (GOAMD64=v1) which has NO fused multiply-add (FMA is
+// FMA3/AVX2), so each step is an explicit MULPD then ADDPD. SSE2 *does* have a
+// packed FP add, so the running accumulation is the ordinary dst += a*b, in the
+// same ikj order as the scalar oracle — the tile is bit-identical to it.
+//
+// Register map: the 4x4 C tile lives in X0..X7 (4 rows x 2 XMM, 2 doubles each);
+// the per-step B row in X8,X9 (4 doubles); the broadcast A value in X10; the two
+// products in X11,X12.
+func gemmKernel() *emit.Function {
+	sig := amd64.Layout(
+		[]string{"kc", "pa", "pb", "c", "ldc"},
+		[]amd64.Type{amd64.Int64, amd64.Ptr, amd64.Ptr, amd64.Ptr, amd64.Int64},
+		nil, nil,
+	)
+	b := amd64.NewFunc("gemmMicro4x4", sig, 0)
+	b.LoadArg("kc", "CX")
+	b.LoadArg("pa", "SI") // A panel
+	b.LoadArg("pb", "DI") // B panel
+	b.LoadArg("c", "DX")  // C base
+	b.LoadArg("ldc", "R8")
+	b.Raw("SHLQ $3, R8") // ldc -> bytes
+	// Zero the eight C accumulators X0..X7.
+	b.Raw("XORPS X0, X0")
+	b.Raw("XORPS X1, X1")
+	b.Raw("XORPS X2, X2")
+	b.Raw("XORPS X3, X3")
+	b.Raw("XORPS X4, X4")
+	b.Raw("XORPS X5, X5")
+	b.Raw("XORPS X6, X6")
+	b.Raw("XORPS X7, X7")
+	b.Raw("TESTQ CX, CX")
+	b.Raw("JZ gstore")
+	b.Raw("gkloop:")
+	// B row: 4 contiguous doubles into X8 (cols 0,1) and X9 (cols 2,3).
+	b.Raw("MOVUPD (DI), X8")
+	b.Raw("MOVUPD 16(DI), X9")
+	b.Raw("ADDQ $32, DI")
+	// For each of the 4 A values, broadcast and fuse into that row's two XMM.
+	gemmRow(b, "X0", "X1", 0)
+	gemmRow(b, "X2", "X3", 8)
+	gemmRow(b, "X4", "X5", 16)
+	gemmRow(b, "X6", "X7", 24)
+	b.Raw("ADDQ $32, SI") // advance A panel by 4 doubles
+	b.Raw("DECQ CX")
+	b.Raw("JNZ gkloop")
+	// C += accumulators, row by row (ordinary packed ADDPD, bit-identical).
+	b.Raw("gstore:")
+	gemmStore(b, "X0", "X1", true) // row0 at (DX)
+	gemmStore(b, "X2", "X3", false)
+	gemmStore(b, "X4", "X5", false)
+	gemmStore(b, "X6", "X7", false)
+	b.Ret()
+	return b.Func()
+}
+
+// gemmRow fuses one A value (at offset off in the A panel SI) into one C row's
+// two XMM accumulators (lo cols 0,1 = accLo; hi cols 2,3 = accHi): broadcast
+// a -> X10, X11 = Brow_lo*a, X12 = Brow_hi*a, then add into the accumulators.
+func gemmRow(b *amd64.Builder, accLo, accHi string, off int) {
+	b.Raw(fmt.Sprintf("MOVDDUP %d(SI), X10", off)) // X10 = [a,a]
+	b.Raw("MOVAPS X8, X11")
+	b.Raw("MULPD X10, X11") // X11 = Brow_lo * a
+	b.Raw("ADDPD X11, " + accLo)
+	b.Raw("MOVAPS X9, X12")
+	b.Raw("MULPD X10, X12") // X12 = Brow_hi * a
+	b.Raw("ADDPD X12, " + accHi)
+}
+
+// gemmStore adds one C row's two accumulators into memory at the current row
+// pointer (DX), then advances DX by ldc bytes (R8) unless this is the last row.
+func gemmStore(b *amd64.Builder, accLo, accHi string, first bool) {
+	b.Raw("MOVUPD (DX), X11")
+	b.Raw("ADDPD " + accLo + ", X11")
+	b.Raw("MOVUPD X11, (DX)")
+	b.Raw("MOVUPD 16(DX), X12")
+	b.Raw("ADDPD " + accHi + ", X12")
+	b.Raw("MOVUPD X12, 16(DX)")
+	b.Raw("ADDQ R8, DX")
 }
 
 // nanScan emits: X9 = (reg unordered reg) ? all-ones : 0 ; X8 |= X9, i.e. it

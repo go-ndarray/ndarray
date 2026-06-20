@@ -134,31 +134,6 @@ func TestSqrtP(t *testing.T) {
 	}
 }
 
-// TestMatMulBlockDispatch exercises BOTH MatMul paths — the register-blocked
-// micro-kernel (n <= blockMaxN) and the autovectorized ikj kernel (n >
-// blockMaxN) — by pinning blockMaxN, and asserts they produce identical results
-// (the dispatch is a pure speed choice). It also covers the blocked kernel's
-// row-remainder tail (m not a multiple of 4).
-func TestMatMulBlockDispatch(t *testing.T) {
-	ob := blockMaxN
-	defer func() { blockMaxN = ob }()
-	cases := []struct{ m, k, n int }{{4, 3, 5}, {6, 4, 5}, {7, 5, 8}, {8, 8, 16}}
-	for _, c := range cases {
-		a, b := randVec(c.m*c.k, 30), randVec(c.k*c.n, 31)
-		blocked := make([]float64, c.m*c.n)
-		ikj := make([]float64, c.m*c.n)
-		blockMaxN = 1 << 30 // force the blocked path
-		MatMul(blocked, a, b, c.m, c.k, c.n)
-		blockMaxN = 0 // force the ikj path
-		MatMul(ikj, a, b, c.m, c.k, c.n)
-		for i := range blocked {
-			if blocked[i] != ikj[i] {
-				t.Fatalf("blocked vs ikj %v [%d]: %v != %v", c, i, blocked[i], ikj[i])
-			}
-		}
-	}
-}
-
 // TestNumWorkers exercises the worker-count clamps (GOMAXPROCS bound, the
 // one-worker-per-slab cap, and the floor of 1).
 func TestNumWorkers(t *testing.T) {

@@ -169,30 +169,3 @@ func MaxP(a []float64) float64 { return reduceP(a, maxSIMD) }
 // ParThreshold, via the SIMD min kernel; result identical to the serial Min,
 // NaN-propagating like numpy.min.
 func MinP(a []float64) float64 { return reduceP(a, minSIMD) }
-
-// GemmThreshold is the minimum number of result elements (m*n) at which MatMulP
-// fans the GEMM across goroutines. Small products stay single-threaded.
-var GemmThreshold = 1 << 14
-
-// MatMulP computes dst = a(m x k) * b(k x n) like MatMul, but splits the m
-// output rows across cores above GemmThreshold. Each goroutine owns a disjoint
-// band of rows, so the per-row MatMul kernel writes non-overlapping regions of
-// dst — the result is identical to the serial MatMul, just faster. dst must be
-// zeroed by the caller.
-func MatMulP(dst, a, b []float64, m, k, n int) {
-	if m*n < GemmThreshold {
-		MatMul(dst, a, b, m, k, n)
-		return
-	}
-	// One worker per core, never more than one per output row. parallelFor then
-	// splits the m rows into w contiguous bands; each band's MatMul writes a
-	// disjoint slice of dst (rows [r0,r1)), so there is no sharing on the output
-	// and b is read-only — the result is identical to the serial MatMul.
-	w := runtime.GOMAXPROCS(0)
-	if w > m {
-		w = m
-	}
-	parallelFor(m, w, func(r0, r1 int) {
-		MatMul(dst[r0*n:r1*n], a[r0*k:r1*k], b, r1-r0, k, n)
-	})
-}
