@@ -38,8 +38,8 @@ core ops on large arrays — measured honestly in **[docs/perf.md](docs/perf.md)
 faster than the prior kernel** and sustains **~156 GFLOP/s**, reaching **~76% of
 multi-threaded OpenBLAS**). Where a faster reference exists — `Sqrt`/`Max` small
 sizes, and **tuned BLAS (OpenBLAS/MKL) for matmul** — it says so. It is a
-**standalone, reusable** module and the planned cgo-free ndarray backend for
-[go-embedded-ruby](https://github.com/go-embedded-ruby/ruby).
+**standalone, reusable** module and the cgo-free ndarray backend behind
+[go-embedded-ruby](https://github.com/go-embedded-ruby/ruby)'s `NDArray` class.
 
 > ⚠️ **Status: float64 NumPy parity for the core surface, and faster than NumPy
 > on it.** Creation, slicing/views, broadcasting elementwise + ufuncs,
@@ -48,7 +48,8 @@ sizes, and **tuned BLAS (OpenBLAS/MKL) for matmul** — it says so. It is a
 > against numpy. The hot paths are **multicore + SIMD** and beat single-threaded
 > NumPy on large arrays (**[docs/perf.md](docs/perf.md)**). See
 > **[docs/plan-ndarray.md](docs/plan-ndarray.md)** for the roadmap (more SIMD
-> kernels, more dtypes, Ruby binding).
+> kernels, more dtypes). The Ruby binding has shipped — go-embedded-ruby's
+> `NDArray` class binds this module.
 
 ## Why this module?
 
