@@ -17,6 +17,17 @@ func withThresholds(par, gemm int, f func()) {
 	f()
 }
 
+// withMaxProcs runs f with GOMAXPROCS forced to n and restores it after. The
+// worker count of the parallel kernels is derived from GOMAXPROCS, so a test
+// that must hit the `workers > extent` clamp (e.g. more workers than output
+// rows) pins it high here — otherwise the clamp branch is unreachable on a
+// low-core CI runner and the 100% coverage gate fails there but not locally.
+func withMaxProcs(n int, f func()) {
+	old := runtime.GOMAXPROCS(n)
+	defer runtime.GOMAXPROCS(old)
+	f()
+}
+
 func randVec(n int, seed int64) []float64 {
 	r := rand.New(rand.NewSource(seed))
 	a := make([]float64, n)
@@ -97,19 +108,24 @@ func TestRunAxisP(t *testing.T) {
 		n := s.outer * s.axisLen * s.inner
 		src := randVec(n, int64(n))
 		for _, par := range []int{1 << 20, 4} { // serial, then parallel
-			withThresholds(par, 1<<14, func() {
-				for _, kk := range []axisKernel{SumAxis, MaxAxis} {
-					gotD := make([]float64, s.outer*s.inner)
-					wantD := make([]float64, s.outer*s.inner)
-					RunAxisP(kk, gotD, src, s.outer, s.axisLen, s.inner)
-					kk(wantD, src, s.outer, s.axisLen, s.inner)
-					for i := range wantD {
-						if gotD[i] != wantD[i] {
-							t.Fatalf("RunAxisP %v par=%d [%d]: %v != %v", s, par, i, gotD[i], wantD[i])
+			run := func() {
+				withThresholds(par, 1<<14, func() {
+					for _, kk := range []axisKernel{SumAxis, MaxAxis} {
+						gotD := make([]float64, s.outer*s.inner)
+						wantD := make([]float64, s.outer*s.inner)
+						RunAxisP(kk, gotD, src, s.outer, s.axisLen, s.inner)
+						kk(wantD, src, s.outer, s.axisLen, s.inner)
+						for i := range wantD {
+							if gotD[i] != wantD[i] {
+								t.Fatalf("RunAxisP %v par=%d [%d]: %v != %v", s, par, i, gotD[i], wantD[i])
+							}
 						}
 					}
-				}
-			})
+				})
+			}
+			// Pin GOMAXPROCS above the outer extents so the worker>outer clamp
+			// fires regardless of the runner's core count.
+			withMaxProcs(128, run)
 		}
 	}
 }

@@ -223,7 +223,8 @@ func TestMatVecP(t *testing.T) {
 		})
 	}
 	check(1 << 20) // serial
-	check(1)       // parallel + w>m clamp
+	// Pin GOMAXPROCS above m so the worker>m clamp fires on any-core CI.
+	withMaxProcs(128, func() { check(1) }) // parallel + w>m clamp
 }
 
 // TestVecMatP checks vec·mat (1-D · 2-D) against a column-accumulation reference.
@@ -255,11 +256,13 @@ func TestDot1DP(t *testing.T) {
 			want += a[i] * b[i]
 		}
 		for _, par := range []int{1 << 20, 4} { // serial, then parallel
-			withThresholds(par, 1<<14, func() {
-				got := Dot1DP(a, b)
-				if math.Abs(got-want) > 1e-6*(1+math.Abs(want)) {
-					t.Fatalf("Dot1DP n=%d par=%d: %v != %v", n, par, got, want)
-				}
+			withMaxProcs(128, func() {
+				withThresholds(par, 1<<14, func() {
+					got := Dot1DP(a, b)
+					if math.Abs(got-want) > 1e-6*(1+math.Abs(want)) {
+						t.Fatalf("Dot1DP n=%d par=%d: %v != %v", n, par, got, want)
+					}
+				})
 			})
 		}
 	}

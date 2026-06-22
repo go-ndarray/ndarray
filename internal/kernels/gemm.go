@@ -295,6 +295,13 @@ func Dot1DP(a, b []float64) float64 {
 	parallelFor(w, w, func(lo, hi int) {
 		for idx := lo; idx < hi; idx++ {
 			s := idx * chunk
+			if s >= n {
+				// chunk rounding can leave trailing workers past the end (e.g.
+				// many workers over a short, threshold-forced input); their
+				// partial is just the additive identity.
+				partials[idx] = 0
+				continue
+			}
 			e := s + chunk
 			if e > n {
 				e = n
