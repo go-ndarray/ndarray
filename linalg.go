@@ -52,29 +52,35 @@ func (a *Array) Dot(b *Array) (*Array, error) {
 			return nil, fmt.Errorf("%w: Dot vectors of length %d and %d",
 				ErrLinalg, a.shape[0], b.shape[0])
 		}
-		s := kernels.Dot1D(a.materialize(), b.materialize())
+		s := kernels.Dot1DP(a.contiguousData(), b.contiguousData())
 		return &Array{data: []float64{s}, shape: []int{}, strides: []int{}}, nil
 
 	case na == 2 && nb == 2:
 		return a.MatMul(b)
 
 	case na == 2 && nb == 1:
-		// (m x k) · (k,) = (m,): treat the vector as (k x 1), then drop the axis.
+		// (m x k) · (k,) = (m,): m independent contiguous row-dots — far cheaper
+		// than a single-column GEMM through the packer.
 		if a.shape[1] != b.shape[0] {
 			return nil, fmt.Errorf("%w: Dot %v x %v inner dims differ",
 				ErrLinalg, a.shape, b.shape)
 		}
-		r := matmul2D(a, b, a.shape[0], a.shape[1], 1)
-		return r.Reshape(a.shape[0])
+		m, k := a.shape[0], a.shape[1]
+		dst := make([]float64, m)
+		kernels.MatVecP(dst, a.contiguousData(), b.contiguousData(), m, k)
+		return &Array{data: dst, shape: []int{m}, strides: []int{1}}, nil
 
 	case na == 1 && nb == 2:
-		// (k,) · (k x n) = (n,): treat the vector as (1 x k), then drop the axis.
+		// (k,) · (k x n) = (n,): cache-friendly row-streaming accumulation, no
+		// transpose and no GEMM packing for a single result row.
 		if a.shape[0] != b.shape[0] {
 			return nil, fmt.Errorf("%w: Dot %v x %v inner dims differ",
 				ErrLinalg, a.shape, b.shape)
 		}
-		r := matmul2D(a, b, 1, a.shape[0], b.shape[1])
-		return r.Reshape(b.shape[1])
+		k, n := b.shape[0], b.shape[1]
+		dst := make([]float64, n)
+		kernels.VecMatP(dst, a.contiguousData(), b.contiguousData(), k, n)
+		return &Array{data: dst, shape: []int{n}, strides: []int{1}}, nil
 
 	default:
 		return nil, fmt.Errorf("%w: Dot supports 1-D and 2-D operands, got %d-D and %d-D",
@@ -110,8 +116,8 @@ func (a *Array) Inner(b *Array) (*Array, error) {
 // operands are flattened to 1-D vectors u (length m) and v (length n), and the
 // result is the (m x n) array out[i,j] = u[i]*v[j].
 func (a *Array) Outer(b *Array) *Array {
-	u := a.materialize()
-	v := b.materialize()
+	u := a.contiguousData()
+	v := b.contiguousData()
 	m, n := len(u), len(v)
 	dst := make([]float64, m*n)
 	for i := 0; i < m; i++ {

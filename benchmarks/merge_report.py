@@ -153,6 +153,31 @@ def main():
       "beats single-threaded NumPy.** Verdict thresholds: ≥0.95 parity/win, "
       "0.75–0.95 close, <0.75 lags.\n")
 
+    P("## 2026-06-22 optimization pass (algorithmic) — BEFORE → AFTER\n")
+    P("This pass closed the worst gaps, all of which were algorithmic (naive "
+      "strided gathers, missing bulk `copy()`, single-threaded axis reductions, "
+      "and a single-column GEMM standing in for mat·vec / dot) rather than a "
+      "want of SIMD. The numbers below are the measured ratio-vs-numpy-1-thread "
+      "before and after; the AFTER column is reproduced live in the tables "
+      "below, so any drift on re-run is visible.\n")
+    P("| op | BEFORE ratio | AFTER ratio | speed-up (go ns) | lever |")
+    P("|----|:--:|:--:|:--:|----|")
+    P("| Dot (1-D) 2²⁰ | 0.01× | ~1.06× | ~90× | drop per-element odometer copy; unrolled 4-acc `dotRange` + multicore `Dot1DP` |")
+    P("| Mat·vec 1024² | 0.02× | ~0.34× | ~22× | dedicated `MatVecP` row-dots, not a 1-column packed GEMM |")
+    P("| SumAxis0 1024² | 0.05× | ~0.36× | ~7.6× | `contiguousData()` (no materialise copy) for the contiguous case |")
+    P("| SumAxis1 1024² | 0.04× | ~0.62× | ~16× | + multicore outer-split (`RunAxisP`) |")
+    P("| MaxAxis1 1024² | 0.03× | ~0.55× | ~20× | + multicore outer-split (`RunAxisP`) |")
+    P("| Broadcast add 1024²+row | 0.13× | ~0.69× | ~5× | contiguous-inner-run splat in `broadcastTo` |")
+    P("| Slice (copy) 512×800 | 0.05× | ~0.31× | ~6× | unit-stride-inner bulk `copy()` in `materialize` |")
+    P("| Concatenate 2×512×1024 | 0.04× | ~0.44× | ~11× | bulk `copy()` slabs from `contiguousData()` |")
+    P("| Stack 2×512×1024 | 0.03× | ~0.45× | ~13× | (via the same Concatenate path) |")
+    P("\nWhat still lags is now genuinely memory-bound or BLAS-bound (the bulk "
+      "`copy`/gather is already at hardware bandwidth, and the remaining matmul "
+      "gap is the SIMD micro-kernel vs Apple's hand-tuned vecLib). Those are the "
+      "go-asmgen SIMD-kernel targets, not algorithmic fixes. NumPy's BLAS-backed "
+      "mat·vec / dot also still win the small-output cases on raw single-core "
+      "vector throughput; the multicore launch cost shows at this size.\n")
+
     # group by section preserving first-seen order
     sections = []
     for r in rows:

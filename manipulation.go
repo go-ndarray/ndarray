@@ -119,7 +119,10 @@ func concatInto(arrays []*Array, ax int, out []int) *Array {
 	// Column offset (in the joined axis) where the next array's slab begins.
 	colBase := 0
 	for _, arr := range arrays {
-		src := arr.materialize()
+		// contiguousData shares the backing slice for already-contiguous sources
+		// (no copy); the per-outer-row copy() below then moves each axis slab in
+		// one bulk memmove rather than element by element.
+		src := arr.contiguousData()
 		aLen := arr.shape[ax]
 		for o := 0; o < outer; o++ {
 			dstRow := (o*axisTotal + colBase) * inner

@@ -164,6 +164,47 @@ func reduceP(a []float64, red func([]float64) float64) float64 {
 	return mapReduceP(a, red, red)
 }
 
+// axisKernel is the shape of the [outer][axisLen][inner] axis reducers
+// (SumAxis, MaxAxis, …).
+type axisKernel func(dst, src []float64, outer, axisLen, inner int)
+
+// RunAxisP runs an axis-reduction kernel, fanning the `outer` slabs across cores
+// above ParThreshold (measured by the total element count outer*axisLen*inner).
+// Each worker owns a disjoint band of outer rows and writes the matching disjoint
+// [band*inner] region of dst, reading only its own src slab — so the parallel
+// result is identical to the serial kernel. Splitting `outer` keeps every
+// worker's inner traversal contiguous (the cache-friendly axis), which is the
+// case that matters: an axis-1 reduction of an (R x C) matrix has outer=R,
+// inner=1, and the serial kernel leaves all but one core idle.
+func RunAxisP(k axisKernel, dst, src []float64, outer, axisLen, inner int) {
+	total := outer * axisLen * inner
+	if total < ParThreshold {
+		k(dst, src, outer, axisLen, inner)
+		return
+	}
+	// Split the outer slabs: each worker owns a disjoint band of outer rows and
+	// writes the matching disjoint dst rows, reading only its own contiguous src
+	// slab — identical to the serial kernel. This is the case that matters most:
+	// an axis-1 reduction of an (R x C) matrix has outer=R, inner=1, so the serial
+	// kernel leaves all but one core idle, and an inner-split would need a strided
+	// column gather whose copy cost cancels the parallel gain. A single-outer-slab
+	// reduction (axis 0: outer=1, inner=C) already streams contiguous inner runs
+	// per accumulation step and stays on the (fast) serial path.
+	if outer < 2 {
+		k(dst, src, outer, axisLen, inner)
+		return
+	}
+	w := numWorkers(total)
+	if w > outer {
+		w = outer
+	}
+	parallelFor(outer, w, func(lo, hi int) {
+		dstSlab := dst[lo*inner : hi*inner]
+		srcSlab := src[lo*axisLen*inner : hi*axisLen*inner]
+		k(dstSlab, srcSlab, hi-lo, axisLen, inner)
+	})
+}
+
 // MaxP returns the maximum element of a (non-empty), parallelised above
 // ParThreshold. It runs the SIMD max kernel (packed MAXPD + NaN scan on amd64;
 // the intrinsic-lowered scalar FMAXD reducer on arm64/others) on each chunk and

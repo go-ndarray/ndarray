@@ -83,6 +83,37 @@ func TestParallelReductions(t *testing.T) {
 	}
 }
 
+// TestRunAxisP checks the parallel axis-reduction driver reproduces the serial
+// SumAxis/MaxAxis kernel exactly, across the serial (below-threshold), the
+// outer-split parallel, and the single-outer-slab (outer<2, axis-0) paths.
+func TestRunAxisP(t *testing.T) {
+	shapes := []struct{ outer, axisLen, inner int }{
+		{1, 5, 7},   // single outer slab -> serial path inside RunAxisP
+		{6, 4, 3},   // multi outer
+		{64, 8, 2},  // larger, exercises the worker split when threshold is low
+		{100, 1, 1}, // axisLen 1
+	}
+	for _, s := range shapes {
+		n := s.outer * s.axisLen * s.inner
+		src := randVec(n, int64(n))
+		for _, par := range []int{1 << 20, 4} { // serial, then parallel
+			withThresholds(par, 1<<14, func() {
+				for _, kk := range []axisKernel{SumAxis, MaxAxis} {
+					gotD := make([]float64, s.outer*s.inner)
+					wantD := make([]float64, s.outer*s.inner)
+					RunAxisP(kk, gotD, src, s.outer, s.axisLen, s.inner)
+					kk(wantD, src, s.outer, s.axisLen, s.inner)
+					for i := range wantD {
+						if gotD[i] != wantD[i] {
+							t.Fatalf("RunAxisP %v par=%d [%d]: %v != %v", s, par, i, gotD[i], wantD[i])
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
 // TestParallelMatMul checks MatMulP equals the serial MatMul for non-square
 // shapes, both below and above the (forced-low) GEMM threshold.
 func TestParallelMatMul(t *testing.T) {

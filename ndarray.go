@@ -211,8 +211,50 @@ func (a *Array) forEach(f func(linear, pos int)) {
 
 // materialize returns a fresh, contiguous, offset-0 copy of the array's data in
 // row-major order. The result is independent of the receiver's storage.
+//
+// Three layered fast paths avoid the per-element multi-dimensional odometer:
+//
+//   - Fully contiguous, offset 0: a single bulk copy() of the backing slice.
+//   - Unit-stride innermost axis (the common case for row-major slices and any
+//     view whose last dimension is untouched): walk only the outer axes with the
+//     odometer and copy() each contiguous inner run in one shot. This turns an
+//     O(n) per-element gather into O(outer) memmoves of length inner.
+//   - Otherwise (e.g. a transposed view, where the last axis is strided): the
+//     general per-element gather.
 func (a *Array) materialize() []float64 {
-	out := make([]float64, a.Size())
+	n := a.Size()
+	out := make([]float64, n)
+	if n == 0 {
+		return out
+	}
+	if a.isContiguous() {
+		copy(out, a.data[a.offset:a.offset+n])
+		return out
+	}
+	nd := len(a.shape)
+	// Unit-stride innermost axis: bulk-copy contiguous inner runs.
+	if nd > 0 && (a.strides[nd-1] == 1 || a.shape[nd-1] == 1) {
+		inner := a.shape[nd-1]
+		idx := make([]int, nd-1)
+		dst := 0
+		for dst < n {
+			pos := a.offset
+			for axis, i := range idx {
+				pos += i * a.strides[axis]
+			}
+			copy(out[dst:dst+inner], a.data[pos:pos+inner])
+			dst += inner
+			// increment the outer odometer (all axes but the innermost)
+			for axis := nd - 2; axis >= 0; axis-- {
+				idx[axis]++
+				if idx[axis] < a.shape[axis] {
+					break
+				}
+				idx[axis] = 0
+			}
+		}
+		return out
+	}
 	a.forEach(func(linear, pos int) {
 		out[linear] = a.data[pos]
 	})
@@ -406,6 +448,59 @@ func (a *Array) broadcastTo(shape []int) []float64 {
 	}
 	out := make([]float64, prod(shape))
 	if len(out) == 0 {
+		return out
+	}
+	// Fast path: the innermost axis is materialised with unit stride (it is
+	// either a real, non-broadcast last axis or a broadcast length-1 one). Then
+	// each contiguous inner run is a single copy() — for a broadcast last axis the
+	// source run is one element splatted; for a real last axis it is a memmove of
+	// the row. This turns the per-element gather into O(outer) bulk operations,
+	// the dominant cost for row/column broadcasts against a large matrix.
+	inner := shape[n-1]
+	if estrides[n-1] == 1 {
+		idx := make([]int, n-1)
+		dst := 0
+		for dst < len(out) {
+			pos := a.offset
+			for axis, i := range idx {
+				pos += i * estrides[axis]
+			}
+			copy(out[dst:dst+inner], a.data[pos:pos+inner])
+			dst += inner
+			for axis := n - 2; axis >= 0; axis-- {
+				idx[axis]++
+				if idx[axis] < shape[axis] {
+					break
+				}
+				idx[axis] = 0
+			}
+		}
+		return out
+	}
+	if estrides[n-1] == 0 {
+		// Broadcast (length-1) innermost axis: each inner run is a single source
+		// element repeated `inner` times — splat it in one tight loop per run.
+		idx := make([]int, n-1)
+		dst := 0
+		for dst < len(out) {
+			pos := a.offset
+			for axis, i := range idx {
+				pos += i * estrides[axis]
+			}
+			v := a.data[pos]
+			run := out[dst : dst+inner]
+			for j := range run {
+				run[j] = v
+			}
+			dst += inner
+			for axis := n - 2; axis >= 0; axis-- {
+				idx[axis]++
+				if idx[axis] < shape[axis] {
+					break
+				}
+				idx[axis] = 0
+			}
+		}
 		return out
 	}
 	idx := make([]int, n)
@@ -668,9 +763,12 @@ func (a *Array) reduceAxis(
 		return nil, fmt.Errorf("%w: reduction along zero-length axis %d",
 			ErrShapeMismatch, axis)
 	}
-	src := a.materialize()
+	// contiguousData shares the backing slice when the receiver is already
+	// row-major (the common case), so a contiguous array reaches the kernel with
+	// zero copy; only strided views pay a materialise. The kernel only reads src.
+	src := a.contiguousData()
 	dst := make([]float64, outer*inner)
-	kernel(dst, src, outer, axisLen, inner)
+	kernels.RunAxisP(kernel, dst, src, outer, axisLen, inner)
 	shape := a.reduceShape(axis, keepdims)
 	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}, nil
 }

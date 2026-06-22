@@ -218,3 +218,89 @@ func MatMul(dst, a, b []float64, m, k, n int) {
 	packGemmRows(0, m, dst, a, b, k, n, buf)
 	packPool.Put(buf)
 }
+
+// dotRange returns sum(a[i]*b[i]) over equal-length slices, using four
+// independent accumulators so the compiler keeps the FMA chain unrolled and (on
+// amd64/arm64) auto-vectorises the multiply-add. The four-way grouping is a fixed
+// reassociation of the sum; MatVecP/Dot1DP document the ULP trade-off where it is
+// observable. It is the contiguous building block for both mat·vec and the 1-D
+// dot — neither needs to go through the packing GEMM.
+func dotRange(a, b []float64) float64 {
+	var s0, s1, s2, s3 float64
+	n := len(a)
+	i := 0
+	for ; i+4 <= n; i += 4 {
+		s0 += a[i] * b[i]
+		s1 += a[i+1] * b[i+1]
+		s2 += a[i+2] * b[i+2]
+		s3 += a[i+3] * b[i+3]
+	}
+	for ; i < n; i++ {
+		s0 += a[i] * b[i]
+	}
+	return (s0 + s1) + (s2 + s3)
+}
+
+// MatVecP computes dst = a(m x k) * v(k,) as m independent contiguous row-dots,
+// fanned across cores above GemmThreshold. Each output dst[i] is the dot of
+// row i of a (the contiguous slice a[i*k:(i+1)*k]) with v, so the access pattern
+// is pure unit-stride streaming — far cheaper than routing a single-column GEMM
+// through the packer. dst need not be pre-zeroed (each entry is written, not
+// accumulated). Rows are disjoint, so the parallel result equals the serial one.
+func MatVecP(dst, a, v []float64, m, k int) {
+	body := func(lo, hi int) {
+		for i := lo; i < hi; i++ {
+			dst[i] = dotRange(a[i*k:i*k+k], v)
+		}
+	}
+	if m*k < GemmThreshold {
+		body(0, m)
+		return
+	}
+	w := runtime.GOMAXPROCS(0)
+	if w > m {
+		w = m
+	}
+	parallelFor(m, w, body)
+}
+
+// VecMatP computes dst = v(k,) * a(k x n) = column sums weighted by v, i.e.
+// dst[j] = sum_p v[p]*a[p*n+j]. It accumulates row by row so the inner loop over
+// j streams a contiguous a row and the contiguous dst, which is the cache-
+// friendly traversal (the transpose-free analogue of mat·vec for the 1-D·2-D
+// case). dst must be zeroed by the caller.
+func VecMatP(dst, v, a []float64, k, n int) {
+	for p := 0; p < k; p++ {
+		vp := v[p]
+		row := a[p*n : p*n+n]
+		for j := 0; j < n; j++ {
+			dst[j] += vp * row[j]
+		}
+	}
+}
+
+// Dot1DP returns the inner product of two equal-length contiguous vectors,
+// fanned across cores above ParThreshold: each worker dot-products its chunk with
+// the unrolled dotRange and the partials are summed. The chunked four-way
+// grouping reassociates the sum (a few ULP, like SumP / numpy pairwise); callers
+// needing the exact left-to-right value use the scalar Dot1D.
+func Dot1DP(a, b []float64) float64 {
+	n := len(a)
+	if n < ParThreshold {
+		return dotRange(a, b)
+	}
+	w := numWorkers(n)
+	partials := make([]float64, w)
+	chunk := (n + w - 1) / w
+	parallelFor(w, w, func(lo, hi int) {
+		for idx := lo; idx < hi; idx++ {
+			s := idx * chunk
+			e := s + chunk
+			if e > n {
+				e = n
+			}
+			partials[idx] = dotRange(a[s:e], b[s:e])
+		}
+	})
+	return Sum(partials)
+}

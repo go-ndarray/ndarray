@@ -168,3 +168,99 @@ func TestGemmThresholdPaths(t *testing.T) {
 		MatMulP(nil, nil, b, 0, 4, 9)
 	})
 }
+
+// TestDot1D checks the exact left-to-right scalar dot oracle (the reference the
+// unrolled/parallel variants document their ULP trade-off against).
+func TestDot1D(t *testing.T) {
+	for _, n := range []int{0, 1, 4, 9, 100} {
+		a, b := randVec(n, int64(7*n+1)), randVec(n, int64(7*n+2))
+		var want float64
+		for i := range a {
+			want += a[i] * b[i]
+		}
+		if got := Dot1D(a, b); got != want {
+			t.Fatalf("Dot1D n=%d: %v != %v", n, got, want)
+		}
+	}
+}
+
+// TestDotRange checks the unrolled contiguous dot against a plain reference for
+// lengths that exercise the 4-wide body and every remainder (0..3 trailing).
+func TestDotRange(t *testing.T) {
+	for _, n := range []int{0, 1, 2, 3, 4, 5, 7, 8, 13, 1000} {
+		a, b := randVec(n, int64(n+1)), randVec(n, int64(n+2))
+		var want float64
+		for i := range a {
+			want += a[i] * b[i]
+		}
+		got := dotRange(a, b)
+		if math.Abs(got-want) > 1e-9*(1+math.Abs(want)) {
+			t.Fatalf("dotRange n=%d: %v != %v", n, got, want)
+		}
+	}
+}
+
+// TestMatVecP checks mat·vec over both the serial (below GemmThreshold) and
+// parallel (above, plus the w>m clamp) paths against a row-dot reference.
+func TestMatVecP(t *testing.T) {
+	m, k := 7, 13
+	a, v := randVec(m*k, 3), randVec(k, 4)
+	want := make([]float64, m)
+	for i := 0; i < m; i++ {
+		for p := 0; p < k; p++ {
+			want[i] += a[i*k+p] * v[p]
+		}
+	}
+	check := func(gemm int) {
+		withThresholds(1<<14, gemm, func() {
+			got := make([]float64, m)
+			MatVecP(got, a, v, m, k)
+			for i := range want {
+				if math.Abs(got[i]-want[i]) > 1e-9*(1+math.Abs(want[i])) {
+					t.Fatalf("MatVecP gemm=%d [%d]: %v != %v", gemm, i, got[i], want[i])
+				}
+			}
+		})
+	}
+	check(1 << 20) // serial
+	check(1)       // parallel + w>m clamp
+}
+
+// TestVecMatP checks vec·mat (1-D · 2-D) against a column-accumulation reference.
+func TestVecMatP(t *testing.T) {
+	k, n := 11, 9
+	v, a := randVec(k, 5), randVec(k*n, 6)
+	want := make([]float64, n)
+	for p := 0; p < k; p++ {
+		for j := 0; j < n; j++ {
+			want[j] += v[p] * a[p*n+j]
+		}
+	}
+	got := make([]float64, n)
+	VecMatP(got, v, a, k, n)
+	for j := range want {
+		if math.Abs(got[j]-want[j]) > 1e-9*(1+math.Abs(want[j])) {
+			t.Fatalf("VecMatP [%d]: %v != %v", j, got[j], want[j])
+		}
+	}
+}
+
+// TestDot1DP checks the parallel 1-D dot below and above ParThreshold against a
+// straight reference sum.
+func TestDot1DP(t *testing.T) {
+	for _, n := range []int{1, 1000, 100000} {
+		a, b := randVec(n, int64(n)), randVec(n, int64(2*n))
+		var want float64
+		for i := range a {
+			want += a[i] * b[i]
+		}
+		for _, par := range []int{1 << 20, 4} { // serial, then parallel
+			withThresholds(par, 1<<14, func() {
+				got := Dot1DP(a, b)
+				if math.Abs(got-want) > 1e-6*(1+math.Abs(want)) {
+					t.Fatalf("Dot1DP n=%d par=%d: %v != %v", n, par, got, want)
+				}
+			})
+		}
+	}
+}
