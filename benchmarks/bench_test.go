@@ -282,9 +282,24 @@ func BenchmarkOuter(b *testing.B) {
 // ---- matmul (square + non-square) ----
 
 func BenchmarkMatMul(b *testing.B) {
-	for _, n := range []int{128, 256, 512, 1024} {
+	for _, n := range []int{32, 64, 128, 256, 512, 1024} {
 		x, y := mat(n, n), mat(n, n)
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = x.MatMul(y)
+			}
+		})
+	}
+}
+
+func BenchmarkMatMulSmallRect(b *testing.B) {
+	// Small/medium shapes (m x k) @ (k x n) around the serial->parallel GEMM
+	// crossover, including the 80²–120² band the 2026-06-23 threshold pass moved
+	// onto the parallel path (96x96x96 is the headline gain).
+	shapes := [][3]int{{64, 64, 32}, {128, 64, 128}, {96, 96, 96}}
+	for _, s := range shapes {
+		x, y := mat(s[0], s[1]), mat(s[1], s[2])
+		b.Run(fmt.Sprintf("%dx%dx%d", s[0], s[1], s[2]), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, _ = x.MatMul(y)
 			}

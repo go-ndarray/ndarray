@@ -194,7 +194,28 @@ func gemmEdge(kc int, pa, pb, dst []float64, c0, ldc, mr, nr int) {
 // GemmThreshold is the minimum number of result elements (m*n) at which the
 // packed GEMM fans out across goroutines. Small products run single-threaded
 // (one worker, one pooled buffer) so the goroutine launch never dominates.
-var GemmThreshold = 1 << 14
+//
+// 6000 is the measured crossover on the Apple-silicon bench host: below it the
+// goroutine launch + join costs more than the parallel speedup buys, above it
+// the fan-out wins. Concretely, 64x64 (4096 results) is ~14us serial vs ~17us
+// parallel (serial wins) while 80x80 (6400 results) is ~26us serial vs ~22us
+// parallel and 96x96 (9216) is ~46us serial vs ~34us parallel (parallel wins by
+// 15-30%). The old 1<<14 (16384) floor left the whole 80x80..120x120 band — the
+// shapes that benefit most from the cores — stuck on the slow serial path; it
+// was sized for MatVecP (memory-bound, see matVecThreshold), not for the
+// compute-bound GEMM. 32x32 (1024) and 64x64 (4096) stay serial, where the
+// register-blocked single-core kernel is fastest.
+var GemmThreshold = 6000
+
+// matVecThreshold is the m*k element count above which MatVecP fans the row-dots
+// across cores. Mat-vec is a single bandwidth-bound streaming pass over A (one
+// multiply-add per element, no reuse), so its parallel crossover is far higher
+// than the compute-bound GEMM's: forking it on a few-thousand-element A is a net
+// loss (100x100 mat-vec measures ~2.5us serial vs ~5.8us parallel). It is kept
+// at the original 1<<14 floor — lowering GemmThreshold for the GEMM must not
+// drag mat-vec onto the parallel path in the band where it regresses. It is a
+// var so tests can pin it.
+var matVecThreshold = 1 << 14
 
 // MatMulP computes dst = a(m x k) * b(k x n) with the packed, cache-blocked GEMM,
 // fanning the m output rows across cores above GemmThreshold. dst must be zeroed
@@ -318,7 +339,7 @@ func dotRange(a, b []float64) float64 {
 }
 
 // MatVecP computes dst = a(m x k) * v(k,) as m independent contiguous row-dots,
-// fanned across cores above GemmThreshold. Each output dst[i] is the dot of
+// fanned across cores above matVecThreshold. Each output dst[i] is the dot of
 // row i of a (the contiguous slice a[i*k:(i+1)*k]) with v, so the access pattern
 // is pure unit-stride streaming — far cheaper than routing a single-column GEMM
 // through the packer. dst need not be pre-zeroed (each entry is written, not
@@ -329,7 +350,7 @@ func MatVecP(dst, a, v []float64, m, k int) {
 			dst[i] = dotRange(a[i*k:i*k+k], v)
 		}
 	}
-	if m*k < GemmThreshold {
+	if m*k < matVecThreshold {
 		body(0, m)
 		return
 	}

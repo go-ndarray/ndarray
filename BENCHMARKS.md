@@ -158,6 +158,35 @@ state to neutralize sustained-load throttling; AFTER is reproduced live in the t
 above. vecLib remains hand-tuned Apple assembly with no pure-Go equal at small N, but
 go-ndarray now reaches it at 1024² and decisively beats the pure-Go gonum everywhere.)
 
+#### 2026-06-23 small-N parallel-threshold pass — BEFORE → AFTER
+
+A follow-up pass tuned **where** the GEMM crosses from serial to parallel. The single
+fan-out threshold (`GemmThreshold`, m·n result elements) was shared between MatMul and
+the bandwidth-bound MatVec and sat at 1<<14 = 16,384 — sized for MatVec, far too high
+for the compute-bound GEMM. It left the whole 80²–120² band (the shapes that fit a few
+cores' worth of work) stuck on the slow single-core path. The two thresholds were
+**decoupled**: `GemmThreshold` lowered to the measured GEMM crossover (6,000) and
+MatVec kept on its own `matVecThreshold` (1<<14, since forking a few-thousand-element
+mat·vec is a net loss — 100×100 mat·vec is ~2.5µs serial vs ~5.8µs parallel). 32²/64²
+stay serial (where the single-core register-blocked kernel is fastest); 80²+ now fans
+out. Bit-exact — only the serial/parallel dispatch boundary moved, not the arithmetic.
+
+| shape | BEFORE ns | AFTER ns | speed-up | numpy 1-thr (vecLib) ns | gonum ns | ×vecLib before→after | vs gonum |
+|-------|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| MatMul 96×96×96 | 46,248 | 27,000 | 1.71× | 5,948 | 131,917 | 0.13× → 0.22× | **4.9× faster** |
+| MatMul 112³ | ~70,000 | ~44,000 | 1.59× | 8,666 | 151,765 | 0.12× → 0.20× | **3.4× faster** |
+| MatMul 128×64×128 | 35,315 | 30,122 | 1.17× | 6,817 | 100,863 | 0.19× → 0.23× | **3.3× faster** |
+| MatMul 64² (serial, unchanged) | 15,677 | 17,004 | 0.92× | 2,448 | — | 0.15× | — |
+| MatMul 32² (serial, unchanged) | 3,725 | 3,440 | 1.08× | 1,148 | — | 0.33× | — |
+
+(Measured back-to-back under matched cold/thermal state; the M4 Max throttles hard
+under sustained matmul load so each point is a short cold burst. The win is confined to
+the 80²–~120² band that the old threshold mis-classified; large N (≥256², already well
+above both thresholds) is untouched — 1024² re-measured at 5.18ms vs the 5.6ms baseline,
+i.e. unchanged within noise. vecLib's small-N hand-asm stays 4–6× ahead — that gap is
+the micro-kernel/scheduling quality, not the dispatch policy, and is not closable in
+pure Go without out-assembling Apple.)
+
 ## Summary
 
 **32/57 benchmarked ops are at parity-or-better vs single-threaded NumPy** (ratio ≥ 0.95) — MatMul 1024² joined the parity set in the 2026-06-23 GEMM pass (0.80× → 1.00×). Every MatMul shape now decisively beats the pure-Go gonum (4×–10×).

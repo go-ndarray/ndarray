@@ -7,13 +7,17 @@ import (
 	"testing"
 )
 
-// withThresholds runs f with the parallel thresholds forced to v and restores
-// them after, so a test can exercise both the serial (below-threshold) and the
-// parallel (above-threshold) branches deterministically.
+// withThresholds runs f with the parallel thresholds forced and restores them
+// after, so a test can exercise both the serial (below-threshold) and the
+// parallel (above-threshold) branches deterministically. The gemm argument pins
+// BOTH compute thresholds — GemmThreshold (MatMulP) and matVecThreshold
+// (MatVecP) — to the same value, so a single low/high gemm flips every
+// GEMM-family kernel onto the serial or parallel path; ParThreshold drives the
+// elementwise/reduction kernels.
 func withThresholds(par, gemm int, f func()) {
-	op, og := ParThreshold, GemmThreshold
-	ParThreshold, GemmThreshold = par, gemm
-	defer func() { ParThreshold, GemmThreshold = op, og }()
+	op, og, omv := ParThreshold, GemmThreshold, matVecThreshold
+	ParThreshold, GemmThreshold, matVecThreshold = par, gemm, gemm
+	defer func() { ParThreshold, GemmThreshold, matVecThreshold = op, og, omv }()
 	f()
 }
 
