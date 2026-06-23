@@ -28,6 +28,15 @@ func withBlocks(mc, kc, nc int, f func()) {
 	f()
 }
 
+// withBandTiles runs f with the MatMulP dynamic-band height (in MR-tiles) forced
+// to bt and restores it after, so a test can drive the band-sizing clamps.
+func withBandTiles(bt int, f func()) {
+	o := bandTilesMR
+	bandTilesMR = bt
+	defer func() { bandTilesMR = o }()
+	f()
+}
+
 // assertGemm checks both MatMul (serial) and MatMulP (parallel forced on) equal
 // the oracle bit-for-bit for the given shape, using the integer-valued operands
 // that make the ikj order reproduce the oracle exactly.
@@ -98,6 +107,36 @@ func TestGemmCorrectness(t *testing.T) {
 		m, k, n := 300, 200, 260
 		a, b := intMat(m, k, 1), intMat(k, n, 2)
 		assertGemm(t, m, k, n, a, b)
+	})
+}
+
+// TestGemmBandSizing drives the two band-sizing clamps in MatMulP's parallel
+// path against the oracle: (a) the small-m shrink (band wider than m/(4w) rounds
+// down so every worker still gets a band), and (b) the band > blockMC cap (a
+// band taller than the MC row block is clamped to MC so each A panel still fits).
+// Both must leave the result bit-identical to the serial GEMM.
+func TestGemmBandSizing(t *testing.T) {
+	// (a) Small-m shrink: tiny row count, default band height would exceed
+	// m/(4w); the want<bandRows branch fires and shrinks the band.
+	withMaxProcs(8, func() {
+		withThresholds(1<<14, 1, func() { // force parallel
+			a, b := intMat(10, 7, 21), intMat(7, 9, 22)
+			assertGemm(t, 10, 7, 9, a, b)
+		})
+	})
+	// (b) band > blockMC cap: pin blockMC below the band height and feed enough
+	// rows that the m/(4w) shrink does NOT pre-empt the cap (want >= bandRows),
+	// so the bandRows>blockMC clamp is the one that fires.
+	withMaxProcs(2, func() {
+		withBandTiles(2, func() { // bandRows = 2*MR
+			withBlocks(MR, 3, 2*NR, func() { // blockMC = MR < bandRows
+				withThresholds(1<<14, 1, func() {
+					m, k, n := 40*MR, 5, 2*NR
+					a, b := intMat(m, k, 23), intMat(k, n, 24)
+					assertGemm(t, m, k, n, a, b)
+				})
+			})
+		})
 	})
 }
 

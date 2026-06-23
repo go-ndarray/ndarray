@@ -3,6 +3,7 @@ package kernels
 import (
 	"runtime"
 	"sync"
+	"sync/atomic"
 )
 
 // Packed, cache-blocked GEMM (the OpenBLAS/BLIS structure).
@@ -35,6 +36,13 @@ var (
 	blockKC = 256
 	blockNC = 512
 )
+
+// bandTilesMR is the height, in MR-row micro-tiles, of one dynamic work band in
+// MatMulP (so a band is bandTilesMR*MR rows). It is sized so the m rows dice into
+// several bands per core: enough oversubscription for the atomic work-counter to
+// balance the M-series P/E cores, while large enough that the per-band A-pack and
+// goroutine-loop overhead stays amortized. A var so it can be tuned/pinned.
+var bandTilesMR = 8
 
 // packBuf is one worker's reusable pair of pack buffers: paBuf for the MC*KC A
 // panel, pbBuf for the KC*NC B panel. Pooling them keeps the per-call GEMM
@@ -85,7 +93,8 @@ func getPackBuf() *packBuf {
 // (m x n) destination (the band writes only rows [r0,r1)); a and b are the full
 // operands. dst must be pre-zeroed by the caller. The band must be MR-aligned at
 // r0 (the parallel splitter guarantees this) so packed A panels never straddle a
-// band boundary; r1 may be m.
+// band boundary; r1 may be m. This is the single-worker entry: it packs its own
+// B panel. The multi-worker path (gemmBand) shares one packed B across workers.
 func packGemmRows(r0, r1 int, dst, a, b []float64, k, n int, buf *packBuf) {
 	pa, pb := buf.pa, buf.pb
 	for jc := 0; jc < n; jc += blockNC { // L3 column block of B
@@ -93,20 +102,33 @@ func packGemmRows(r0, r1 int, dst, a, b []float64, k, n int, buf *packBuf) {
 		for pc := 0; pc < k; pc += blockKC { // L2 contraction block
 			kc := min(blockKC, k-pc)
 			packB(b, n, pc, kc, jc, nc, pb) // pack B(kc x nc) -> NR-wide panels
-			for ic := r0; ic < r1; ic += blockMC { // L1 row block of A
-				mc := min(blockMC, r1-ic)
-				packA(a, k, ic, mc, pc, kc, pa) // pack A(mc x kc) -> MR-tall panels
-				for jr := 0; jr < nc; jr += NR {
-					nr := min(NR, nc-jr)
-					for ir := 0; ir < mc; ir += MR {
-						mr := min(MR, mc-ir)
-						c0 := (ic+ir)*n + jc + jr
-						if mr == MR && nr == NR {
-							gemmMicro(kc, pa[ir*kc:], pb[jr*kc:], dst[c0:], n)
-						} else {
-							gemmEdge(kc, pa[ir*kc:], pb[jr*kc:], dst, c0, n, mr, nr)
-						}
-					}
+			gemmBand(r0, r1, jc, nc, pc, kc, dst, a, k, n, pa, pb)
+		}
+	}
+}
+
+// gemmBand runs the macro-kernel for the row band [r0,r1) against an
+// already-packed B panel pb (the kc x nc block at source columns [jc,jc+nc),
+// source contraction rows [pc,pc+kc)). It packs each MC-row block of A into pa
+// (the worker's private buffer) and streams the register-blocked micro-kernel
+// over the MR x NR tiles, accumulating into the band's rows of dst. Splitting B
+// packing (done once by the caller) from this per-band A packing + macro-kernel
+// is what lets several workers share one packed B: the redundant full-B repack
+// each worker used to do — 1 MiB copied GOMAXPROCS times per kc block — was the
+// dominant non-scaling cost of the old row-split parallelism.
+func gemmBand(r0, r1, jc, nc, pc, kc int, dst, a []float64, k, n int, pa, pb []float64) {
+	for ic := r0; ic < r1; ic += blockMC { // L1 row block of A
+		mc := min(blockMC, r1-ic)
+		packA(a, k, ic, mc, pc, kc, pa) // pack A(mc x kc) -> MR-tall panels
+		for jr := 0; jr < nc; jr += NR {
+			nr := min(NR, nc-jr)
+			for ir := 0; ir < mc; ir += MR {
+				mr := min(MR, mc-ir)
+				c0 := (ic+ir)*n + jc + jr
+				if mr == MR && nr == NR {
+					gemmMicro(kc, pa[ir*kc:], pb[jr*kc:], dst[c0:], n)
+				} else {
+					gemmEdge(kc, pa[ir*kc:], pb[jr*kc:], dst, c0, n, mr, nr)
 				}
 			}
 		}
@@ -175,10 +197,26 @@ func gemmEdge(kc int, pa, pb, dst []float64, c0, ldc, mr, nr int) {
 var GemmThreshold = 1 << 14
 
 // MatMulP computes dst = a(m x k) * b(k x n) with the packed, cache-blocked GEMM,
-// fanning the m output rows across cores above GemmThreshold. Each worker owns a
-// disjoint, MR-aligned band of rows and writes a non-overlapping region of dst
-// (b is read-only), so the result is identical to the serial computation. dst
-// must be zeroed by the caller.
+// fanning the m output rows across cores above GemmThreshold. dst must be zeroed
+// by the caller.
+//
+// Parallelism is the BLIS "loop-3" (ic, row-block) split with DYNAMIC, work-
+// stealing scheduling: for every (jc, pc) cache block the B panel is packed ONCE
+// into a shared buffer, then the m rows are diced into MR-aligned bands of MC
+// rows and the workers pull bands off a shared atomic counter until exhausted,
+// each packing only its own A panel and running the macro-kernel (gemmBand) over
+// the band against the single shared packed B. Every band writes a disjoint,
+// MR-aligned region of dst (b and the shared pb are read-only during the band),
+// so the result is identical to the serial computation.
+//
+// Two properties together gave the large-N scaling:
+//   - Packing B once (not once per worker) removes the O(P) redundant 1-MiB
+//     repack the old row-split paid per kc block.
+//   - Dynamic banding handles the M-series big.LITTLE asymmetry. A static
+//     one-band-per-core split makes every fast P-core wait on the slow E-cores
+//     at the join (measured: 16 cores was SLOWER than 10 on 1024², the 4 E-cores
+//     straggling). With many small bands the P-cores simply grab more of them, so
+//     adding the E-cores helps instead of hurting.
 func MatMulP(dst, a, b []float64, m, k, n int) {
 	if m*n < GemmThreshold {
 		buf := getPackBuf()
@@ -190,23 +228,61 @@ func MatMulP(dst, a, b []float64, m, k, n int) {
 	if w > m {
 		w = m
 	}
-	// Split the m rows into w near-equal bands, each rounded up to a multiple of
-	// MR so no packed A panel straddles a band boundary; the last band absorbs
-	// the remainder. This yields at most w non-empty bands.
-	band := (m + w - 1) / w
-	band = ((band + MR - 1) / MR) * MR
-	var wg sync.WaitGroup
-	for r0 := 0; r0 < m; r0 += band {
-		r1 := min(r0+band, m)
-		wg.Add(1)
-		go func(r0, r1 int) {
-			defer wg.Done()
-			buf := getPackBuf()
-			packGemmRows(r0, r1, dst, a, b, k, n, buf)
-			packPool.Put(buf)
-		}(r0, r1)
+	// Dice the m rows into MR-aligned bands a few rows of micro-tiles tall, so
+	// there are several bands per worker. That oversubscription is what lets the
+	// dynamic counter balance the M-series big.LITTLE cores: fast P-cores grab
+	// more bands while the slow E-cores grab fewer, instead of every P-core
+	// waiting on an E-core at a static join. bandRows is bandTilesMR micro-rows
+	// (a multiple of MR so no packed A panel straddles a band boundary) but at
+	// least one, and clamped so there are at least ~4 bands per worker when the
+	// row count allows. Bands stay <= MC so each A panel still fits L1.
+	bandRows := bandTilesMR * MR
+	if want := roundUp(max(1, (m+(4*w)-1)/(4*w)), MR); want < bandRows {
+		bandRows = want // small m: shrink bands so every worker still gets one
 	}
-	wg.Wait()
+	if bandRows > blockMC {
+		bandRows = blockMC
+	}
+	nBands := (m + bandRows - 1) / bandRows
+	if w > nBands {
+		w = nBands // never spawn more goroutines than there is work for
+	}
+
+	// One shared B-pack buffer (packed once per jc/pc block) plus one private
+	// A-pack buffer per worker. The shared pb is sized like a normal pooled B
+	// buffer; getPackBuf grows it for any test-raised block sizes.
+	shared := getPackBuf()
+	pb := shared.pb
+	defer packPool.Put(shared)
+
+	for jc := 0; jc < n; jc += blockNC { // L3 column block of B
+		nc := min(blockNC, n-jc)
+		for pc := 0; pc < k; pc += blockKC { // L2 contraction block
+			kc := min(blockKC, k-pc)
+			packB(b, n, pc, kc, jc, nc, pb) // pack B once for all workers
+
+			var next atomic.Int64 // shared band cursor
+			var wg sync.WaitGroup
+			for g := 0; g < w; g++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					ab := getPackBuf()
+					for {
+						bi := int(next.Add(1)) - 1
+						if bi >= nBands {
+							break
+						}
+						r0 := bi * bandRows
+						r1 := min(r0+bandRows, m)
+						gemmBand(r0, r1, jc, nc, pc, kc, dst, a, k, n, ab.pa, pb)
+					}
+					packPool.Put(ab)
+				}()
+			}
+			wg.Wait()
+		}
+	}
 }
 
 // MatMul computes dst = a(m x k) * b(k x n) serially with the packed GEMM (the
