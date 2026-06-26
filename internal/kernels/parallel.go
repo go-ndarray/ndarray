@@ -126,19 +126,33 @@ func SqrtP(dst, src []float64) {
 }
 
 // mapReduceP computes one partial per worker by applying red to that worker's
-// contiguous chunk, then folds the partials with combine. numWorkers caps the
-// worker count at one per ParThreshold-sized slab, so every chunk is non-empty
-// and exactly w partials are produced. The grouping it imposes is a valid (and,
-// for the associative reducers, identical) reordering of the serial reduction.
+// contiguous chunk, then folds the partials with combine. The grouping it
+// imposes is a valid (and, for the associative reducers, identical) reordering
+// of the serial reduction.
+//
+// chunk rounds up, so with w workers the chunk-sized stride can overrun n before
+// the last worker is reached: a worker's start s = idx*chunk can land at or past
+// n (this happens when GOMAXPROCS is large relative to the element count — many
+// more workers than ParThreshold-sized slabs). Such a worker owns no elements;
+// it must NOT index a[s:e] (s >= n would panic) and must NOT contribute a partial
+// (there is no reduction identity that is bit-identical for Max/Min). We compute
+// the count of workers that actually own a chunk and produce exactly that many
+// partials, so the fold sees only real data and the result is unchanged.
 func mapReduceP(a []float64, red func([]float64) float64, combine func([]float64) float64) float64 {
 	n := len(a)
 	if n < ParThreshold {
 		return red(a)
 	}
 	w := numWorkers(n)
-	partials := make([]float64, w)
 	chunk := (n + w - 1) / w
-	parallelFor(w, w, func(lo, hi int) {
+	// active = number of workers whose start s = idx*chunk is < n; the rest own
+	// nothing and are dropped (their start would overrun n and panic a[s:e], and
+	// there is no bit-identical reduction identity to feed combine for Max/Min).
+	// Since chunk = ceil(n/w) >= n/w, active = ceil(n/chunk) is always <= w, so
+	// dropping trailing workers never loses real data.
+	active := (n + chunk - 1) / chunk
+	partials := make([]float64, active)
+	parallelFor(active, active, func(lo, hi int) {
 		for idx := lo; idx < hi; idx++ {
 			s := idx * chunk
 			e := s + chunk

@@ -98,6 +98,36 @@ func TestParallelReductions(t *testing.T) {
 	}
 }
 
+// TestMapReduceManyWorkers pins GOMAXPROCS far above the element count so the
+// worker count w exceeds the number of non-empty chunks: with chunk =
+// ceil(n/w), the stride idx*chunk overruns n before the last worker, so a naive
+// loop indexes a[s:e] with s >= n and panics ("slice bounds out of range
+// [>n:n]") — the exact wide-SMP crash seen on a 160-core POWER box. The fix
+// drops the empty workers, so SumP/MaxP/MinP must run cleanly and stay
+// bit-identical (Max/Min) or within tolerance (Sum) to the serial reducers for
+// any worker:element ratio. Sizes are chosen so n < w (more workers than
+// elements) and n just above the forced threshold.
+func TestMapReduceManyWorkers(t *testing.T) {
+	withMaxProcs(256, func() {
+		for _, n := range []int{5, 7, 8, 9, 16, 33, 100, 257, 1000} {
+			a := randVec(n, 11)
+			withThresholds(1, 1<<14, func() { // force parallel path even for n=5
+				gotSum, wantSum := SumP(a), Sum(a)
+				tol := 1e-9 * (float64(n) + 1) * (math.Abs(wantSum) + 1)
+				if math.Abs(gotSum-wantSum) > tol {
+					t.Fatalf("SumP n=%d: %v vs %v (tol %g)", n, gotSum, wantSum, tol)
+				}
+				if got, want := MaxP(a), Max(a); got != want {
+					t.Fatalf("MaxP n=%d: %v != %v", n, got, want)
+				}
+				if got, want := MinP(a), Min(a); got != want {
+					t.Fatalf("MinP n=%d: %v != %v", n, got, want)
+				}
+			})
+		}
+	})
+}
+
 // TestRunAxisP checks the parallel axis-reduction driver reproduces the serial
 // SumAxis/MaxAxis kernel exactly, across the serial (below-threshold), the
 // outer-split parallel, and the single-outer-slab (outer<2, axis-0) paths.
