@@ -32,13 +32,16 @@ The numeric inner loops are kept behind a narrow kernel API. Behind it,
 `GOMAXPROCS`); the sum reduction uses a **go-asmgen SIMD kernel** (NEON on
 arm64, SSE2 on amd64); and `MatMul` is a **panel-packed, cache-blocked GEMM**
 with a go-asmgen SIMD-FMA micro-kernel (NEON 4×8 on arm64, SSE2 4×4 on amd64) —
-the OpenBLAS/BLIS structure. So go-ndarray **beats single-threaded NumPy** on its
-core ops on large arrays — measured honestly in **[docs/perf.md](docs/perf.md)**
-(e.g. on arm64 vs NumPy 2.2.4: Add/Mul ~2×, Sum ~2.4×; the packed GEMM is **3–7×
-faster than the prior kernel** and sustains **~156 GFLOP/s**, reaching **~76% of
-multi-threaded OpenBLAS**). Where a faster reference exists — `Sqrt`/`Max` small
-sizes, and **tuned BLAS (OpenBLAS/MKL) for matmul** — it says so. It is a
-**standalone, reusable** module and the cgo-free ndarray backend behind
+the OpenBLAS/BLIS structure. So go-ndarray **beats single-threaded NumPy** on
+its core ops on large arrays (Add/Mul ~2×, Sum ~2.4×), and `MatMul` reaches
+**tuned-BLAS parity at 1024²**: ≈0.99× vs multi-threaded OpenBLAS 0.3.29 on an
+arm64 VM (~203 GFLOP/s, up from an earlier ~156 GFLOP/s / 0.76× before the
+by-lane-FMLA micro-kernel fix — see **[docs/perf.md](docs/perf.md)**), and
+≈1.00× of single-threaded vecLib on an Apple M4 Max (~373 GFLOP/s), where it
+also decisively **beats the pure-Go `gonum` 4–10×** at every size — see
+**[BENCHMARKS.md](BENCHMARKS.md)**. Where a faster reference exists —
+`Sqrt`/`Max` small sizes, and tuned BLAS at small matmul sizes — it says so.
+It is a **standalone, reusable** module and the cgo-free ndarray backend behind
 [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby)'s `NDArray` class.
 
 > ⚠️ **Status: float64 NumPy parity for the core surface, and faster than NumPy
