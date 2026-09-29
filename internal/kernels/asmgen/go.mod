@@ -5,5 +5,3 @@
 module github.com/go-ndarray/ndarray/internal/kernels/asmgen
 
 go 1.26.4
-
-require github.com/go-asmgen/asmgen v0.8.0
