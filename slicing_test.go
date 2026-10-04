@@ -119,8 +119,8 @@ func TestSliceIsViewWriteThrough(t *testing.T) {
 
 func TestSliceErrors(t *testing.T) {
 	m := mustArr(t, ok(FromData([]float64{1, 2, 3, 4}, 2, 2)))
-	if _, err := m.Slice(A(0)); !errors.Is(err, ErrIndex) {
-		t.Fatalf("too few indices: %v", err)
+	if _, err := m.Slice(A(0), All(), All()); !errors.Is(err, ErrIndex) {
+		t.Fatalf("too many indices: %v", err)
 	}
 	if _, err := m.Slice(A(5), All()); !errors.Is(err, ErrIndex) {
 		t.Fatalf("int index out of range: %v", err)
@@ -130,5 +130,30 @@ func TestSliceErrors(t *testing.T) {
 	}
 	if _, err := m.Slice(Rng(0, 2, 0), All()); !errors.Is(err, ErrIndex) {
 		t.Fatalf("zero step: %v", err)
+	}
+}
+
+// As in NumPy, unindexed trailing axes are taken whole: m[1] is a row and m[()]
+// is all of m. Filling them in must not write into the caller's index slice.
+func TestSliceFewerIndices(t *testing.T) {
+	m := mustArr(t, ok(FromData([]float64{1, 2, 3, 4, 5, 6}, 2, 3)))
+	row := mustArr(t, ok(m.Slice(A(1))))
+	eqInts(t, row.Shape(), []int{3})
+	if row.At(0) != 4 || row.At(2) != 6 {
+		t.Fatalf("m[1] = %v", row)
+	}
+	all := mustArr(t, ok(m.Slice()))
+	eqInts(t, all.Shape(), []int{2, 3})
+	if all.At(1, 2) != 6 {
+		t.Fatalf("m[()] = %v", all)
+	}
+	backing := []Index{Step(-1), A(0)}
+	rev := mustArr(t, ok(m.Slice(backing[:1]...)))
+	eqInts(t, rev.Shape(), []int{2, 3})
+	if rev.At(0, 0) != 4 {
+		t.Fatalf("m[::-1][0,0] = %v", rev.At(0, 0))
+	}
+	if backing[1] != A(0) {
+		t.Fatalf("Slice wrote into the caller's slice: %+v", backing[1])
 	}
 }

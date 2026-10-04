@@ -853,8 +853,8 @@ func (a *Array) reduceLayout(axis int) (outer, axisLen, inner int) {
 // reduceAxis is the shared driver for the axis reductions. It validates the
 // axis, materialises the data, runs the supplied kernel, and wraps the result
 // in an array of the reduced shape. It rejects reduction along a zero-length
-// axis (the empty-reduction case), matching this package's whole-array
-// reductions which error on empty input.
+// axis, as numpy does for the reductions with no identity (max, min, argmax,
+// argmin); Sum and Prod, which have one, go through reduceAxisOr instead.
 func (a *Array) reduceAxis(
 	axis int, keepdims bool,
 	kernel func(dst, src []float64, outer, axisLen, inner, lo, hi int),
@@ -886,13 +886,37 @@ func (a *Array) reduceAxis(
 // is kept with length 1 (e.g. (2,3) summed over axis 0 -> (1,3)); otherwise it
 // is removed (-> (3,)). A negative axis counts from the end.
 func (a *Array) SumAxis(axis int, keepdims bool) (*Array, error) {
-	return a.reduceAxis(axis, keepdims, kernels.SumAxis)
+	return a.reduceAxisOr(axis, keepdims, kernels.SumAxis, 0)
+}
+
+// reduceAxisOr is reduceAxis for a reduction with an identity: along a
+// zero-length axis every output element is the identity, as in numpy
+// (np.zeros((3, 0)).sum(axis=1) is [0, 0, 0], .prod(axis=1) is [1, 1, 1]),
+// and as Sum and Prod already return for an empty array.
+func (a *Array) reduceAxisOr(
+	axis int, keepdims bool,
+	kernel func(dst, src []float64, outer, axisLen, inner, lo, hi int),
+	identity float64,
+) (*Array, error) {
+	ax, err := a.normalizeAxis(axis)
+	if err != nil {
+		return nil, err
+	}
+	if a.shape[ax] != 0 {
+		return a.reduceAxis(ax, keepdims, kernel)
+	}
+	shape := a.reduceShape(ax, keepdims)
+	dst := a.alloc(prod(shape), false)
+	for i := range dst {
+		dst[i] = identity
+	}
+	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}, nil
 }
 
 // ProdAxis returns the product along the given axis. See SumAxis for the
 // axis/keepdims semantics.
 func (a *Array) ProdAxis(axis int, keepdims bool) (*Array, error) {
-	return a.reduceAxis(axis, keepdims, kernels.ProdAxis)
+	return a.reduceAxisOr(axis, keepdims, kernels.ProdAxis, 1)
 }
 
 // MaxAxis returns the maximum along the given axis. See SumAxis for the
@@ -910,13 +934,17 @@ func (a *Array) MinAxis(axis int, keepdims bool) (*Array, error) {
 // MeanAxis returns the arithmetic mean along the given axis. See SumAxis for the
 // axis/keepdims semantics.
 func (a *Array) MeanAxis(axis int, keepdims bool) (*Array, error) {
-	r, err := a.SumAxis(axis, keepdims)
+	ax, err := a.normalizeAxis(axis)
 	if err != nil {
 		return nil, err
 	}
-	// The reduced axis length is positive (SumAxis rejected zero-length axes),
-	// so this scaling is well-defined.
-	ax, _ := a.normalizeAxis(axis)
+	// numpy returns NaN with a RuntimeWarning for the mean of an empty slice;
+	// Go has no warnings, so this is an error, as it is for Mean.
+	if a.shape[ax] == 0 {
+		return nil, fmt.Errorf("%w: mean along zero-length axis %d",
+			ErrShapeMismatch, ax)
+	}
+	r, _ := a.SumAxis(ax, keepdims) // ax is valid and non-empty: cannot fail
 	n := float64(a.shape[ax])
 	for i := range r.data {
 		r.data[i] /= n

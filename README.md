@@ -132,6 +132,13 @@ is `Outer`, which has no error result: it panics when its result is too big,
 which takes operands of more than 2^30 elements each. An empty array whose
 other axis is huge, `(2^58, 0)`, costs nothing to reduce, concatenate or scan.
 
+A shape that is representable can still be far larger than memory, and Go
+cannot recover from running out of it: the process dies, where NumPy raises
+`MemoryError`. Several operations produce more than they are given:
+broadcasting (`(n, 1) + (1, n)` is n² elements), `Outer`, `MatMul`, and summing
+the empty axis of `(0, n)` (n zeros, as in NumPy). When shapes come from
+someone else, bound the result's size before computing it.
+
 The assembly kernels take raw pointers. Their Go wrappers check every operand
 the kernel reads or writes against the length it is given, so a mistake is an
 index panic in Go, never an access outside a slice; a test places each operand
@@ -156,6 +163,7 @@ cols, _ := m.SumAxis(0, false)      // sum down each column -> [3 5 7]
 // NumPy basic-indexing views (share data):
 col0, _ := m.Slice(ndarray.All(), ndarray.A(0))     // m[:,0] -> [0 3]
 sub, _ := m.Slice(ndarray.R(0, 2), ndarray.Step(2)) // m[0:2, ::2]
+row1, _ := m.Slice(ndarray.A(1))                    // m[1]: unindexed axes are whole
 
 // ufuncs and masks
 roots := m.Sqrt()

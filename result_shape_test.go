@@ -70,7 +70,14 @@ func TestEmptyArraysWithHugeAxesReturnPromptly(t *testing.T) {
 		ops := []func() (*Array, error){
 			func() (*Array, error) { return Concatenate([]*Array{a, a}, -1) },
 			func() (*Array, error) { return Concatenate([]*Array{a, a}, 0) },
-			func() (*Array, error) { return a.SumAxis(0, false) },
+			func() (*Array, error) {
+				if sh[0] == 0 {
+					// Summing the empty axis of (0, H) is H zeros, as in numpy: a
+					// real allocation of H elements, not a walk over nothing.
+					return nil, nil
+				}
+				return a.SumAxis(0, false)
+			},
 			func() (*Array, error) { return a.MaxAxis(0, true) },
 			func() (*Array, error) { return a.MeanAxis(0, false) },
 			func() (*Array, error) { return a.ArgMaxAxis(0, false) },
@@ -81,7 +88,7 @@ func TestEmptyArraysWithHugeAxesReturnPromptly(t *testing.T) {
 		go func() {
 			defer close(done)
 			for _, op := range ops {
-				if r, err := op(); err == nil && r.Size() != 0 {
+				if r, err := op(); err == nil && r != nil && r.Size() != 0 {
 					t.Errorf("%v: a result with %d elements from an empty array", sh, r.Size())
 				}
 			}

@@ -11,8 +11,13 @@ import "fmt"
 // Take is integer fancy indexing into the flat array.
 
 // MaskSelect returns a 1-D array of the elements of a where mask is truthy
-// (non-zero), in row-major order — NumPy's a[mask]. mask must broadcast to a's
-// shape (typically it has exactly a's shape, e.g. a mask from a.Greater(...)).
+// (non-zero), in row-major order: NumPy's a[mask] for a mask of a's shape, the
+// usual case (a mask from a.Greater(...)). mask may also broadcast to a's shape,
+// which NumPy rejects (IndexError): a (3,) mask selects the same columns of
+// every row of a (2, 3). Two NumPy forms differ: a mask covering only the
+// leading axes, a[rowmask], is rejected here unless it broadcasts; and a 0-d
+// mask selects all or none of a, flattened, where NumPy returns a with a new
+// leading axis of length 1 or 0.
 func (a *Array) MaskSelect(mask *Array) (*Array, error) {
 	shape, err := broadcastShape(a.shape, mask.shape)
 	if err != nil {

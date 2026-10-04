@@ -143,15 +143,20 @@ func normBound(b, length, lo, hi int) int {
 }
 
 // Slice returns a view of the array selected by per-axis indices, following
-// NumPy basic-indexing semantics. It accepts exactly Ndim index arguments
-// (build them with A, All, R, Rng, From, To). Integer indices (A) drop their
+// NumPy basic-indexing semantics. It accepts up to Ndim index arguments (build
+// them with A, All, R, Rng, From, To, Step); as in NumPy, the axes left
+// unindexed are taken whole, so a.Slice(A(1)) of a matrix is its second row
+// and a.Slice() is a view of all of a. Integer indices (A) drop their
 // axis; range indices keep the axis as a strided view that shares the receiver's
 // backing data — writes through the view are visible in the original and vice
 // versa. The result may have a non-zero offset and arbitrary strides.
 func (a *Array) Slice(idx ...Index) (*Array, error) {
-	if len(idx) != len(a.shape) {
+	if len(idx) > len(a.shape) {
 		return nil, fmt.Errorf("%w: got %d indices for %d-dimensional array",
 			ErrIndex, len(idx), len(a.shape))
+	}
+	for len(idx) < len(a.shape) {
+		idx = append(idx[:len(idx):len(idx)], All()) // never into the caller's array
 	}
 	offset := a.offset
 	shape := make([]int, 0, len(a.shape))
