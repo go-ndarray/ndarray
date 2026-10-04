@@ -603,6 +603,37 @@ so the serial GEMM is at 0.69×; 32 threads 13.1 ms at 1024², so MatMul is at
 0.56×. OpenBLAS unrolls further and uses POWER9-only `lxv` loads; Go's ppc64le
 baseline is POWER8.
 
+## loong64: LASX kernels (2026-10-04)
+
+Go's loong64 assembler has LASX vector float64 add/sub/mul/div, square root and
+256-bit loads, but no fused multiply-add and no broadcast load; go-asmgen
+v0.14.0 encodes `xvfmadd.d` and `xvldrepl.d` as `WORD`s (pinned against GNU as
+2.43, bit-identical to `math.FMA` on a Loongson 3C5000L; transitional until
+cmd/asm names them). go-ndarray uses them for sum, dot, sqrt, add/sub/mul/div
+and an 8×8 GEMM micro-kernel (16 four-lane accumulators, A broadcast by
+`xvldrepl.d`). LASX is not on every LoongArch CPU, so the kernels run only when
+the kernel reports it in AT_HWCAP (`/proc/self/auxv`), with the scalar code as
+the fallback; the parsing is a pure function tested on every target.
+
+Loongson 3C5000L (cfarm401, 32 cores), against the scalar code, best of 3
+interleaved runs (the host's load average of ~146 is processes stuck in
+uninterruptible sleep; its CPUs measured 100% idle):
+
+| op | before | after | gain |
+|----|--:|--:|:--:|
+| micro-kernel, 1 core | 7.0 GFLOP/s | 27.5 GFLOP/s | ×3.95 |
+| serial GEMM 512², 1 core | 5.3 GFLOP/s | 20.0 GFLOP/s | ×3.75 |
+| MatMul 64² / 512² / 1024², 32 threads | | | ×1.9 / ×1.3 / ×1.1 |
+| Sum 256 Ki / 4 Mi, 1 core | 658 / 11 750 µs | 65 / 4 615 µs | ×10.2 / ×2.5 |
+| Sum 1 Ki / 16 Ki (below the parallel threshold: one core) | | | ×16 / ×13 |
+| Sqrt 1 Ki–16 Ki | | | ×3.8 |
+| MatVec 1024² | 364 µs | 224 µs | ×1.6 |
+
+At 4 Mi elements in parallel, sum and sqrt are memory-bound (parity); the
+parallel 4 Mi sum is bimodal on this host (1.6 ms or 7 ms in either version),
+so only the minima are compared. No NumPy or BLAS is installable there (the
+host has no route to package mirrors), so there is no external reference.
+
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`
@@ -629,7 +660,10 @@ baseline is POWER8.
 - **ppc64le (VSX)**, since v0.2.3: sum, dot, sqrt, add/sub/mul/div and an 8×8
   GEMM micro-kernel; max/min stay scalar (the ISA's `xvmaxdp` NaN rule is not
   NumPy's). See the ppc64le section above.
-- The other three 64-bit Go targets — **riscv64, loong64, s390x** — keep
+- **loong64 (LASX)**, since v0.2.4, when the kernel reports LASX in AT_HWCAP
+  (not every LoongArch CPU has it): sum, dot, sqrt, add/sub/mul/div and an 8×8
+  GEMM micro-kernel; max/min stay scalar. See the loong64 section above.
+- The other two 64-bit Go targets — **riscv64, s390x** — keep
   the validated scalar oracles, using the same four-accumulator max/min, direct
   sqrt loop, and a **scalar 4×4 GEMM micro-kernel** over the packed panels, and
   still get the **packing + cache blocking + multicore** structure (they have
@@ -638,10 +672,12 @@ baseline is POWER8.
   **ppc64le** has no vector-double arithmetic (no `XVADDDP`/`XVMADDADP`), which
   go-asmgen v0.13.0 now encodes as `WORD`s, so ppc64le has kernels;
   **loong64** has vector-double add/sub/mul/div (`VADDD` assembles to
-  `vfadd.d`, `VMULD` to `vfmul.d`, `XVADDD` to `xvfadd.d`) but no vector FMA;
+  `vfadd.d`, `VMULD` to `vfmul.d`, `XVADDD` to `xvfadd.d`) but no vector FMA
+  or broadcast load, which go-asmgen v0.14.0 encodes (transitionally), so
+  loong64 has kernels;
   **s390x** has them, FMA included (`VFADB`, `VFMADB`); **riscv64** has them
   (`VFADDVV`, `VFMACCVV`), but the V extension is optional and needs a run-time
-  check. So loong64, s390x and riscv64 kernels are work not yet done, not a
+  check. So s390x and riscv64 kernels are work not yet done, not a
   toolchain wall. (s390x additionally exercises the big-endian path in CI.)
 
 All six are exercised in CI (native amd64/arm64 + qemu for the rest); each

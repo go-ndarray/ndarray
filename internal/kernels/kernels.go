@@ -3,7 +3,7 @@
 // Every loop here is a portable, pure-Go (CGO=0) scalar kernel. They are kept
 // behind this small, contiguous-slice API so that SIMD variants drop in without
 // changing callers or tests: go-asmgen-generated kernels replace the hot ones
-// on amd64, arm64 and ppc64le (the *_amd64/_arm64/_ppc64le files), while these
+// on amd64, arm64, ppc64le and loong64 (the *_<arch> files), while these
 // scalar versions remain the reference and the fallback elsewhere.
 //
 // Kernels operate on flat, contiguous []float64 slices. Shape, stride and
