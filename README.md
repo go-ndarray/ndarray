@@ -4,7 +4,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-013243)](https://go-ndarray.github.io/docs/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.26.4%2B-00ADD8)](https://go.dev/dl/)
+[![Go](https://img.shields.io/badge/go-1.26.6%2B-00ADD8)](https://go.dev/dl/)
 [![Status](https://img.shields.io/badge/status-numpy%20parity%20(float64)-9a6700)](docs/plan-ndarray.md)
 
 **A pure-Go (CGO=0) NumPy-style N-dimensional array library.** Row-major
@@ -106,7 +106,8 @@ pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). It is a
 > the suite on amd64, arm64, 386, and riscv64/loong64/ppc64le/s390x/arm under
 > qemu, on Linux, macOS and Windows, and compiles it for every `GOOS/GOARCH`
 > pair Go supports; v0.1.0 and v0.2.0 were also run on real amd64, arm64,
-> ppc64le, riscv64 and loong64 hardware. See **[docs/plan-ndarray.md](docs/plan-ndarray.md)**
+> ppc64le, riscv64 and loong64 hardware, v0.3.0 on real amd64, arm64, ppc64le
+> and loong64. See **[docs/plan-ndarray.md](docs/plan-ndarray.md)**
 > for the roadmap (more dtypes, more SIMD targets).
 
 ## Why this module?
@@ -117,8 +118,25 @@ pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). It is a
 arch is therefore a durable foundation. The numeric loops live in
 `internal/kernels`, each with a pure-Go reference implementation;
 [go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels replace them
-on amd64 and arm64 today, behind the same API and held to the same tests, and
-the other 64-bit targets are next.
+on amd64, arm64, ppc64le and loong64 today, behind the same API and held to the
+same tests; riscv64 and s390x are next.
+
+## Untrusted input
+
+Shapes, indices and data can come from someone else (a file, a request), so
+every operation answers a shape it cannot represent with an error wrapping
+`ErrShapeMismatch` instead of a panic or a wrong array. That covers results as
+well as inputs: `(2^32, 0) @ (0, 2^32)` holds no data, yet its result would
+have 2^64 elements, so `MatMul` refuses it, as NumPy does. The one exception
+is `Outer`, which has no error result: it panics when its result is too big,
+which takes operands of more than 2^30 elements each. An empty array whose
+other axis is huge, `(2^58, 0)`, costs nothing to reduce, concatenate or scan.
+
+The assembly kernels take raw pointers. Their Go wrappers check every operand
+the kernel reads or writes against the length it is given, so a mistake is an
+index panic in Go, never an access outside a slice; a test places each operand
+flush against an inaccessible page to prove the kernels themselves stay inside
+(see [SECURITY.md](SECURITY.md)).
 
 ## Example
 
