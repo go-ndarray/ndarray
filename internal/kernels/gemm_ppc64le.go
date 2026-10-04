@@ -16,6 +16,7 @@ const (
 // gemmMicro adds the MR x NR tile sum_p pa[p*MR..]*pb[p*NR..] into the C block
 // at dst[0:], whose rows are ldc apart.
 func gemmMicro(kc int, pa, pb, dst []float64, ldc int) {
+	_, _, _ = pa[kc*MR-1], pb[kc*NR-1], dst[(MR-1)*ldc+NR-1] // the kernel's whole reach
 	gemmMicro8x8VSX(kc, &pa[0], &pb[0], &dst[0], ldc)
 }
 
@@ -25,6 +26,7 @@ func dotSIMD(a, b []float64) float64 {
 	if len(a) == 0 {
 		return 0
 	}
+	_ = b[len(a)-1] // the kernel reads len(a) of b
 	return dotVSX(&a[0], &b[0], len(a))
 }
 

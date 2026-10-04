@@ -32,6 +32,7 @@ var useFMA = hasFMA()
 // dst[0:], whose rows are ldc apart. pa, pb hold at least kc*MR and kc*NR packed
 // (zero-padded) doubles; dst has at least (MR-1)*ldc + NR elements.
 func gemmMicro(kc int, pa, pb, dst []float64, ldc int) {
+	_, _, _ = pa[kc*MR-1], pb[kc*NR-1], dst[(MR-1)*ldc+NR-1] // the kernel's whole reach
 	if useFMA {
 		gemmMicro6x8FMA(kc, &pa[0], &pb[0], &dst[0], ldc)
 		return
@@ -52,6 +53,7 @@ func dotSIMD(a, b []float64) float64 {
 	if !useFMA || len(a) == 0 {
 		return dotRange(a, b)
 	}
+	_ = b[len(a)-1] // the kernel reads len(a) of b
 	return dotFMA(&a[0], &b[0], len(a))
 }
 

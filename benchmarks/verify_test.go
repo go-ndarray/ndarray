@@ -37,7 +37,7 @@ func TestDumpForVerify(t *testing.T) {
 		put(tag+".mid", flat.At(flat.Size()/2))
 	}
 
-	x, y := vec(1 << 16), vec(1 << 16)
+	x, y := vec(1<<16), vec(1<<16)
 	r, _ := x.Add(y)
 	putArr("add", r)
 	r, _ = x.Mul(y)

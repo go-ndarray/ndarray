@@ -28,6 +28,7 @@ func sqrtSIMD(dst, src []float64) {
 	if len(dst) == 0 {
 		return
 	}
+	_ = src[len(dst)-1] // the kernel reads len(dst) of src
 	sqrtSSE2(&dst[0], &src[0], len(dst))
 }
 
@@ -56,6 +57,7 @@ func addBin(dst, a, b []float64) {
 	if len(dst) == 0 {
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	addSSE2(&dst[0], &a[0], &b[0], len(dst))
 }
 
@@ -63,6 +65,7 @@ func subBin(dst, a, b []float64) {
 	if len(dst) == 0 {
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	subSSE2(&dst[0], &a[0], &b[0], len(dst))
 }
 
@@ -70,6 +73,7 @@ func mulBin(dst, a, b []float64) {
 	if len(dst) == 0 {
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	mulSSE2(&dst[0], &a[0], &b[0], len(dst))
 }
 
@@ -77,6 +81,7 @@ func divBin(dst, a, b []float64) {
 	if len(dst) == 0 {
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	divSSE2(&dst[0], &a[0], &b[0], len(dst))
 }
 

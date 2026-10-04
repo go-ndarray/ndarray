@@ -40,6 +40,10 @@ func (a *Array) MatMul(b *Array) (*Array, error) {
 		return nil, fmt.Errorf("%w: MatMul %v x %v inner dims differ",
 			ErrLinalg, a.shape, b.shape)
 	}
+	// (m, 0) @ (0, n) holds no data, yet its m*n result can overflow.
+	if err := validateShape([]int{a.shape[0], b.shape[1]}); err != nil {
+		return nil, err
+	}
 	return matmul2D(a, b, a.shape[0], a.shape[1], b.shape[1]), nil
 }
 

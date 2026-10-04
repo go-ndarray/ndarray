@@ -23,6 +23,7 @@ const (
 // kc*MR and kc*NR packed (zero-padded) doubles; dst has at least (MR-1)*ldc + NR
 // elements. Bit-identical to the scalar ikj accumulation (see gemmEdge).
 func gemmMicro(kc int, pa, pb, dst []float64, ldc int) {
+	_, _, _ = pa[kc*MR-1], pb[kc*NR-1], dst[(MR-1)*ldc+NR-1] // the kernel's whole reach
 	gemmMicro4x8(kc, &pa[0], &pb[0], &dst[0], ldc)
 }
 
@@ -31,6 +32,7 @@ func dotSIMD(a, b []float64) float64 {
 	if len(a) == 0 {
 		return 0
 	}
+	_ = b[len(a)-1] // the kernel reads len(a) of b
 	return dotNEON(&a[0], &b[0], len(a))
 }
 

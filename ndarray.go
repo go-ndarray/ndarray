@@ -873,7 +873,11 @@ func (a *Array) reduceAxis(
 	// zero copy; only strided views pay a materialise. The kernel only reads src.
 	src := a.contiguousData()
 	dst := a.alloc(outer*inner, true)
-	kernels.RunAxisP(kernel, dst, src, outer, axisLen, inner)
+	// An empty result, (2^58, 0) reduced over axis 0, would still walk the
+	// 2^58-long axis: skip the kernel, there is nothing to compute.
+	if len(dst) > 0 {
+		kernels.RunAxisP(kernel, dst, src, outer, axisLen, inner)
+	}
 	shape := a.reduceShape(axis, keepdims)
 	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}, nil
 }

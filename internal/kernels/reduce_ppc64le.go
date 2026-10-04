@@ -26,6 +26,7 @@ func sqrtSIMD(dst, src []float64) {
 	if len(dst) == 0 {
 		return
 	}
+	_ = src[len(dst)-1] // the kernel reads len(dst) of src
 	sqrtVSX(&dst[0], &src[0], len(dst))
 }
 
@@ -38,24 +39,28 @@ func minSIMD(a []float64) float64 { return minUnrolled(a) }
 // kernels, each lane one IEEE operation, bit-identical to the scalar oracle.
 func addBin(dst, a, b []float64) {
 	if len(dst) > 0 {
+		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 		addVSX(&dst[0], &a[0], &b[0], len(dst))
 	}
 }
 
 func subBin(dst, a, b []float64) {
 	if len(dst) > 0 {
+		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 		subVSX(&dst[0], &a[0], &b[0], len(dst))
 	}
 }
 
 func mulBin(dst, a, b []float64) {
 	if len(dst) > 0 {
+		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 		mulVSX(&dst[0], &a[0], &b[0], len(dst))
 	}
 }
 
 func divBin(dst, a, b []float64) {
 	if len(dst) > 0 {
+		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 		divVSX(&dst[0], &a[0], &b[0], len(dst))
 	}
 }
