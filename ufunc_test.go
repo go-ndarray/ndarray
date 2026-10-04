@@ -103,3 +103,16 @@ func TestComparisonBroadcastAndError(t *testing.T) {
 		}
 	}
 }
+
+// TestExpTopOfRange: exp is finite up to ln(MaxFloat64) on every arch. Go
+// 1.26's amd64 math.Exp returns +Inf from x ~ 709.436, which Exp used to
+// inherit; numpy gives 1.3549863193146328e+308 for 709.5. The input is a
+// strided view, so the contiguous copy path is exercised too.
+func TestExpTopOfRange(t *testing.T) {
+	x := mustArr(t, ok(FromData([]float64{709.5, 0, 709.78, 0, -1000, 0}, 6)))
+	v, err := x.Slice(Step(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantData(t, v.Exp(), []int{3}, []float64{1.3549863193146328e+308, 1.7928227943945155e+308, 0})
+}

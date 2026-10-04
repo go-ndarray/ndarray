@@ -450,6 +450,37 @@ across cores. Below 64 elements per block the old path is kept.
 |----|--:|--:|--:|
 | before | 3.1 ms | 1.76 ms | 460 µs |
 | after | **0.84 ms** | **114–196 µs** | 460 µs |
+## Exp (2026-10-04)
+
+`Exp` went through `Map(math.Exp)`, and `math.Exp` itself was the cost: 13.2 ns
+per element on one Zen 3 core, 3.9 ns on M4 (the func-pointer call added only
+15–20%). It is now a port of the double-precision exp of Arm's
+optimized-routines (Szabolcs Nagy; glibc's exp since 2.28; MIT licence): x =
+k·ln2/128 + r, 2^(k/128) from a 128-entry table as scale·(1+tail), exp(r)−1 from
+a degree-5 polynomial. The common case is written out in the loop, because the
+function is too large to inline and a call per element cost a third of the
+time.
+
+- **Accuracy:** worst 0.504 ULP over 80 000 inputs across the whole finite
+  range, the region near 0, the overflow edge and the subnormal range,
+  measured against a 300-bit reference (`math/big`, ln 2 from its atanh
+  series), against Arm's documented 0.509. `math.Exp` measured 0.879 ULP on
+  the same inputs on arm64. The table was not trusted as copied:
+  `TestExpTable` re-derives all 256 entries from 2^(k/128) at 300 bits.
+- **A Go bug it removes:** on amd64, Go 1.26's `math.Exp` returns **+Inf for
+  x ≥ 1023.5·ln 2 ≈ 709.436**, although the result is finite up to
+  ln(MaxFloat64) ≈ 709.7827 (NumPy: `exp(709.5)` = 1.3549863193146328e+308).
+  Its assembly rounds k = x·log2(e) to 1024 there, and the biased-exponent
+  check treats that as overflow although the reduced factor is below 1. Seen on
+  real Zen 3 hardware, not only Rosetta. go-ndarray's `Exp` inherited it until
+  now; `TestExpTopOfRange` pins the fix.
+- Also just above ln(2^-1075), exp now rounds up to the smallest subnormal as
+  it should, where `math.Exp` returns 0.
+
+Speed, kernel only, 16 Ki elements: M4 30 µs (`math.Exp` 65 µs); one Zen 3 core
+62 µs (`math.Exp` 215 µs, NumPy single-threaded 78 µs). Whole `Exp` on Zen 3,
+16 cores: 1 Ki ×2.7, 16 Ki ×3, 256 Ki ×1.6, 4 Mi ×1.65; from 256 Ki on it is
+2–5× NumPy. A SIMD version (AVX2 gathers for the table) is the next step.
 
 ## SIMD coverage
 
