@@ -27,6 +27,7 @@ type Array struct {
 	shape   []int
 	strides []int
 	offset  int
+	ws      *Workspace // where results computed from this array are allocated; nil = heap
 }
 
 // ErrShapeMismatch is returned when a requested shape is invalid or
@@ -275,7 +276,7 @@ func (a *Array) forEach(f func(linear, pos int)) {
 //     general per-element gather.
 func (a *Array) materialize() []float64 {
 	n := a.Size()
-	out := make([]float64, n)
+	out := a.alloc(n, false) // every element is written below
 	if n == 0 {
 		return out
 	}
@@ -336,6 +337,7 @@ func (a *Array) Copy() *Array {
 		data:    a.materialize(),
 		shape:   cp,
 		strides: rowMajorStrides(cp),
+		ws:      a.ws,
 	}
 }
 
@@ -392,12 +394,14 @@ func (a *Array) Reshape(shape ...int) (*Array, error) {
 			data:    a.data,
 			shape:   cp,
 			strides: rowMajorStrides(cp),
+			ws:      a.ws,
 		}, nil
 	}
 	return &Array{
 		data:    a.materialize(),
 		shape:   cp,
 		strides: rowMajorStrides(cp),
+		ws:      a.ws,
 	}, nil
 }
 
@@ -409,6 +413,7 @@ func (a *Array) Ravel() *Array {
 		data:    data,
 		shape:   []int{len(data)},
 		strides: []int{1},
+		ws:      a.ws,
 	}
 }
 
@@ -427,6 +432,7 @@ func (a *Array) Transpose() *Array {
 		shape:   shape,
 		strides: strides,
 		offset:  a.offset,
+		ws:      a.ws,
 	}
 }
 
@@ -505,7 +511,7 @@ func (a *Array) broadcastTo(shape []int) []float64 {
 			estrides[i] = a.strides[j]
 		}
 	}
-	out := make([]float64, prod(shape))
+	out := a.alloc(prod(shape), false) // every element is written below
 	if len(out) == 0 {
 		return out
 	}
@@ -612,9 +618,9 @@ func (a *Array) binOp(b *Array, kernel func(dst, x, y []float64)) (*Array, error
 	// this is the minimal-overhead single-core path that matches NumPy's C loop
 	// at small n. Strided/broadcasting operands fall through to the general path.
 	if a.isContiguous() && b.isContiguous() && sameShape(a.shape, b.shape) {
-		dst := make([]float64, len(a.data))
+		dst := a.alloc(len(a.data), false)
 		kernel(dst, a.data, b.data)
-		return &Array{data: dst, shape: a.shape, strides: a.strides}, nil
+		return &Array{data: dst, shape: a.shape, strides: a.strides, ws: a.ws}, nil
 	}
 	shape, err := broadcastShape(a.shape, b.shape)
 	if err != nil {
@@ -622,10 +628,10 @@ func (a *Array) binOp(b *Array, kernel func(dst, x, y []float64)) (*Array, error
 	}
 	x := a.operandFor(shape)
 	y := b.operandFor(shape)
-	dst := make([]float64, prod(shape))
+	dst := a.alloc(prod(shape), false)
 	kernel(dst, x, y)
 	cp := append([]int(nil), shape...)
-	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}, nil
+	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: a.ws}, nil
 }
 
 // Add returns the elementwise sum a+b with broadcasting.
@@ -707,10 +713,10 @@ func (a *Array) DivScalar(v float64) *Array { r, _ := a.Div(scalarArray(v)); ret
 // must be safe to call concurrently (the package's math ufuncs are).
 func (a *Array) Map(f func(float64) float64) *Array {
 	src := a.contiguousData()
-	dst := make([]float64, len(src))
+	dst := a.alloc(len(src), false)
 	kernels.MapP(dst, src, f)
 	cp := append([]int(nil), a.shape...)
-	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}
+	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: a.ws}
 }
 
 // contiguousData returns the receiver's elements as a contiguous row-major
@@ -831,10 +837,10 @@ func (a *Array) reduceAxis(
 	// row-major (the common case), so a contiguous array reaches the kernel with
 	// zero copy; only strided views pay a materialise. The kernel only reads src.
 	src := a.contiguousData()
-	dst := make([]float64, outer*inner)
+	dst := a.alloc(outer*inner, true)
 	kernels.RunAxisP(kernel, dst, src, outer, axisLen, inner)
 	shape := a.reduceShape(axis, keepdims)
-	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}, nil
+	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}, nil
 }
 
 // SumAxis returns the sum along the given axis. With keepdims the reduced axis

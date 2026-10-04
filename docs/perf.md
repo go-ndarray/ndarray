@@ -123,7 +123,7 @@ with no result array, so they have no separate *into* row.)
   path is the supported way to hit/beat NumPy there (and at large n even the alloc
   form wins, because the kernel time then dwarfs the one allocation). (Sum and Max are
   the exceptions — their reduction kernels need no result allocation and win even
-  serially.)
+  serially.) **Superseded for loops by `Workspace`, see below.**
 
 ### NaN convention for Max / Min (and the SIMD max kernel)
 
@@ -312,6 +312,51 @@ The SIMD kernels are also validated against the scalar oracle per-arch in CI:
 | `Max` / `Min` | **FIXED — go wins 1.4× at 4 M, ~4× small** | builtin-`max` NaN-propagating oracle + 4-accumulator reducer + amd64 `MAXPD`+NaN-scan |
 | `MatMul` vs tuned BLAS (OpenBLAS) | **FIXED — parity at n=1024 (~0.99×, ~203 GFLOP/s); 0.97× at n=512** | by-lane FMLA micro-kernel (`FMLA Vd.2D,Vn.2D,Vm.D[i]` via `WORD`) closed the prior 0.76× gap. Only small n=256 trails (0.67×) on per-call overhead, not throughput — see above |
 | other `Map` ufuncs (`Exp`, `Log`, `Sin`…) | NumPy ~parity (libm-bound) | a packed `VEXP`/`VLOG` is libm-accuracy work; the math, not the dispatch, dominates here |
+
+## Allocation: `Workspace` (2026-10-04)
+
+On real amd64 hardware the allocating forms were far worse than on the M4: on
+a Zen 3 (16 cores), `x + y` lost to NumPy 0.13–0.25× at every size up to 256 Ki
+elements, while `AddInto` won. Slicing copies, `Concatenate` and broadcasting
+adds (whose results also allocate) lost 5–9×. Measured causes, on M4:
+
+- **The garbage collector.** A benchmark's live heap is tiny, so a 128 KiB
+  result per call triggered a GC cycle every ~22 calls (912 cycles in 20 000).
+  With 256 MiB–2 GiB of live heap, which is closer to a real program, the
+  overhead halves: 8.3 → 3.6 µs at 16 Ki, against 2.4 µs for `AddInto`.
+- **The rest:** `make` zeroes memory the kernel overwrites anyway, and fresh
+  memory is cold or page-faulted. `GOGC=off` does not help: it trades the
+  cycles for page faults (9.4 µs).
+
+A library must not set `GOGC`, and Go has no unzeroed allocation. What NumPy's
+reference counting gets for free is scoped reuse. ND4J, the Java ndarray
+library, has the same problem and answers it with *workspaces*: an arena that
+results of one pass come from, recycled at the end of the pass. `Workspace` is
+that. `ws.Use(x)` binds an input, every result computed from a bound array is
+carved from the arena (64-byte aligned, capped so an `append` cannot spill),
+results stay bound so a chain stays in it, and `Reset` recycles everything,
+folding a pass that needed several blocks into one block. Sites whose kernel
+writes every element (elementwise, ufuncs, copies, broadcasts, concatenation,
+`Where`, `Clip`, scans, `Take`, `Outer`, mat·vec) skip the zeroing. Those that
+accumulate (GEMM, vec·mat, axis reductions) clear their slot.
+
+Zen 3, 16 cores pinned, NumPy 2.5.3 single-threaded, median of two runs:
+
+| op | n | heap | **Workspace** | `*Into` | NumPy | Workspace vs NumPy |
+|----|--:|--:|--:|--:|--:|:--:|
+| Add | 1 024 | 2.6 µs | **0.38 µs** | 0.31 µs | 0.82 µs | 2.1× |
+| Add | 16 Ki | 35 µs | **4.6 µs** | 4.3 µs | 5.1 µs | 1.1× |
+| Add | 256 Ki | 498 µs | **67 µs** | 75 µs | 150 µs | 2.2× |
+| Add | 4 Mi | 8.0 ms | **2.2 ms** | 2.2 ms | 6.3 ms | 2.9× |
+| sqrt(x·y+x) | 1 024 | 12.2 µs | **2.6 µs** | — | 3.6 µs | 1.4× |
+| sqrt(x·y+x) | 16 Ki | 112 µs | **33 µs** | — | 34 µs | 1.0× |
+| sqrt(x·y+x) | 256 Ki | 1.18 ms | **0.39 ms** | — | 2.97 ms | 7.5× |
+| sqrt(x·y+x) | 4 Mi | 23.4 ms | **9.1 ms** | — | 19.2 ms | 2.1× |
+
+On M4 the same chain gains ×5 at 1 024 and ×1.6 at 4 Mi. Correctness: every
+operation is checked bit for bit against its heap result, including on passes
+whose recycled memory was first filled with NaN (a site that skipped zeroing it
+needed would leak the NaN; planting that bug in the GEMM made the test fail).
 
 ## amd64 on real hardware (2026-10-04)
 

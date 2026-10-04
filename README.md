@@ -26,6 +26,36 @@
   `MaskSelect` (`a[mask]`), `Nonzero` (`flatnonzero`), and `Take`.
 - **Manipulation** — `Concatenate`/`Stack`/`VStack`/`HStack`.
 - **Linear algebra** — `MatMul`/`Dot`/`Inner`/`Outer`.
+- **Memory reuse** — `Workspace`, an arena for loops: bind the inputs with
+  `ws.Use`, compute as usual, `ws.Reset()` at the end of each pass. Results stop
+  costing the garbage collector anything (see below).
+
+### Loops: `Workspace`
+
+Every operation returns a new array, and in a loop those results are garbage
+the collector must chase. NumPy frees its temporaries the moment their
+reference count drops; Go cannot. On a Zen 3 that made `x + y` on 1 024
+elements 3× slower than NumPy, and a chain like `sqrt(x*y + x)` 3.4× slower.
+A `Workspace` gives the results of one pass a single arena that `Reset` hands
+back:
+
+```go
+ws := ndarray.NewWorkspace()
+for step := 0; step < steps; step++ {
+	x := ws.Use(state)          // results computed from x come from ws
+	p, _ := x.Mul(w)
+	q, _ := p.Add(bias)
+	state = q.Sqrt().Detach()   // the one result that outlives the pass
+	ws.Reset()                  // everything else is recycled
+}
+```
+
+After the first pass nothing is allocated, nothing is zeroed that the kernel
+overwrites anyway, and the memory stays warm in cache: `x + y` on 1 024
+elements goes from 2.6 µs to 0.38 µs (2.1× NumPy), `sqrt(x*y + x)` on 256 Ki
+from 1.18 ms to 0.39 ms (7.5× NumPy). ⚠ An array allocated from the workspace
+is invalid after `Reset`; `Detach` is how a result leaves it. The `*Into`
+methods (`AddInto`, `SqrtInto`, …) remain the way to reuse one named buffer.
 
 The numeric inner loops are kept behind a narrow kernel API. Behind it,
 **large** elementwise ops, reductions and matmul run **multicore** (across

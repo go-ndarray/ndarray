@@ -106,6 +106,57 @@ func BenchmarkAddInto(b *testing.B) {
 	}
 }
 
+// BenchmarkAddWS is Add with its operands bound to a Workspace that is Reset
+// every iteration: the allocating form, minus the garbage collector and the
+// zeroing (see Workspace). Compare with BenchmarkAdd and BenchmarkAddInto.
+func BenchmarkAddWS(b *testing.B) {
+	for _, n := range elemSizes {
+		ws := nd.NewWorkspace()
+		x, y := ws.Use(vec(n)), vec(n)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.SetBytes(int64(n * 8))
+			for i := 0; i < b.N; i++ {
+				_, _ = x.Add(y)
+				ws.Reset()
+			}
+		})
+	}
+}
+
+// BenchmarkChain is sqrt(x*y + x) written the plain way (three allocating
+// operations, two temporaries), the shape of real array code; numpy's row
+// "Chain" is np.sqrt(x * y + x).
+func BenchmarkChain(b *testing.B) {
+	for _, n := range elemSizes {
+		x, y := vec(n), vec(n)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.SetBytes(int64(n * 8))
+			for i := 0; i < b.N; i++ {
+				p, _ := x.Mul(y)
+				q, _ := p.Add(x)
+				_ = q.Sqrt()
+			}
+		})
+	}
+}
+
+// BenchmarkChainWS is BenchmarkChain in a Workspace reset every iteration.
+func BenchmarkChainWS(b *testing.B) {
+	for _, n := range elemSizes {
+		ws := nd.NewWorkspace()
+		x, y := ws.Use(vec(n)), vec(n)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.SetBytes(int64(n * 8))
+			for i := 0; i < b.N; i++ {
+				p, _ := x.Mul(y)
+				q, _ := p.Add(x)
+				_ = q.Sqrt()
+				ws.Reset()
+			}
+		})
+	}
+}
+
 func BenchmarkMulInto(b *testing.B) {
 	for _, n := range elemSizes {
 		x, y := vec(n), vec(n)

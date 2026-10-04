@@ -55,10 +55,10 @@ func (a *Array) scanAxis(
 	}
 	outer, axisLen, inner := a.reduceLayout(axis)
 	src := a.materialize()
-	dst := make([]float64, len(src))
+	dst := a.alloc(len(src), false)
 	kernel(dst, src, outer, axisLen, inner)
 	shape := append([]int(nil), a.shape...)
-	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}, nil
+	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}, nil
 }
 
 // CumSum returns the cumulative sum along the given axis, matching
@@ -78,18 +78,18 @@ func (a *Array) CumProd(axis int) (*Array, error) {
 // order), matching numpy.cumsum with no axis.
 func (a *Array) CumSumFlat() *Array {
 	src := a.materialize()
-	dst := make([]float64, len(src))
+	dst := a.alloc(len(src), false)
 	kernels.CumSumAxis(dst, src, 1, len(src), 1)
-	return &Array{data: dst, shape: []int{len(dst)}, strides: []int{1}}
+	return &Array{data: dst, shape: []int{len(dst)}, strides: []int{1}, ws: a.ws}
 }
 
 // CumProdFlat returns the cumulative product over the flattened array (1-D,
 // row-major order), matching numpy.cumprod with no axis.
 func (a *Array) CumProdFlat() *Array {
 	src := a.materialize()
-	dst := make([]float64, len(src))
+	dst := a.alloc(len(src), false)
 	kernels.CumProdAxis(dst, src, 1, len(src), 1)
-	return &Array{data: dst, shape: []int{len(dst)}, strides: []int{1}}
+	return &Array{data: dst, shape: []int{len(dst)}, strides: []int{1}, ws: a.ws}
 }
 
 // Clip returns a new array with every element limited to the range [lo, hi],
@@ -99,10 +99,10 @@ func (a *Array) Clip(lo, hi float64) (*Array, error) {
 		return nil, fmt.Errorf("%w: clip bounds lo=%g > hi=%g", ErrShapeMismatch, lo, hi)
 	}
 	src := a.contiguousData()
-	dst := make([]float64, len(src))
+	dst := a.alloc(len(src), false)
 	kernels.Clip(dst, src, lo, hi)
 	shape := append([]int(nil), a.shape...)
-	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}, nil
+	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}, nil
 }
 
 // Where returns an array selecting from t where cond is truthy (non-zero) and
@@ -121,8 +121,8 @@ func Where(cond, t, f *Array) (*Array, error) {
 	c := cond.operandFor(shape)
 	tv := t.operandFor(shape)
 	fv := f.operandFor(shape)
-	dst := make([]float64, prod(shape))
+	dst := wsOf(cond, t, f).alloc(prod(shape), false)
 	kernels.Where(dst, c, tv, fv)
 	cp := append([]int(nil), shape...)
-	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}, nil
+	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: wsOf(cond, t, f)}, nil
 }

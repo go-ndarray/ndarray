@@ -174,5 +174,5 @@ func (a *Array) Slice(idx ...Index) (*Array, error) {
 		shape = append(shape, count)
 		strides = append(strides, step*a.strides[axis])
 	}
-	return &Array{data: a.data, shape: shape, strides: strides, offset: offset}, nil
+	return &Array{data: a.data, shape: shape, strides: strides, offset: offset, ws: a.ws}, nil
 }

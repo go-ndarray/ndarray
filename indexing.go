@@ -32,7 +32,7 @@ func (a *Array) MaskSelect(mask *Array) (*Array, error) {
 			out = append(out, av[i])
 		}
 	}
-	return &Array{data: out, shape: []int{len(out)}, strides: []int{1}}, nil
+	return &Array{data: out, shape: []int{len(out)}, strides: []int{1}, ws: a.ws}, nil
 }
 
 // Nonzero returns a 1-D array of the flat (row-major) indices at which a is
@@ -46,7 +46,7 @@ func (a *Array) Nonzero() *Array {
 			out = append(out, float64(i))
 		}
 	}
-	return &Array{data: out, shape: []int{len(out)}, strides: []int{1}}
+	return &Array{data: out, shape: []int{len(out)}, strides: []int{1}, ws: a.ws}
 }
 
 // Take returns a 1-D array gathering a's flattened (row-major) elements at the
@@ -55,7 +55,7 @@ func (a *Array) Nonzero() *Array {
 func (a *Array) Take(indices ...int) (*Array, error) {
 	flat := a.contiguousData()
 	n := len(flat)
-	out := make([]float64, len(indices))
+	out := a.alloc(len(indices), false)
 	for k, idx := range indices {
 		j := idx
 		if j < 0 {
@@ -67,5 +67,5 @@ func (a *Array) Take(indices ...int) (*Array, error) {
 		}
 		out[k] = flat[j]
 	}
-	return &Array{data: out, shape: []int{len(out)}, strides: []int{1}}, nil
+	return &Array{data: out, shape: []int{len(out)}, strides: []int{1}, ws: a.ws}, nil
 }

@@ -59,6 +59,7 @@ def main():
             ("AddInto", "np.add(x, y, out=z)"),
             ("MulInto", "np.multiply(x, y, out=z)"),
             ("SqrtInto", "np.sqrt(x, out=z)"),
+            ("Chain", "np.sqrt(x * y + x)"),
             ("Sum", "x.sum()"),
             ("Mean", "x.mean()"),
             ("Max", "x.max()"),

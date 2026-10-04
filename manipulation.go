@@ -8,7 +8,7 @@ import "fmt"
 // always-copy contract).
 func (a *Array) Flatten() *Array {
 	data := a.materialize()
-	return &Array{data: data, shape: []int{len(data)}, strides: []int{1}}
+	return &Array{data: data, shape: []int{len(data)}, strides: []int{1}, ws: a.ws}
 }
 
 // ExpandDims returns a view with a new length-1 axis inserted at the given
@@ -31,7 +31,7 @@ func (a *Array) ExpandDims(axis int) (*Array, error) {
 	// The inserted axis has length 1; its stride is irrelevant, use 0.
 	strides = append(strides, 0)
 	strides = append(strides, a.strides[axis:]...)
-	return &Array{data: a.data, shape: shape, strides: strides, offset: a.offset}, nil
+	return &Array{data: a.data, shape: shape, strides: strides, offset: a.offset, ws: a.ws}, nil
 }
 
 // Squeeze returns a view with length-1 axes removed. With no axes given, every
@@ -70,7 +70,7 @@ func (a *Array) Squeeze(axes ...int) (*Array, error) {
 			strides = append(strides, a.strides[i])
 		}
 	}
-	return &Array{data: a.data, shape: shape, strides: strides, offset: a.offset}, nil
+	return &Array{data: a.data, shape: shape, strides: strides, offset: a.offset, ws: a.ws}, nil
 }
 
 // Concatenate joins the given arrays along an existing axis, matching
@@ -115,7 +115,7 @@ func concatInto(arrays []*Array, ax int, out []int) *Array {
 	inner := prod(out[ax+1:])
 	outer := prod(out[:ax])
 	axisTotal := out[ax]
-	data := make([]float64, outer*axisTotal*inner)
+	data := wsOf(arrays...).alloc(outer*axisTotal*inner, false) // every slab is copied in
 	// Column offset (in the joined axis) where the next array's slab begins.
 	colBase := 0
 	for _, arr := range arrays {
@@ -131,7 +131,7 @@ func concatInto(arrays []*Array, ax int, out []int) *Array {
 		}
 		colBase += aLen
 	}
-	return &Array{data: data, shape: out, strides: rowMajorStrides(out)}
+	return &Array{data: data, shape: out, strides: rowMajorStrides(out), ws: wsOf(arrays...)}
 }
 
 // Stack joins the given arrays along a new axis, matching numpy.stack. Every
@@ -191,6 +191,7 @@ func atLeast2D(a *Array) *Array {
 			shape:   []int{1, a.shape[0]},
 			strides: []int{a.shape[0] * a.strides[0], a.strides[0]},
 			offset:  a.offset,
+			ws:      a.ws,
 		}
 	}
 	return a
