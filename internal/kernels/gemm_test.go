@@ -140,14 +140,11 @@ func TestGemmBandSizing(t *testing.T) {
 	})
 }
 
-// TestGemmParallelPackB forces packBP's split path (normally only for blocks of
-// 64 Ki elements or more) on small products, so the NR-panel ranges handed to
-// each goroutine — including a ragged last panel and more workers than panels
-// — must reassemble the exact packed block the serial packB writes.
-func TestGemmParallelPackB(t *testing.T) {
-	o := packBParMin
-	packBParMin = 1
-	defer func() { packBParMin = o }()
+// TestGemmSharedPackB runs MatMulP's parallel path on small products, where
+// the workers share the packing of B in chunks of NR-wide panels: the chunks —
+// including a ragged last panel and more workers than panels — must reassemble
+// the exact packed block the serial packB writes, in both pb buffers.
+func TestGemmSharedPackB(t *testing.T) {
 	withMaxProcs(4, func() {
 		withThresholds(1<<14, 1, func() { // force MatMulP's parallel path
 			for _, s := range []struct{ m, k, n int }{

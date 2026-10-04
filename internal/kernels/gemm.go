@@ -190,30 +190,6 @@ func packB(b Mat, pc, kc, jc, nc int, pb []float64) {
 	}
 }
 
-// packBParMin is the B-block size, in elements, from which packBP splits the
-// packing across workers (64 Ki doubles = 512 KiB). A var so tests can pin it.
-var packBParMin = 1 << 16
-
-// packBP is packB with the NR-wide panels split across w goroutines. MatMulP
-// packs the shared B block once per (jc, pc) round, and done by one goroutine
-// it is a serial step while every other worker waits at the round's start:
-// a 1 MiB strided copy, eight times in a 1024^2 product.
-//
-// Below packBParMin elements the goroutine launch costs more than the copy
-// (measured on M4: a 128x128 block packed in parallel made 96^3..128^2
-// products 8-15% slower), so a small block is packed by the caller alone.
-func packBP(b Mat, pc, kc, jc, nc int, pb []float64, w int) {
-	if kc*nc < packBParMin {
-		packB(b, pc, kc, jc, nc, pb)
-		return
-	}
-	panels := (nc + NR - 1) / NR
-	parallelFor(panels, min(w, panels), func(lo, hi int) {
-		j0 := lo * NR
-		packB(b, pc, kc, jc+j0, min(hi*NR, nc)-j0, pb[j0*kc:])
-	})
-}
-
 // packA copies A[ic:ic+mc][pc:pc+kc] into MR-tall row panels: for each panel ir
 // the layout is pa[ir*kc + p*MR + r] = A(ic+ir+r, pc+p), with the r >= mr rows
 // of an edge panel zero-filled so the micro-kernel reads a full MR.
@@ -339,41 +315,76 @@ func MatMulStridedP(dst []float64, a, b Mat, m, k, n int) {
 		w = nBands // never spawn more goroutines than there is work for
 	}
 
-	// One shared B-pack buffer (packed once per jc/pc block) plus one private
-	// A-pack buffer per worker. The shared pb is sized like a normal pooled B
-	// buffer; getPackBuf grows it for any test-raised block sizes.
-	shared := getPackBuf()
-	pb := shared.pb
+	// The workers are started once per call and stay for every (jc, pc) block,
+	// meeting at a spinning barrier between blocks instead of being forked and
+	// joined per block. A fork/join wakes the parked worker threads one after
+	// another; measured on a 16-vCPU Zen 3 guest it costs 26 µs at 2 workers,
+	// 165 µs at 8 and 330 µs at 16, against ~0.8 ms of work per block of a
+	// 1024² product. With two fork/joins per block (pack B, then the bands)
+	// that was ~40% of the wall time, and why the CPUs were busy only 7 of 16.
+	//
+	// pb is double-buffered so one barrier per block suffices: block i packs
+	// into pbs[i%2] while nobody can still be reading it, because reading it
+	// for block i-2 ended before everyone passed block i-1's barrier.
+	shared, shared2 := getPackBuf(), getPackBuf()
 	defer packPool.Put(shared)
+	defer packPool.Put(shared2)
+	pbs := [2][]float64{shared.pb, shared2.pb}
 
+	type block struct{ jc, nc, pc, kc int }
+	var blocks []block
 	for jc := 0; jc < n; jc += blockNC { // L3 column block of B
-		nc := min(blockNC, n-jc)
 		for pc := 0; pc < k; pc += blockKC { // L2 contraction block
-			kc := min(blockKC, k-pc)
-			packBP(b, pc, kc, jc, nc, pb, w) // pack B once, by all workers
-
-			var next atomic.Int64 // shared band cursor
-			var wg sync.WaitGroup
-			for g := 0; g < w; g++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					ab := getPackBuf()
-					for {
-						bi := int(next.Add(1)) - 1
-						if bi >= nBands {
-							break
-						}
-						r0 := bi * bandRows
-						r1 := min(r0+bandRows, m)
-						gemmBand(r0, r1, jc, nc, pc, kc, dst, a, n, ab.pa, pb)
-					}
-					packPool.Put(ab)
-				}()
-			}
-			wg.Wait()
+			blocks = append(blocks, block{jc, min(blockNC, n-jc), pc, min(blockKC, k-pc)})
 		}
 	}
+	// Each block has its own band cursor (dynamic banding within a block) and
+	// its own B-panel cursor (packing shared by whoever is free).
+	bandNext := make([]atomic.Int64, len(blocks))
+	packNext := make([]atomic.Int64, len(blocks))
+	bar := newSpinBarrier(w)
+
+	work := func() {
+		ab := getPackBuf()
+		defer packPool.Put(ab)
+		for i, bl := range blocks {
+			pb := pbs[i%2]
+			panels := (bl.nc + NR - 1) / NR
+			for {
+				// B panels in chunks, so packing is shared without one atomic
+				// per 8-column panel.
+				const chunk = 4
+				p0 := int(packNext[i].Add(chunk)) - chunk
+				if p0 >= panels {
+					break
+				}
+				j0, j1 := p0*NR, min((p0+chunk)*NR, bl.nc)
+				packB(b, bl.pc, bl.kc, bl.jc+j0, j1-j0, pb[j0*bl.kc:])
+			}
+			bar.wait() // pb for block i is complete
+			for {
+				bi := int(bandNext[i].Add(1)) - 1
+				if bi >= nBands {
+					break
+				}
+				r0 := bi * bandRows
+				gemmBand(r0, min(r0+bandRows, m), bl.jc, bl.nc, bl.pc, bl.kc, dst, a, n, ab.pa, pb)
+			}
+			// No barrier here: the next block packs into the other buffer, and
+			// the barrier after that packing orders this block's reads of pb
+			// before the packing of block i+2 into it. Tiles of C are still
+			// accumulated in pc order: a band of block i+1 starts only after
+			// every worker has passed block i+1's barrier, i.e. finished its
+			// bands of block i.
+		}
+	}
+	var wg sync.WaitGroup
+	for g := 1; g < w; g++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); work() }()
+	}
+	work() // the caller is worker 0
+	wg.Wait()
 }
 
 // MatMul computes dst = a(m x k) * b(k x n) serially with the packed GEMM (the
