@@ -401,10 +401,28 @@ makes anyway), so a transposed, sliced, reversed or broadcast operand costs no
 extra pass.
 
 **Still behind OpenBLAS with 16 threads** (0.54–0.66× on large products, 0.3×
-below 256²): per-core throughput in the parallel run is about a third of the
-serial kernel's, so the next lever is the parallel schedule (a persistent
-worker pool instead of a goroutine launch per round, and the BLIS jr-loop
-split for short m), then an AVX-512 kernel for the hosts that have it.
+below 256²). Where the parallel loss is, measured on the Zen 3:
+
+- It is not the hardware: 16 *independent* serial 512² GEMMs, one per core,
+  each ran at 41 GFLOP/s (656 in total), while the parallel 1024² GEMM ran its
+  kernel at 15–17 GFLOP/s per core. Per-core efficiency already drops from 40
+  to ~30 GFLOP/s at 2 cores.
+- It is not scheduling overhead: 83% of the parallel profile is the
+  micro-kernel itself, which stalls on the shared packed B panel. On this
+  part the last-level cache is split between core complexes, so the panel is
+  partly remote.
+- Taller row bands (more reuse of each B micro-panel) do not help: interleaved
+  over 5 runs they were worse at 1024² and equal at 2048².
+- **A 2-D tiling of C with private packing** (no barrier, nothing shared) was
+  built and measured, and is **not shipped**: ×1.24 at 1024² on the Zen 3, but
+  ×0.62 at 512² and Inner, and ×0.70–0.93 at every size on M4, whose cluster
+  L2 holds the shared panel well. A tile repacks (rows + cols)·k elements for
+  rows·cols·k multiply-adds, and a strided pack costs far more per element than
+  an FMA, so tiles under ~256×256 lose.
+
+The next lever is therefore a shared B panel per core complex (or per cache
+domain), not a different split of C, then an AVX-512 kernel for the hosts that
+have it.
 
 Correctness was checked on real hardware for five of the six 64-bit targets:
 amd64 (Zen 3, FMA path), arm64 (cfarm185), ppc64le (cfarm120), riscv64 (cfarm94)
