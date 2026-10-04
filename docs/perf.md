@@ -588,12 +588,18 @@ Speed, 16 Ki elements, one core: M4 37 µs (`math.Log` 72), Zen 3 73 µs
   plain vector FP add exists). All beat/parity NumPy via SIMD + multicore, no
   `func`-pointer indirection.
 - The other four 64-bit Go targets — **riscv64, loong64, ppc64le, s390x** — keep
-  the validated scalar oracles (Go's loong64/ppc64le assemblers expose no
-  vector-double arithmetic; riscv64's V extension is optional), using the same
-  four-accumulator max/min, direct sqrt loop, and a **scalar 4×4 GEMM
-  micro-kernel** over the packed panels, and still get the **packing + cache
-  blocking + multicore** win, so they also beat single-threaded NumPy on large
-  arrays. (s390x additionally exercises the big-endian path in CI.)
+  the validated scalar oracles, using the same four-accumulator max/min, direct
+  sqrt loop, and a **scalar 4×4 GEMM micro-kernel** over the packed panels, and
+  still get the **packing + cache blocking + multicore** structure (they have
+  not been measured against NumPy). What the Go assembler offers them, checked
+  on Go 1.26.4 and 1.27.1 by assembling and disassembling (2026-10-04):
+  **ppc64le** has no vector-double arithmetic (no `XVADDDP`/`XVMADDADP`);
+  **loong64** has vector-double add/sub/mul/div (`VADDD` assembles to
+  `vfadd.d`, `VMULD` to `vfmul.d`, `XVADDD` to `xvfadd.d`) but no vector FMA;
+  **s390x** has them, FMA included (`VFADB`, `VFMADB`); **riscv64** has them
+  (`VFADDVV`, `VFMACCVV`), but the V extension is optional and needs a run-time
+  check. So loong64, s390x and riscv64 kernels are work not yet done, not a
+  toolchain wall. (s390x additionally exercises the big-endian path in CI.)
 
 All six are exercised in CI (native amd64/arm64 + qemu for the rest); each
 per-arch job regenerates the committed `.s`, fails if it is stale, vets
