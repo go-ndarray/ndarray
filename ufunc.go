@@ -52,8 +52,23 @@ func (a *Array) Exp() *Array { return a.Map(math.Exp) }
 // Log returns the elementwise natural logarithm.
 func (a *Array) Log() *Array { return a.Map(math.Log) }
 
-// Log2 returns the elementwise base-2 logarithm.
-func (a *Array) Log2() *Array { return a.Map(math.Log2) }
+// Log2 returns the elementwise base-2 logarithm, within 2 ULP of numpy's.
+func (a *Array) Log2() *Array { return a.Map(log2) }
+
+// log2 is math.Log2 without its cancellation near 1. math.Log2 computes
+// log(frac)/ln2 + exp with frac in [0.5, 1), so for x just above 1 it adds
+// about -1 and 1 and keeps few correct digits (log2(1+1e-10) had a relative
+// error of 3e-7). Centring frac on 1, in [sqrt(1/2), sqrt(2)), makes exp 0
+// there, and the result is as accurate as math.Log. Powers of two stay exact,
+// and 0, negatives, ±Inf and NaN map as math.Log2 maps them.
+func log2(x float64) float64 {
+	frac, exp := math.Frexp(x)
+	if frac < math.Sqrt2/2 {
+		frac *= 2
+		exp--
+	}
+	return math.Log(frac)*(1/math.Ln2) + float64(exp)
+}
 
 // Log10 returns the elementwise base-10 logarithm.
 func (a *Array) Log10() *Array { return a.Map(math.Log10) }

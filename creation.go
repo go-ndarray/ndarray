@@ -18,7 +18,11 @@ func Linspace(start, stop float64, num int) (*Array, error) {
 	case num > 1:
 		step := (stop - start) / float64(num-1)
 		for i := 0; i < num; i++ {
-			data[i] = start + float64(i)*step
+			// Round the product before the sum, as numpy does (y = i*step;
+			// y += start): without the conversion the compiler may fuse this
+			// into an FMA on arm64/ppc64le/s390x, giving results that differ
+			// from amd64 and numpy by an ULP (Linspace(0.1, 16.15, 6)[3]).
+			data[i] = start + float64(float64(i)*step)
 		}
 		// Pin the final sample exactly to stop, as numpy does, to avoid
 		// floating-point drift at the endpoint.
