@@ -2,9 +2,13 @@ package ndarray
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 )
+
+// hugeAxis is a quarter of the largest size: 2^58 on 64-bit, 2^26 on 32-bit.
+const hugeAxis = (maxSize + 1) / 4
 
 // A result whose shape cannot be represented is an error, as it is for New,
 // even when no operand holds any data: zero-size operands bound nothing.
@@ -18,9 +22,11 @@ func TestResultShapeOverflow(t *testing.T) {
 		}
 		return a
 	}
-	big := 1 << 32
+	// Sizes derive from the word size, so the test compiles and means the
+	// same on 32-bit targets: big*big overflows maxSize, slab*4 exceeds it.
+	big := 1 << (strconv.IntSize / 2)
 	wide, tall := must(New(big, 0)), must(New(0, big))
-	slab := must(New(1<<58, 0))
+	slab := must(New(hugeAxis, 0))
 	many := func(n int) []*Array {
 		s := make([]*Array, n)
 		for i := range s {
@@ -32,7 +38,7 @@ func TestResultShapeOverflow(t *testing.T) {
 		"MatMul (2^32,0)@(0,2^32)": func() (*Array, error) { return wide.MatMul(tall) },
 		"MatMul m*n wraps to -1":   func() (*Array, error) { return must(New(big+1, 0)).MatMul(must(New(0, big-1))) },
 		"Dot 2-D":                  func() (*Array, error) { return wide.Dot(tall) },
-		"Linspace 2^62":            func() (*Array, error) { return Linspace(0, 1, 1<<62) },
+		"Linspace 2^62":            func() (*Array, error) { return Linspace(0, 1, maxSize+1) },
 		"Concatenate sum wraps":    func() (*Array, error) { return Concatenate(many(33), 0) },
 		"Stack 9 of (2^58,0)":      func() (*Array, error) { return Stack(many(9), 0) },
 	} {
@@ -55,7 +61,7 @@ func TestResultShapeOverflow(t *testing.T) {
 // that axis without doing anything still takes years. Concatenate, the axis
 // reductions and the scans did; each must now return at once.
 func TestEmptyArraysWithHugeAxesReturnPromptly(t *testing.T) {
-	const H = 1 << 58
+	const H = hugeAxis
 	for _, sh := range [][]int{{H, 0}, {0, H}, {H, 0, 3}, {3, H, 0}, {H, 1, 0}} {
 		a, err := New(sh...)
 		if err != nil {
