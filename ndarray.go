@@ -822,7 +822,7 @@ func (a *Array) reduceLayout(axis int) (outer, axisLen, inner int) {
 // reductions which error on empty input.
 func (a *Array) reduceAxis(
 	axis int, keepdims bool,
-	kernel func(dst, src []float64, outer, axisLen, inner int),
+	kernel func(dst, src []float64, outer, axisLen, inner, lo, hi int),
 ) (*Array, error) {
 	axis, err := a.normalizeAxis(axis)
 	if err != nil {

@@ -411,6 +411,32 @@ amd64 (Zen 3, FMA path), arm64 (cfarm185), ppc64le (cfarm120), riscv64 (cfarm94)
 and loong64 (cfarm401). The s390x host (LinuxONE) did not answer; s390x stays
 covered by the qemu lane in CI.
 
+## Axis reductions (2026-10-04)
+
+On the Zen 3 the axis reductions of a 1024×1024 matrix lost to NumPy 0.23–0.43×.
+Two causes, both measured:
+
+- **An axis-0 reduction ran on one core.** It has a single outer slab, and the
+  driver only split outer slabs; the comment justifying that said a column split
+  would need a strided gather. It does not: a band of columns is a contiguous run
+  of every row. `RunAxisP` now splits the columns into bands of at least 512
+  when there are fewer slabs than workers, and each row run is added with the
+  elementwise SIMD kernel (exact per element, so the sum is still in axis order).
+- **A row reduction (axis 1, `inner` = 1) was a sequential scalar loop**,
+  latency-bound at one add per 4 cycles. Each row now goes through the SIMD
+  sum/max/min. Max and min are exact; the sum is regrouped lane-parallel, as
+  NumPy's own pairwise sum is.
+
+Zen 3, 16 cores pinned, minimum of three interleaved runs:
+
+| op (1024×1024) | before | after | NumPy 1 thread | after vs NumPy |
+|----|--:|--:|--:|:--:|
+| SumAxis(0) | 696 µs | **186 µs** | 180 µs | 0.97× |
+| SumAxis(1) | 531 µs | **92 µs** | 224 µs | 2.4× |
+| MaxAxis(1) | 601 µs | **93 µs** | 189 µs | 2.0× |
+
+On M4: MaxAxis(1) ×6–8, SumAxis(0) ×1.9.
+
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`

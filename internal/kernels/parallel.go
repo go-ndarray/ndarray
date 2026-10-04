@@ -180,44 +180,51 @@ func reduceP(a []float64, red func([]float64) float64) float64 {
 
 // axisKernel is the shape of the [outer][axisLen][inner] axis reducers
 // (SumAxis, MaxAxis, …).
-type axisKernel func(dst, src []float64, outer, axisLen, inner int)
+type axisKernel func(dst, src []float64, outer, axisLen, inner, lo, hi int)
 
-// RunAxisP runs an axis-reduction kernel, fanning the `outer` slabs across cores
-// above ParThreshold (measured by the total element count outer*axisLen*inner).
-// Each worker owns a disjoint band of outer rows and writes the matching disjoint
-// [band*inner] region of dst, reading only its own src slab — so the parallel
-// result is identical to the serial kernel. Splitting `outer` keeps every
-// worker's inner traversal contiguous (the cache-friendly axis), which is the
-// case that matters: an axis-1 reduction of an (R x C) matrix has outer=R,
-// inner=1, and the serial kernel leaves all but one core idle.
+// RunAxisP runs an axis-reduction kernel across cores above ParThreshold
+// (measured by the total element count outer*axisLen*inner). With at least one
+// outer slab per worker it splits the slabs; with fewer (an axis-0 reduction
+// has one slab) it splits the inner columns into bands of at least axisBand,
+// which the old driver ran serially. Either way each worker writes disjoint
+// elements of dst, each computed exactly as the serial kernel would, so the
+// parallel result is identical to it.
 func RunAxisP(k axisKernel, dst, src []float64, outer, axisLen, inner int) {
 	total := outer * axisLen * inner
-	if total < ParThreshold {
-		k(dst, src, outer, axisLen, inner)
-		return
-	}
-	// Split the outer slabs: each worker owns a disjoint band of outer rows and
-	// writes the matching disjoint dst rows, reading only its own contiguous src
-	// slab — identical to the serial kernel. This is the case that matters most:
-	// an axis-1 reduction of an (R x C) matrix has outer=R, inner=1, so the serial
-	// kernel leaves all but one core idle, and an inner-split would need a strided
-	// column gather whose copy cost cancels the parallel gain. A single-outer-slab
-	// reduction (axis 0: outer=1, inner=C) already streams contiguous inner runs
-	// per accumulation step and stays on the (fast) serial path.
-	if outer < 2 {
-		k(dst, src, outer, axisLen, inner)
-		return
-	}
 	w := numWorkers(total)
-	if w > outer {
-		w = outer
+	switch {
+	case total < ParThreshold || w < 2:
+		k(dst, src, outer, axisLen, inner, 0, inner)
+	case outer >= w:
+		// Enough outer slabs: each worker owns a band of them and reads only its
+		// own contiguous src slab. An axis-1 reduction of an (R x C) matrix
+		// (outer=R, inner=1) is this case.
+		parallelFor(outer, w, func(lo, hi int) {
+			k(dst[lo*inner:hi*inner], src[lo*axisLen*inner:hi*axisLen*inner], hi-lo, axisLen, inner, 0, inner)
+		})
+	case inner >= 2*axisBand:
+		// Too few slabs (an axis-0 reduction has one): split the columns. A band
+		// of columns is a contiguous run of every row, so each worker streams
+		// its runs and writes its own columns of dst; no gather is needed.
+		bands := min(w, inner/axisBand)
+		width := roundUp((inner+bands-1)/bands, 8)
+		parallelFor(bands, bands, func(b0, b1 int) {
+			for b := b0; b < b1; b++ {
+				if lo := b * width; lo < inner {
+					k(dst, src, outer, axisLen, inner, lo, min(lo+width, inner))
+				}
+			}
+		})
+	default:
+		parallelFor(outer, min(w, outer), func(lo, hi int) {
+			k(dst[lo*inner:hi*inner], src[lo*axisLen*inner:hi*axisLen*inner], hi-lo, axisLen, inner, 0, inner)
+		})
 	}
-	parallelFor(outer, w, func(lo, hi int) {
-		dstSlab := dst[lo*inner : hi*inner]
-		srcSlab := src[lo*axisLen*inner : hi*axisLen*inner]
-		k(dstSlab, srcSlab, hi-lo, axisLen, inner)
-	})
 }
+
+// axisBand is the narrowest column band RunAxisP gives a worker (512 doubles,
+// 4 KiB per row): narrower bands make each row run too short to stream.
+const axisBand = 512
 
 // MaxP returns the maximum element of a (non-empty), parallelised above
 // ParThreshold. It runs the SIMD max kernel (packed MAXPD + NaN scan on amd64;

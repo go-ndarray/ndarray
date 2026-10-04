@@ -200,62 +200,83 @@ func Dot1D(a, b []float64) float64 {
 // The parent package materialises a strided view into a contiguous []float64
 // laid out conceptually as [outer][axisLen][inner], i.e. the reduced axis sits
 // in the middle and `inner` trailing elements are contiguous. Each kernel
-// reduces the middle axis, writing outer*inner results into dst (also laid out
-// as [outer][inner]).
-//
-// The innermost loop over `inner` walks contiguous memory with unit stride,
-// which is the shape a SIMD kernel wants: Phase 1 can replace each step (the
-// `inner`-length combine of dst[base:] with src[off:]) with a vectorised
-// fused operation across all six 64-bit targets, leaving this scalar version as
-// the reference and fallback. axisLen >= 1 is guaranteed by the caller.
+// reduces the middle axis for the inner columns [lo, hi) of every outer slab,
+// writing those columns of dst (laid out as [outer][inner]). A column band is
+// contiguous within each row, so RunAxisP can hand disjoint bands to different
+// workers when there are too few outer slabs to split (an axis-0 reduction has
+// one). The full reduction is the band [0, inner). axisLen >= 1 is guaranteed
+// by the caller.
 
-// SumAxis reduces the middle axis by summation.
-func SumAxis(dst, src []float64, outer, axisLen, inner int) {
-	for o := 0; o < outer; o++ {
-		base := o * inner
-		block := o * axisLen * inner
-		for i := 0; i < inner; i++ {
-			dst[base+i] = src[block+i]
+// rowRun is the band width from which a row combine goes through the SIMD
+// elementwise kernel; below it the call costs more than the loop.
+const rowRun = 16
+
+// SumAxis reduces the middle axis by summation. Each row of the band is added
+// into dst with the elementwise SIMD add, element by element in axis order, so
+// the result is the sequential sum. With inner == 1 every output is the sum of
+// one contiguous row, taken with the lane-parallel SIMD sum (a regrouping, as
+// numpy's pairwise sum is): a sequential sum there is latency-bound.
+func SumAxis(dst, src []float64, outer, axisLen, inner, lo, hi int) {
+	if inner == 1 {
+		for o := 0; o < outer; o++ {
+			dst[o] = sumSIMD(src[o*axisLen : o*axisLen+axisLen])
 		}
+		return
+	}
+	for o := 0; o < outer; o++ {
+		d := dst[o*inner+lo : o*inner+hi]
+		block := o * axisLen * inner
+		copy(d, src[block+lo:block+hi])
 		for k := 1; k < axisLen; k++ {
-			off := block + k*inner
-			for i := 0; i < inner; i++ {
-				dst[base+i] += src[off+i]
+			r := src[block+k*inner+lo : block+k*inner+hi]
+			if len(d) >= rowRun {
+				addBin(d, d, r)
+				continue
+			}
+			for i := range d {
+				d[i] += r[i]
 			}
 		}
 	}
 }
 
-// ProdAxis reduces the middle axis by multiplication.
-func ProdAxis(dst, src []float64, outer, axisLen, inner int) {
+// ProdAxis reduces the middle axis by multiplication, in axis order.
+func ProdAxis(dst, src []float64, outer, axisLen, inner, lo, hi int) {
 	for o := 0; o < outer; o++ {
-		base := o * inner
+		d := dst[o*inner+lo : o*inner+hi]
 		block := o * axisLen * inner
-		for i := 0; i < inner; i++ {
-			dst[base+i] = src[block+i]
-		}
+		copy(d, src[block+lo:block+hi])
 		for k := 1; k < axisLen; k++ {
-			off := block + k*inner
-			for i := 0; i < inner; i++ {
-				dst[base+i] *= src[off+i]
+			r := src[block+k*inner+lo : block+k*inner+hi]
+			if len(d) >= rowRun {
+				mulBin(d, d, r)
+				continue
+			}
+			for i := range d {
+				d[i] *= r[i]
 			}
 		}
 	}
 }
 
 // MaxAxis reduces the middle axis by taking the maximum. Like Max it is
-// NaN-propagating (numpy.max(axis=...)).
-func MaxAxis(dst, src []float64, outer, axisLen, inner int) {
-	for o := 0; o < outer; o++ {
-		base := o * inner
-		block := o * axisLen * inner
-		for i := 0; i < inner; i++ {
-			dst[base+i] = src[block+i]
+// NaN-propagating (numpy.max(axis=...)); max is exact and associative, so the
+// inner == 1 row reduction through the SIMD max kernel is the same value.
+func MaxAxis(dst, src []float64, outer, axisLen, inner, lo, hi int) {
+	if inner == 1 {
+		for o := 0; o < outer; o++ {
+			dst[o] = maxSIMD(src[o*axisLen : o*axisLen+axisLen])
 		}
+		return
+	}
+	for o := 0; o < outer; o++ {
+		d := dst[o*inner+lo : o*inner+hi]
+		block := o * axisLen * inner
+		copy(d, src[block+lo:block+hi])
 		for k := 1; k < axisLen; k++ {
-			off := block + k*inner
-			for i := 0; i < inner; i++ {
-				dst[base+i] = max(dst[base+i], src[off+i])
+			r := src[block+k*inner+lo : block+k*inner+hi]
+			for i := range d {
+				d[i] = max(d[i], r[i])
 			}
 		}
 	}
@@ -263,17 +284,21 @@ func MaxAxis(dst, src []float64, outer, axisLen, inner int) {
 
 // MinAxis reduces the middle axis by taking the minimum, NaN-propagating
 // (numpy.min(axis=...)).
-func MinAxis(dst, src []float64, outer, axisLen, inner int) {
-	for o := 0; o < outer; o++ {
-		base := o * inner
-		block := o * axisLen * inner
-		for i := 0; i < inner; i++ {
-			dst[base+i] = src[block+i]
+func MinAxis(dst, src []float64, outer, axisLen, inner, lo, hi int) {
+	if inner == 1 {
+		for o := 0; o < outer; o++ {
+			dst[o] = minSIMD(src[o*axisLen : o*axisLen+axisLen])
 		}
+		return
+	}
+	for o := 0; o < outer; o++ {
+		d := dst[o*inner+lo : o*inner+hi]
+		block := o * axisLen * inner
+		copy(d, src[block+lo:block+hi])
 		for k := 1; k < axisLen; k++ {
-			off := block + k*inner
-			for i := 0; i < inner; i++ {
-				dst[base+i] = min(dst[base+i], src[off+i])
+			r := src[block+k*inner+lo : block+k*inner+hi]
+			for i := range d {
+				d[i] = min(d[i], r[i])
 			}
 		}
 	}
@@ -319,11 +344,11 @@ func ArgMin(a []float64) int {
 // ArgMaxAxis writes into dst the index (along the middle axis) of the first
 // maximum for each [outer][inner] position, or of the first NaN (see ArgMax).
 // Layout matches the *Axis kernels.
-func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner int) {
+func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner, lo, hi int) {
 	for o := 0; o < outer; o++ {
 		base := o * inner
 		block := o * axisLen * inner
-		for i := 0; i < inner; i++ {
+		for i := lo; i < hi; i++ {
 			best := src[block+i]
 			bi := 0
 			for k := 1; k < axisLen && !math.IsNaN(best); k++ {
@@ -338,11 +363,11 @@ func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner int) {
 
 // ArgMinAxis writes into dst the index (along the middle axis) of the first
 // minimum for each [outer][inner] position, or of the first NaN.
-func ArgMinAxis(dst []float64, src []float64, outer, axisLen, inner int) {
+func ArgMinAxis(dst []float64, src []float64, outer, axisLen, inner, lo, hi int) {
 	for o := 0; o < outer; o++ {
 		base := o * inner
 		block := o * axisLen * inner
-		for i := 0; i < inner; i++ {
+		for i := lo; i < hi; i++ {
 			best := src[block+i]
 			bi := 0
 			for k := 1; k < axisLen && !math.IsNaN(best); k++ {

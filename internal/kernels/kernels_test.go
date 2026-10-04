@@ -68,33 +68,33 @@ func TestAxisKernels(t *testing.T) {
 	src := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
 	dst := make([]float64, 2*2)
 
-	SumAxis(dst, src, 2, 3, 2)
+	SumAxis(dst, src, 2, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{9, 12, 27, 30})
 
-	ProdAxis(dst, src, 2, 3, 2)
+	ProdAxis(dst, src, 2, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{15, 48, 693, 960})
 
-	MaxAxis(dst, src, 2, 3, 2)
+	MaxAxis(dst, src, 2, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{5, 6, 11, 12})
 
-	MinAxis(dst, src, 2, 3, 2)
+	MinAxis(dst, src, 2, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{1, 2, 7, 8})
 	// Descending data so MinAxis takes its "found a smaller value" branch.
-	MinAxis(dst, []float64{6, 5, 4, 3, 2, 1, 12, 11, 10, 9, 8, 7}, 2, 3, 2)
+	MinAxis(dst, []float64{6, 5, 4, 3, 2, 1, 12, 11, 10, 9, 8, 7}, 2, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{2, 1, 8, 7})
 	// Descending data for MaxAxis exercises its non-update path too.
-	MaxAxis(dst, []float64{6, 5, 4, 3, 2, 1, 12, 11, 10, 9, 8, 7}, 2, 3, 2)
+	MaxAxis(dst, []float64{6, 5, 4, 3, 2, 1, 12, 11, 10, 9, 8, 7}, 2, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{6, 5, 12, 11})
 
 	// axisLen == 1: the reduce loop body never runs; result is the input.
 	one := make([]float64, 2)
-	SumAxis(one, []float64{4, 9}, 2, 1, 1)
+	SumAxis(one, []float64{4, 9}, 2, 1, 1, 0, 1)
 	eqSlice(t, one, []float64{4, 9})
-	ProdAxis(one, []float64{4, 9}, 2, 1, 1)
+	ProdAxis(one, []float64{4, 9}, 2, 1, 1, 0, 1)
 	eqSlice(t, one, []float64{4, 9})
-	MaxAxis(one, []float64{4, 9}, 2, 1, 1)
+	MaxAxis(one, []float64{4, 9}, 2, 1, 1, 0, 1)
 	eqSlice(t, one, []float64{4, 9})
-	MinAxis(one, []float64{4, 9}, 2, 1, 1)
+	MinAxis(one, []float64{4, 9}, 2, 1, 1, 0, 1)
 	eqSlice(t, one, []float64{4, 9})
 }
 
@@ -108,7 +108,7 @@ func BenchmarkSumAxis(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(src) * 8))
 	for i := 0; i < b.N; i++ {
-		SumAxis(dst, src, outer, axisLen, inner)
+		SumAxis(dst, src, outer, axisLen, inner, 0, inner)
 	}
 }
 
@@ -133,9 +133,9 @@ func TestArgAndScan(t *testing.T) {
 	// Axis variants over [outer=1][axisLen=3][inner=2]: columns {3,1},{9,5} etc.
 	src := []float64{3, 1, 9, 5, 0, 7}
 	dst := make([]float64, 2)
-	ArgMaxAxis(dst, src, 1, 3, 2)
+	ArgMaxAxis(dst, src, 1, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{1, 2}) // col0 max at k=1 (9); col1 max at k=2 (7)
-	ArgMinAxis(dst, src, 1, 3, 2)
+	ArgMinAxis(dst, src, 1, 3, 2, 0, 2)
 	eqSlice(t, dst, []float64{2, 0}) // col0 min at k=2 (0); col1 min at k=0 (1)
 
 	cs := make([]float64, 6)

@@ -148,7 +148,7 @@ func TestRunAxisP(t *testing.T) {
 						gotD := make([]float64, s.outer*s.inner)
 						wantD := make([]float64, s.outer*s.inner)
 						RunAxisP(kk, gotD, src, s.outer, s.axisLen, s.inner)
-						kk(wantD, src, s.outer, s.axisLen, s.inner)
+						kk(wantD, src, s.outer, s.axisLen, s.inner, 0, s.inner)
 						for i := range wantD {
 							if gotD[i] != wantD[i] {
 								t.Fatalf("RunAxisP %v par=%d [%d]: %v != %v", s, par, i, gotD[i], wantD[i])
@@ -250,4 +250,72 @@ func TestNumWorkers(t *testing.T) {
 			}
 		}
 	})
+}
+
+// naiveAxis is an independent oracle for the axis reductions: a plain triple
+// loop combining the middle axis in order with op.
+func naiveAxis(src []float64, outer, axisLen, inner int, op func(acc, v float64) float64) []float64 {
+	out := make([]float64, outer*inner)
+	for o := 0; o < outer; o++ {
+		for i := 0; i < inner; i++ {
+			acc := src[o*axisLen*inner+i]
+			for k := 1; k < axisLen; k++ {
+				acc = op(acc, src[(o*axisLen+k)*inner+i])
+			}
+			out[o*inner+i] = acc
+		}
+	}
+	return out
+}
+
+// TestRunAxisPBands drives every RunAxisP schedule — serial, outer split,
+// column split (one slab, and fewer slabs than workers) and the narrow
+// fallback — through Sum/Prod/Max/Min against the naive in-order oracle. With
+// inner > 1 the band kernels combine rows in axis order (through the SIMD
+// elementwise kernel from rowRun columns on), so the result must be exact; the
+// inner == 1 row sum is regrouped by the SIMD sum and checked to 1e-12.
+func TestRunAxisPBands(t *testing.T) {
+	type op struct {
+		name string
+		k    axisKernel
+		f    func(a, v float64) float64
+	}
+	ops := []op{
+		{"sum", SumAxis, func(a, v float64) float64 { return a + v }},
+		{"prod", ProdAxis, func(a, v float64) float64 { return a * v }},
+		{"max", MaxAxis, func(a, v float64) float64 { return max(a, v) }},
+		{"min", MinAxis, func(a, v float64) float64 { return min(a, v) }},
+	}
+	shapes := []struct{ outer, axisLen, inner int }{
+		{1, 6, 3 * axisBand},    // one slab: column bands
+		{3, 5, 2*axisBand + 37}, // fewer slabs than workers: ragged column bands
+		{3, 4, 100},             // fewer slabs, too narrow to band: outer fallback
+		{40, 3, rowRun + 5},     // outer split, SIMD row combine
+		{2, 7, rowRun - 1},      // scalar row combine
+		{50, 300, 1},            // row sums (inner == 1)
+	}
+	for _, s := range shapes {
+		src := randVec(s.outer*s.axisLen*s.inner, int64(s.inner))
+		for i := range src {
+			src[i] = 0.5 + src[i]*0.25 // keep products finite
+		}
+		for _, par := range []int{1 << 30, 1} {
+			withMaxProcs(8, func() {
+				withThresholds(par, 1<<14, func() {
+					for _, o := range ops {
+						want := naiveAxis(src, s.outer, s.axisLen, s.inner, o.f)
+						got := make([]float64, len(want))
+						RunAxisP(o.k, got, src, s.outer, s.axisLen, s.inner)
+						for i := range want {
+							exact := s.inner > 1 || o.name != "sum"
+							if exact && got[i] != want[i] ||
+								!exact && math.Abs(got[i]-want[i]) > 1e-12*math.Abs(want[i]) {
+								t.Fatalf("%s %v par=%d [%d]: %v, want %v", o.name, s, par, i, got[i], want[i])
+							}
+						}
+					}
+				})
+			})
+		}
+	}
 }
