@@ -21,10 +21,10 @@ import (
 // math.Sqrt loop (sqrt(-x)=NaN, sqrt(+Inf)=+Inf, matching NumPy).
 func (a *Array) Sqrt() *Array {
 	src := a.contiguousData()
-	dst := make([]float64, len(src))
+	dst := a.alloc(len(src), false)
 	kernels.SqrtP(dst, src)
 	cp := append([]int(nil), a.shape...)
-	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp)}
+	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: a.ws}
 }
 
 // SqrtInto writes the elementwise square root of a into the caller-provided

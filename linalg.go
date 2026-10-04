@@ -15,10 +15,10 @@ var ErrLinalg = fmt.Errorf("ndarray: incompatible shapes for linear algebra")
 // array. Either operand may be any 2-D view: the GEMM packs it through its
 // strides (matView), so nothing is materialised first.
 func matmul2D(a, b *Array, m, k, n int) *Array {
-	dst := make([]float64, m*n)
+	dst := a.ws.alloc(m*n, true) // MatMulStridedP accumulates into dst
 	kernels.MatMulStridedP(dst, a.matView(), b.matView(), m, k, n)
 	shape := []int{m, n}
-	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}
+	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}
 }
 
 // matView is a 2-D array as the GEMM's strided operand view. The packing
@@ -60,7 +60,7 @@ func (a *Array) Dot(b *Array) (*Array, error) {
 				ErrLinalg, a.shape[0], b.shape[0])
 		}
 		s := kernels.Dot1DP(a.contiguousData(), b.contiguousData())
-		return &Array{data: []float64{s}, shape: []int{}, strides: []int{}}, nil
+		return &Array{data: []float64{s}, shape: []int{}, strides: []int{}, ws: a.ws}, nil
 
 	case na == 2 && nb == 2:
 		return a.MatMul(b)
@@ -73,9 +73,9 @@ func (a *Array) Dot(b *Array) (*Array, error) {
 				ErrLinalg, a.shape, b.shape)
 		}
 		m, k := a.shape[0], a.shape[1]
-		dst := make([]float64, m)
+		dst := a.alloc(m, false)
 		kernels.MatVecP(dst, a.contiguousData(), b.contiguousData(), m, k)
-		return &Array{data: dst, shape: []int{m}, strides: []int{1}}, nil
+		return &Array{data: dst, shape: []int{m}, strides: []int{1}, ws: a.ws}, nil
 
 	case na == 1 && nb == 2:
 		// (k,) · (k x n) = (n,): cache-friendly row-streaming accumulation, no
@@ -85,9 +85,9 @@ func (a *Array) Dot(b *Array) (*Array, error) {
 				ErrLinalg, a.shape, b.shape)
 		}
 		k, n := b.shape[0], b.shape[1]
-		dst := make([]float64, n)
+		dst := a.alloc(n, true) // VecMatP accumulates into dst
 		kernels.VecMatP(dst, a.contiguousData(), b.contiguousData(), k, n)
-		return &Array{data: dst, shape: []int{n}, strides: []int{1}}, nil
+		return &Array{data: dst, shape: []int{n}, strides: []int{1}, ws: a.ws}, nil
 
 	default:
 		return nil, fmt.Errorf("%w: Dot supports 1-D and 2-D operands, got %d-D and %d-D",
@@ -126,7 +126,7 @@ func (a *Array) Outer(b *Array) *Array {
 	u := a.contiguousData()
 	v := b.contiguousData()
 	m, n := len(u), len(v)
-	dst := make([]float64, m*n)
+	dst := a.alloc(m*n, false)
 	for i := 0; i < m; i++ {
 		ui := u[i]
 		row := dst[i*n : i*n+n]
@@ -135,5 +135,5 @@ func (a *Array) Outer(b *Array) *Array {
 		}
 	}
 	shape := []int{m, n}
-	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}
+	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}
 }
