@@ -86,8 +86,9 @@ is wrong on subnormals
   beat NumPy at every size measured.
 - **At parity:** `SumAxis(0)`, `Inner` against 16-thread OpenBLAS, `Log` on
   one core.
-- **Slower:** `MatMul` against 16-thread OpenBLAS (0.55× at 1024², 0.3× at
-  256² and below); `Dot`/mat·vec against NumPy's threaded BLAS (0.16×); `Exp`
+- **Slower:** `MatMul` against 16-thread OpenBLAS at 512² and up (0.42× at
+  512², 0.51× at 1024², measured in one run with OpenBLAS; at 256² ours is
+  1.44× faster); `Dot`/mat·vec against NumPy's threaded BLAS (0.16×); `Exp`
   below 256 Ki elements (0.82×); the *allocating* forms of elementwise ops up
   to 256 Ki elements, `Concatenate`/`Stack` and slice copies outside a
   `Workspace` (0.2–0.5×: Go's allocator and garbage collector, which
