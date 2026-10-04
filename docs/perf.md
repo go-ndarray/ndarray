@@ -311,7 +311,8 @@ The SIMD kernels are also validated against the scalar oracle per-arch in CI:
 | `Sqrt` | **FIXED — go wins 2.8× at 4 M, *Into* 1.8× small** | packed `SQRTPD` (amd64) / packed NEON `FSQRT V.2D` (arm64) / intrinsic `FSQRTD` (others), off a non-`func`-pointer seam |
 | `Max` / `Min` | **FIXED — go wins 1.4× at 4 M, ~4× small** | builtin-`max` NaN-propagating oracle + 4-accumulator reducer + amd64 `MAXPD`+NaN-scan |
 | `MatMul` vs tuned BLAS (OpenBLAS) | **FIXED — parity at n=1024 (~0.99×, ~203 GFLOP/s); 0.97× at n=512** | by-lane FMLA micro-kernel (`FMLA Vd.2D,Vn.2D,Vm.D[i]` via `WORD`) closed the prior 0.76× gap. Only small n=256 trails (0.67×) on per-call overhead, not throughput — see above |
-| other `Map` ufuncs (`Exp`, `Log`, `Sin`…) | NumPy ~parity (libm-bound) | a packed `VEXP`/`VLOG` is libm-accuracy work; the math, not the dispatch, dominates here |
+| `Exp`, `Log`, `Log10` | **FIXED in v0.2.0** — own kernels | ports of Arm's optimized-routines, 2–3.5× `math.Exp`/`math.Log`; see the Exp and Log sections below |
+| `Sin`, `Cos`, `Tan`, … (through `Map`) | ~parity with NumPy | per element on one Zen 3 core: Go `math.Sin` 10.5 ns vs NumPy 10.4, `math.Cos` 11.1 vs 10.7, `math.Tanh` 16.5 vs 13.5 (2026-10-04); `Map`'s call per element adds 15–20% |
 
 ## Allocation: `Workspace` (2026-10-04)
 
@@ -606,5 +607,7 @@ per-arch job regenerates the committed `.s`, fails if it is stale, vets
 (asmdecl), builds (cmd/asm encodes), and runs the bit/NaN-correctness suite. The
 multicore path and the packed/cache-blocked GEMM driver are
 architecture-independent; only the GEMM micro-kernel is per-arch (NEON 4×8 on
-arm64, AVX2/FMA 6×8 or SSE2 on amd64, scalar 4×4 on the other four — all bit-identical to the
-scalar ikj oracle, validated per-arch in CI incl. amd64 under qemu-x86_64).
+arm64, AVX2/FMA 6×8 or SSE2 on amd64, scalar 4×4 on the other four), each held to
+the scalar ikj oracle in CI: exactly on integer-valued data, within tolerance on
+general data, since above KC the block partials regroup the sum and the FMA
+kernels round once per step where the scalar oracle may round twice.

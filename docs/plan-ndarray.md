@@ -81,8 +81,10 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
 - **More creation — DONE.** `Linspace(start,stop,num)` (endpoint inclusive,
   final sample pinned to stop), `Eye(n,m,k)` / `Identity(n)` (k-th diagonal,
   non-positive m defaults to square), and `Reshape` `-1` dimension inference.
-- **Ufuncs — DONE.** Unary math via the `Map` seam (`Sqrt`/`Exp`/`Log`/`Log2`/
-  `Log10`/`Sin`/`Cos`/`Tan`/`Floor`/`Ceil`/`Round`/`Square`/`Power`) and
+- **Ufuncs — DONE.** Unary math (`Sqrt`/`Exp`/`Log`/`Log2`/`Log10`/`Sin`/`Cos`/
+  `Tan`/`Floor`/`Ceil`/`Round`/`Square`/`Power`): `Sqrt` has a SIMD kernel,
+  `Exp`/`Log`/`Log10` run ports of Arm's optimized-routines (v0.2.0), and the
+  rest go through the `Map` seam over Go's `math`; and
   broadcasting comparisons returning 0/1 float masks (`Equal`/`NotEqual`/
   `Greater`/`GreaterEqual`/`Less`/`LessEqual`) plus pairwise `Maximum`/`Minimum`.
   (`Round` is math.Round / half-away-from-zero, unlike numpy's banker's
