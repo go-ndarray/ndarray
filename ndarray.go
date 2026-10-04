@@ -14,6 +14,7 @@ package ndarray
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -45,12 +46,28 @@ func prod(dims []int) int {
 	return n
 }
 
-// validateShape reports whether every dimension is non-negative.
+// maxSize is the largest element count whose float64 storage size in bytes
+// still fits in an int — numpy's "array is too big" bound.
+const maxSize = math.MaxInt / 8
+
+// validateShape reports whether every dimension is non-negative and the
+// element count is representable. The count check multiplies the non-zero
+// dimensions with an overflow guard, so a shape whose product would wrap (e.g.
+// (1<<62+1, 4), which wraps to exactly 4) is rejected rather than accepted
+// with a wrong Size; like numpy, a zero dimension does not excuse the others.
 func validateShape(shape []int) error {
+	n := 1
 	for _, d := range shape {
 		if d < 0 {
 			return fmt.Errorf("%w: negative dimension %d", ErrShapeMismatch, d)
 		}
+		if d == 0 {
+			continue
+		}
+		if d > maxSize/n {
+			return fmt.Errorf("%w: shape %v is too big", ErrShapeMismatch, shape)
+		}
+		n *= d
 	}
 	return nil
 }
@@ -327,6 +344,9 @@ func (a *Array) Reshape(shape ...int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateShape(shape); err != nil {
+		return nil, err
+	}
 	if prod(shape) != a.Size() {
 		return nil, fmt.Errorf("%w: cannot reshape size %d into %v",
 			ErrShapeMismatch, a.Size(), shape)
@@ -427,6 +447,10 @@ func broadcastShape(s1, s2 []int) ([]int, error) {
 			return nil, fmt.Errorf("%w: %v vs %v", ErrBroadcast, s1, s2)
 		}
 	}
+	// Two representable shapes can broadcast to one that is not.
+	if err := validateShape(out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -448,6 +472,11 @@ func (a *Array) broadcastTo(shape []int) []float64 {
 	}
 	out := make([]float64, prod(shape))
 	if len(out) == 0 {
+		return out
+	}
+	if n == 0 {
+		// 0-d target: the receiver is a 0-d (possibly offset) view too.
+		out[0] = a.data[a.offset]
 		return out
 	}
 	// Fast path: the innermost axis is materialised with unit stride (it is
