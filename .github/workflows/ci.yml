@@ -15,8 +15,9 @@ permissions:
 # SIMD-dispatched package: each arch compiles exactly one sumSIMD wrapper — the
 # amd64 SSE2 wrapper (reduce_amd64.go -> sum_amd64.s), the arm64 NEON wrapper
 # (reduce_arm64.go -> sum_arm64.s), the ppc64le VSX wrapper (reduce_ppc64le.go
-# -> sum_ppc64le.s), or the scalar-alias wrapper (reduce_generic.go, on
-# loong64/riscv64/s390x and 32-bit). No single build sees
+# -> sum_ppc64le.s), the loong64 LASX wrapper (reduce_loong64.go ->
+# sum_loong64.s), or the scalar-alias wrapper (reduce_generic.go, on
+# riscv64/s390x and 32-bit). No single build sees
 # more than one, so no single run covers them all.
 #
 # The honest split:
@@ -37,9 +38,10 @@ permissions:
 #
 # So every line is either statement-covered by the gate or executed by a
 # per-arch job; the gate is never lowered and there is no coverage-gaming knob.
-# amd64/arm64/ppc64le ship SIMD kernels (ppc64le's run under qemu here and were
-# run on real POWER8/POWER9); loong64/riscv64/s390x keep the validated scalar
-# path for now.
+# amd64/arm64/ppc64le/loong64 ship SIMD kernels (ppc64le's and loong64's were
+# run on real POWER8/POWER9 and a Loongson 3C5000L; under qemu here loong64
+# takes its scalar fallback unless the emulated CPU reports LASX);
+# riscv64/s390x keep the validated scalar path for now.
 jobs:
   test:
     name: test (${{ matrix.os }})
@@ -124,12 +126,12 @@ jobs:
           go-version: stable
       - run: sudo apt-get update && sudo apt-get install -y qemu-user-static
       - name: Regenerate committed assembly and check it is current
-        if: matrix.goarch == 'ppc64le'
+        if: matrix.goarch == 'ppc64le' || matrix.goarch == 'loong64'
         run: |
-          ( cd internal/kernels/asmgen/ppc64le && go run . )
-          mv internal/kernels/asmgen/ppc64le/sum_ppc64le.s internal/kernels/sum_ppc64le.s
-          git diff --exit-code -- internal/kernels/sum_ppc64le.s || {
-            echo "::error::generated ppc64le assembly is stale; run go generate and commit"; exit 1; }
+          ( cd internal/kernels/asmgen/${{ matrix.goarch }} && go run . )
+          mv internal/kernels/asmgen/${{ matrix.goarch }}/sum_${{ matrix.goarch }}.s internal/kernels/sum_${{ matrix.goarch }}.s
+          git diff --exit-code -- internal/kernels/sum_${{ matrix.goarch }}.s || {
+            echo "::error::generated ${{ matrix.goarch }} assembly is stale; run go generate and commit"; exit 1; }
       - name: Vet + test under qemu (${{ matrix.goarch }})
         run: |
           GOOS=linux GOARCH=${{ matrix.goarch }} go vet ./...
