@@ -3,9 +3,10 @@
 //
 // Go's loong64 assembler has the LASX vector float64 add/sub/mul/div
 // (XVADDD, XVSUBD, XVMULD, XVDIVD), the square root (XVFSQRTD) and the
-// 256-bit loads and stores (XVMOVQ, with immediate offsets), but no fused
-// multiply-add and no broadcast load; those come from go-asmgen's encoders
-// (Builder.XVFMADDD, XVLDREPLD), which emit WORDs. LASX is not on every
+// 256-bit loads and stores (XVMOVQ, with immediate offsets), and its
+// broadcast load is the arrangement form XVMOVQ off(R), X.V4 (xvldrepl.d). It
+// has no fused multiply-add: that comes from go-asmgen's XVFMADDD, which
+// emits a WORD (transitional until cmd/asm names it). LASX is not on every
 // LoongArch CPU, so the Go side calls these kernels only when the kernel
 // reports it (AT_HWCAP).
 //
@@ -171,7 +172,7 @@ func binKernel(name, vec, sca string) *emit.Function {
 //	for p in [0,kc):  C[r][col] += pa[p*8+r] * pb[p*8+col]   (r<8, col<8)
 //
 // 16 accumulators X0..X15 (row r in X(2r), X(2r+1), four columns each), the B
-// row in X16, X17, and each A value broadcast by xvldrepl.d into X18..X25,
+// row in X16, X17, and each A value broadcast (XVMOVQ .V4, xvldrepl.d) into X18..X25,
 // then xvfmadd.d: 16 fused multiply-adds per k step against 10 loads. Fused,
 // like the other FMA kernels; on integer-valued data it equals the scalar
 // ikj oracle exactly.
@@ -186,7 +187,7 @@ func gemmKernel() *emit.Function {
 	b.Label("gloop")
 	b.Raw("XVMOVQ 0(R7), X16").Raw("XVMOVQ 32(R7), X17")
 	for r := 0; r < gemmMR; r++ {
-		b.XVLDREPLD(18+r, 6, 8*r)
+		b.Raw("XVMOVQ %d(R6), X%d.V4", 8*r, 18+r) // xvldrepl.d: pa[r] in all four lanes
 	}
 	for r := 0; r < gemmMR; r++ {
 		b.XVFMADDD(2*r, 18+r, 16, 2*r)

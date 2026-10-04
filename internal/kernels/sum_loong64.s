@@ -340,14 +340,14 @@ TEXT ·gemmMicro8x8LASX(SB), NOSPLIT, $0-40
 gloop:
 	XVMOVQ 0(R7), X16
 	XVMOVQ 32(R7), X17
-	WORD $0x321000d2 // xvldrepl.d $xr18, $r6, 0
-	WORD $0x321004d3 // xvldrepl.d $xr19, $r6, 8
-	WORD $0x321008d4 // xvldrepl.d $xr20, $r6, 16
-	WORD $0x32100cd5 // xvldrepl.d $xr21, $r6, 24
-	WORD $0x321010d6 // xvldrepl.d $xr22, $r6, 32
-	WORD $0x321014d7 // xvldrepl.d $xr23, $r6, 40
-	WORD $0x321018d8 // xvldrepl.d $xr24, $r6, 48
-	WORD $0x32101cd9 // xvldrepl.d $xr25, $r6, 56
+	XVMOVQ 0(R6), X18.V4
+	XVMOVQ 8(R6), X19.V4
+	XVMOVQ 16(R6), X20.V4
+	XVMOVQ 24(R6), X21.V4
+	XVMOVQ 32(R6), X22.V4
+	XVMOVQ 40(R6), X23.V4
+	XVMOVQ 48(R6), X24.V4
+	XVMOVQ 56(R6), X25.V4
 	WORD $0x0a204240 // xvfmadd.d $xr0, $xr18, $xr16, $xr0
 	WORD $0x0a20c641 // xvfmadd.d $xr1, $xr18, $xr17, $xr1
 	WORD $0x0a214262 // xvfmadd.d $xr2, $xr19, $xr16, $xr2
