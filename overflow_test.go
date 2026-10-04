@@ -3,46 +3,56 @@ package ndarray
 import (
 	"errors"
 	"math"
+	"math/bits"
 	"testing"
 )
 
+// Shape extents chosen relative to the word size, so the same products
+// overflow int on 32- and 64-bit targets alike (a literal 1<<62 does not even
+// compile where int is 32 bits).
+const (
+	quarterWord = 1 << (bits.UintSize - 2) // x4 wraps to exactly 0
+	byteBreaker = 1 << (bits.UintSize - 5) // x8 elements fit; x8 bytes do not
+	halfSquare  = 1 << (bits.UintSize/2 + 4)
+)
+
 // TestShapeSizeOverflow checks that a shape whose element count overflows int
-// is rejected instead of wrapping. Before the fix prod() wrapped silently:
-// New(1<<62, 4) returned an array of Size 0, and FromData/Reshape accepted
-// (1<<62+1, 4) for 4 elements because the product wrapped to exactly 4, after
+// is rejected instead of wrapping. Before the fix prod() wrapped silently (on
+// 64-bit): New(1<<62, 4) returned an array of Size 0, and FromData/Reshape
+// accepted (1<<62+1, 4) for 4 elements because the product wrapped to 4, after
 // which At(1, 0) panicked. numpy raises "array is too big" for all of these.
 func TestShapeSizeOverflow(t *testing.T) {
 	huge := [][]int{
-		{1 << 62, 4},
-		{1<<62 + 1, 4},
-		{1 << 59, 8},
+		{quarterWord, 4},
+		{quarterWord + 1, 4},
+		{byteBreaker, 8},
 		{math.MaxInt, 2},
-		{0, 1 << 62, 1 << 62}, // numpy rejects this too, despite the zero
+		{0, quarterWord, quarterWord}, // numpy rejects this too, despite the zero
 	}
 	for _, s := range huge {
 		if _, err := New(s...); !errors.Is(err, ErrShapeMismatch) {
 			t.Errorf("New(%v) err = %v, want ErrShapeMismatch", s, err)
 		}
 	}
-	if _, err := FromData([]float64{1, 2, 3, 4}, 1<<62+1, 4); !errors.Is(err, ErrShapeMismatch) {
+	if _, err := FromData([]float64{1, 2, 3, 4}, quarterWord+1, 4); !errors.Is(err, ErrShapeMismatch) {
 		t.Errorf("FromData wrapped shape err = %v", err)
 	}
 	a := mustArr(t, ok(Arange(0, 4, 1)))
-	if _, err := a.Reshape(1<<62+1, 4); !errors.Is(err, ErrShapeMismatch) {
+	if _, err := a.Reshape(quarterWord+1, 4); !errors.Is(err, ErrShapeMismatch) {
 		t.Errorf("Reshape wrapped shape err = %v", err)
 	}
-	if _, err := a.Reshape(-1, 1<<62+1, 4); !errors.Is(err, ErrShapeMismatch) {
+	if _, err := a.Reshape(-1, quarterWord+1, 4); !errors.Is(err, ErrShapeMismatch) {
 		t.Errorf("Reshape wrapped shape with -1 err = %v", err)
 	}
 	// Two valid shapes can broadcast to an unrepresentable one.
-	col := &Array{data: []float64{1}, shape: []int{1 << 40, 1}, strides: []int{0, 0}}
-	row := &Array{data: []float64{1}, shape: []int{1, 1 << 40}, strides: []int{0, 0}}
+	col := &Array{data: []float64{1}, shape: []int{halfSquare, 1}, strides: []int{0, 0}}
+	row := &Array{data: []float64{1}, shape: []int{1, halfSquare}, strides: []int{0, 0}}
 	if _, err := col.Add(row); !errors.Is(err, ErrShapeMismatch) {
-		t.Errorf("broadcast to (2^40, 2^40) err = %v", err)
+		t.Errorf("broadcast to (%d, %d) err = %v", halfSquare, halfSquare, err)
 	}
 	// Large but representable shapes are still fine.
-	if _, err := New(0, 1<<40); err != nil {
-		t.Errorf("New(0, 1<<40) err = %v", err)
+	if _, err := New(0, halfSquare); err != nil {
+		t.Errorf("New(0, %d) err = %v", halfSquare, err)
 	}
 }
 
