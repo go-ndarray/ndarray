@@ -1,4 +1,4 @@
-//go:build !arm64 && !amd64
+//go:build !arm64 && !amd64 && !ppc64le
 
 package kernels
 
@@ -7,20 +7,20 @@ package kernels
 // SIMD-vs-scalar tests (which then trivially hold, scalar == scalar) still
 // exercise this path and the package builds uniformly across all six targets.
 //
-// amd64 (SSE2) and arm64 (NEON sum + intrinsic scalar sqrt/max/min) ship kernels
-// (see reduce_amd64.go / reduce_arm64.go), so this file is the
-// loong64/ppc64le/riscv64/s390x fallback. For those four no hand-vectorized
-// kernel is shipped yet. Go's ppc64le assembler has no vector-double
-// arithmetic; loong64 has vector add/mul (VADDD, VMULD) but no vector FMA,
-// s390x has both, and riscv64's V extension is optional (a run-time check);
-// see docs/perf.md. The per-arch qemu jobs still exercise this dispatch. The scalar
+// amd64 (SSE2), arm64 (NEON) and ppc64le (VSX, through go-asmgen's encoders)
+// ship kernels (reduce_amd64.go / reduce_arm64.go / reduce_ppc64le.go), so this
+// file is the loong64/riscv64/s390x and 32-bit fallback. For those no
+// hand-vectorized kernel is shipped yet: loong64 has vector add/mul (VADDD,
+// VMULD) but no vector FMA, s390x has both, and riscv64's V extension is
+// optional (a run-time check); see docs/perf.md. The per-arch qemu jobs still
+// exercise this dispatch. The scalar
 // math.Sqrt/math.Max/math.Min still lower to the hardware sqrt/max where the
 // target has it, and the multicore path beats single-threaded numpy on large
 // arrays regardless.
 
 // HaveReduceSIMD reports whether this build routes through a hand-vectorized
-// SIMD kernel (true on amd64/arm64) rather than the scalar oracle (false on
-// loong64/ppc64le/riscv64/s390x). The kernels test logs it so each per-arch CI
+// SIMD kernel (true on amd64/arm64/ppc64le) rather than the scalar oracle
+// (false on loong64/riscv64/s390x and the 32-bit targets). The kernels test logs it so each per-arch CI
 // run states which path it validated.
 const HaveReduceSIMD = false
 

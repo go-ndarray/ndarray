@@ -565,6 +565,44 @@ this log.
 Speed, 16 Ki elements, one core: M4 37 µs (`math.Log` 72), Zen 3 73 µs
 (`math.Log` 175, NumPy 69).
 
+## ppc64le: VSX kernels (2026-10-04)
+
+Go's ppc64 assembler has the VSX loads, stores and permutes but no vector
+double arithmetic, so ppc64le ran the scalar code. go-asmgen v0.13.0 encodes
+`xvadddp`, `xvsubdp`, `xvmuldp`, `xvdivdp`, `xvmaddadp`, `xvmaxdp`, `xvmindp`
+and `xvsqrtdp` as `WORD`s, pinned against GNU as 2.44 and run bit-identical to
+Go's arithmetic and `math.FMA` on POWER8 and POWER9. With them, go-ndarray has
+VSX kernels for sum, dot, sqrt, add/sub/mul/div and the GEMM.
+
+The GEMM micro-kernel (8×8, 32 accumulators) follows OpenBLAS's POWER9 dgemm:
+no splats. Each A pair and its swap multiply each B column pair, so one
+accumulator holds a diagonal (C[r][c], C[r+1][c+1]) and another the
+anti-diagonal; the store rebuilds the rows with `xxpermdi`. On one POWER9 core,
+measured in one binary: 13.3 GFLOP/s with `lxvdsx` splats, 14.8 with `xxpermdi`
+splats, 15.4 with those unrolled by two, **16.9** with the diagonal scheme
+unrolled by two (shipped).
+
+POWER9 (cfarm29, 8 cores × SMT4), against the scalar code (best of 3–4
+interleaved runs):
+
+| op | before | after | gain |
+|----|--:|--:|:--:|
+| micro-kernel, 1 core | 8.3 GFLOP/s | 16.2 GFLOP/s | ×1.96 |
+| serial GEMM 512², 1 core | 7.9 GFLOP/s | 15.8 GFLOP/s | ×2.0 |
+| MatMul 1024², 32 threads | 39.2 ms | 23.6 ms | ×1.66 |
+| MatMul 128² / 512² | | | ×1.8 / ×1.5 |
+| MatVec 1024² | 823 µs | 267 µs | ×3.1 |
+| Sum 1 Ki / 16 Ki / 256 Ki | | | ×6.6 / ×7.3 / ×3.2 |
+| AddInto 1 Ki–256 Ki | | | ×2.7–4.1 |
+| Sqrt, 1 core | | | ×1.05–1.18 |
+
+At 4 Mi elements sum and add are memory-bound (×1.1). **Against OpenBLAS**
+0.3.34 (its POWER9 kernel, loaded through `scipy-openblas64` on the same host;
+the ppc64le NumPy wheel there has no BLAS): one thread 22.8 GFLOP/s at 512²,
+so the serial GEMM is at 0.69×; 32 threads 13.1 ms at 1024², so MatMul is at
+0.56×. OpenBLAS unrolls further and uses POWER9-only `lxv` loads; Go's ppc64le
+baseline is POWER8.
+
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`
@@ -588,13 +626,17 @@ Speed, 16 Ki elements, one core: M4 37 µs (`math.Log` 72), Zen 3 73 µs
   `FMAXD`/`FMIND`); the C-accumulate fold still uses `VFMLA` against `1.0` (no
   plain vector FP add exists). All beat/parity NumPy via SIMD + multicore, no
   `func`-pointer indirection.
-- The other four 64-bit Go targets — **riscv64, loong64, ppc64le, s390x** — keep
+- **ppc64le (VSX)**, since v0.2.3: sum, dot, sqrt, add/sub/mul/div and an 8×8
+  GEMM micro-kernel; max/min stay scalar (the ISA's `xvmaxdp` NaN rule is not
+  NumPy's). See the ppc64le section above.
+- The other three 64-bit Go targets — **riscv64, loong64, s390x** — keep
   the validated scalar oracles, using the same four-accumulator max/min, direct
   sqrt loop, and a **scalar 4×4 GEMM micro-kernel** over the packed panels, and
   still get the **packing + cache blocking + multicore** structure (they have
   not been measured against NumPy). What the Go assembler offers them, checked
   on Go 1.26.4 and 1.27.1 by assembling and disassembling (2026-10-04):
-  **ppc64le** has no vector-double arithmetic (no `XVADDDP`/`XVMADDADP`);
+  **ppc64le** has no vector-double arithmetic (no `XVADDDP`/`XVMADDADP`), which
+  go-asmgen v0.13.0 now encodes as `WORD`s, so ppc64le has kernels;
   **loong64** has vector-double add/sub/mul/div (`VADDD` assembles to
   `vfadd.d`, `VMULD` to `vfmul.d`, `XVADDD` to `xvfadd.d`) but no vector FMA;
   **s390x** has them, FMA included (`VFADB`, `VFMADB`); **riscv64** has them

@@ -1,11 +1,10 @@
 // Package kernels holds the inner numeric loops for the ndarray package.
 //
 // Every loop here is a portable, pure-Go (CGO=0) scalar kernel. They are kept
-// behind this small, contiguous-slice API so that SIMD variants can drop in
-// later without changing callers or tests: Phase 1 of the roadmap replaces
-// these with go-asmgen-generated kernels across all six 64-bit Go SIMD targets
-// (amd64, arm64, riscv64, loong64, ppc64le, s390x), selected at runtime, while
-// these scalar versions remain the reference and the fallback.
+// behind this small, contiguous-slice API so that SIMD variants drop in without
+// changing callers or tests: go-asmgen-generated kernels replace the hot ones
+// on amd64, arm64 and ppc64le (the *_amd64/_arm64/_ppc64le files), while these
+// scalar versions remain the reference and the fallback elsewhere.
 //
 // Kernels operate on flat, contiguous []float64 slices. Shape, stride and
 // broadcasting concerns live in the parent package; by the time a slice reaches
