@@ -218,7 +218,9 @@ func build(shape []int, at func([]int) float64) *ref {
 	return out
 }
 
-func values(a *Array) []float64 { return build(a.Shape(), func(i []int) float64 { return a.At(i...) }).vals }
+func values(a *Array) []float64 {
+	return build(a.Shape(), func(i []int) float64 { return a.At(i...) }).vals
+}
 
 // normAxis maps a possibly negative axis into [0, n), or -1 if out of range.
 func normAxis(ax, n int) int {
