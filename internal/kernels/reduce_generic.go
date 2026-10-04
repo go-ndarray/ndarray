@@ -10,9 +10,10 @@ package kernels
 // amd64 (SSE2) and arm64 (NEON sum + intrinsic scalar sqrt/max/min) ship kernels
 // (see reduce_amd64.go / reduce_arm64.go), so this file is the
 // loong64/ppc64le/riscv64/s390x fallback. For those four no hand-vectorized
-// kernel is shipped: Go's loong64/ppc64le assemblers expose no vector-double
-// arithmetic (the same wall go-fft documented), riscv64's V extension is
-// optional, and the per-arch qemu jobs still exercise this dispatch. The scalar
+// kernel is shipped yet. Go's ppc64le assembler has no vector-double
+// arithmetic; loong64 has vector add/mul (VADDD, VMULD) but no vector FMA,
+// s390x has both, and riscv64's V extension is optional (a run-time check);
+// see docs/perf.md. The per-arch qemu jobs still exercise this dispatch. The scalar
 // math.Sqrt/math.Max/math.Min still lower to the hardware sqrt/max where the
 // target has it, and the multicore path beats single-threaded numpy on large
 // arrays regardless.

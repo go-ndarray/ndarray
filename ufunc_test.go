@@ -104,8 +104,8 @@ func TestComparisonBroadcastAndError(t *testing.T) {
 	}
 }
 
-// TestExpTopOfRange: exp is finite up to ln(MaxFloat64) on every arch. Go
-// 1.26's amd64 math.Exp returns +Inf from x ~ 709.436, which Exp used to
+// TestExpTopOfRange: exp is finite up to ln(MaxFloat64) on every arch.
+// amd64's math.Exp returns +Inf from x ~ 709.436 (golang/go#81995), which Exp used to
 // inherit; numpy gives 1.3549863193146328e+308 for 709.5. The input is a
 // strided view, so the contiguous copy path is exercised too.
 func TestExpTopOfRange(t *testing.T) {
@@ -118,7 +118,7 @@ func TestExpTopOfRange(t *testing.T) {
 }
 
 // TestLogSubnormal: Log and Log10 are right for subnormal inputs on every
-// arch. Go 1.26's amd64 math.Log returns -709.09 for both 5e-324 and 1e-310,
+// arch. amd64's math.Log returns -709.09 for both 5e-324 and 1e-310 (golang/go#56600),
 // which Log and Log10 used to inherit; numpy gives -744.44 and -713.80.
 func TestLogSubnormal(t *testing.T) {
 	x := mustArr(t, ok(FromData([]float64{5e-324, 1e-310, 1, math.E}, 4)))

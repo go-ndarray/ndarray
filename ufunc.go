@@ -50,8 +50,8 @@ func (a *Array) SqrtInto(out *Array) error {
 //
 // It runs a table-driven port of Arm's optimized-routines exp (0.51 ULP worst
 // case, measured), split across cores: several times faster than math.Exp per
-// element, and finite up to ln(MaxFloat64) on amd64, where Go 1.26's math.Exp
-// returns +Inf from x ~ 709.436.
+// element, and finite up to ln(MaxFloat64) on amd64, where math.Exp returns
+// +Inf from x ~ 709.436 (golang/go#81995; Go 1.26.8 and 1.27.1).
 func (a *Array) Exp() *Array {
 	src := a.contiguousData()
 	dst := a.alloc(len(src), false)
@@ -64,8 +64,8 @@ func (a *Array) Exp() *Array {
 //
 // It runs a table-driven port of Arm's optimized-routines log (0.51 ULP worst
 // case, measured), split across cores: about twice as fast as math.Log, and
-// correct for subnormal inputs on amd64, where Go 1.26's math.Log is not
-// (log(5e-324) gives -709.09 instead of -744.44).
+// correct for subnormal inputs on amd64, where math.Log is not (log(5e-324)
+// gives -709.09 instead of -744.44; golang/go#56600).
 func (a *Array) Log() *Array { return a.unary(kernels.LogP) }
 
 // Log2 returns the elementwise base-2 logarithm, within 2 ULP of numpy's.
