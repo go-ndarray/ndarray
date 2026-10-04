@@ -113,17 +113,21 @@ func LessEqual(dst, a, b []float64) {
 	}
 }
 
-// Maximum writes the pairwise maximum of a[i] and b[i] into dst[i].
+// Maximum writes the pairwise maximum of a[i] and b[i] into dst[i]. It is
+// NaN-propagating like numpy.maximum: it uses the builtin max, not math.Max,
+// because math.Max returns +Inf for max(NaN, +Inf) where numpy returns NaN.
 func Maximum(dst, a, b []float64) {
 	for i := range dst {
-		dst[i] = math.Max(a[i], b[i])
+		dst[i] = max(a[i], b[i])
 	}
 }
 
-// Minimum writes the pairwise minimum of a[i] and b[i] into dst[i].
+// Minimum writes the pairwise minimum of a[i] and b[i] into dst[i],
+// NaN-propagating like numpy.minimum (builtin min; math.Min returns -Inf for
+// min(NaN, -Inf)).
 func Minimum(dst, a, b []float64) {
 	for i := range dst {
-		dst[i] = math.Min(a[i], b[i])
+		dst[i] = min(a[i], b[i])
 	}
 }
 
@@ -239,7 +243,8 @@ func ProdAxis(dst, src []float64, outer, axisLen, inner int) {
 	}
 }
 
-// MaxAxis reduces the middle axis by taking the maximum.
+// MaxAxis reduces the middle axis by taking the maximum. Like Max it is
+// NaN-propagating (numpy.max(axis=...)).
 func MaxAxis(dst, src []float64, outer, axisLen, inner int) {
 	for o := 0; o < outer; o++ {
 		base := o * inner
@@ -250,15 +255,14 @@ func MaxAxis(dst, src []float64, outer, axisLen, inner int) {
 		for k := 1; k < axisLen; k++ {
 			off := block + k*inner
 			for i := 0; i < inner; i++ {
-				if v := src[off+i]; v > dst[base+i] {
-					dst[base+i] = v
-				}
+				dst[base+i] = max(dst[base+i], src[off+i])
 			}
 		}
 	}
 }
 
-// MinAxis reduces the middle axis by taking the minimum.
+// MinAxis reduces the middle axis by taking the minimum, NaN-propagating
+// (numpy.min(axis=...)).
 func MinAxis(dst, src []float64, outer, axisLen, inner int) {
 	for o := 0; o < outer; o++ {
 		base := o * inner
@@ -269,19 +273,24 @@ func MinAxis(dst, src []float64, outer, axisLen, inner int) {
 		for k := 1; k < axisLen; k++ {
 			off := block + k*inner
 			for i := 0; i < inner; i++ {
-				if v := src[off+i]; v < dst[base+i] {
-					dst[base+i] = v
-				}
+				dst[base+i] = min(dst[base+i], src[off+i])
 			}
 		}
 	}
 }
 
 // ArgMax returns the index of the first maximum element of a (non-empty),
-// matching numpy.argmax: ties go to the lowest index.
+// matching numpy.argmax: ties go to the lowest index, and a NaN counts as the
+// maximum, so the index of the first NaN wins (as Max returns NaN).
 func ArgMax(a []float64) int {
 	best, bi := a[0], 0
+	if math.IsNaN(best) {
+		return 0
+	}
 	for i, v := range a[1:] {
+		if math.IsNaN(v) {
+			return i + 1
+		}
 		if v > best {
 			best, bi = v, i+1
 		}
@@ -290,10 +299,16 @@ func ArgMax(a []float64) int {
 }
 
 // ArgMin returns the index of the first minimum element of a (non-empty),
-// matching numpy.argmin: ties go to the lowest index.
+// matching numpy.argmin: ties go to the lowest index, and the first NaN wins.
 func ArgMin(a []float64) int {
 	best, bi := a[0], 0
+	if math.IsNaN(best) {
+		return 0
+	}
 	for i, v := range a[1:] {
+		if math.IsNaN(v) {
+			return i + 1
+		}
 		if v < best {
 			best, bi = v, i+1
 		}
@@ -302,7 +317,8 @@ func ArgMin(a []float64) int {
 }
 
 // ArgMaxAxis writes into dst the index (along the middle axis) of the first
-// maximum for each [outer][inner] position. Layout matches the *Axis kernels.
+// maximum for each [outer][inner] position, or of the first NaN (see ArgMax).
+// Layout matches the *Axis kernels.
 func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner int) {
 	for o := 0; o < outer; o++ {
 		base := o * inner
@@ -310,8 +326,8 @@ func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner int) {
 		for i := 0; i < inner; i++ {
 			best := src[block+i]
 			bi := 0
-			for k := 1; k < axisLen; k++ {
-				if v := src[block+k*inner+i]; v > best {
+			for k := 1; k < axisLen && !math.IsNaN(best); k++ {
+				if v := src[block+k*inner+i]; v > best || math.IsNaN(v) {
 					best, bi = v, k
 				}
 			}
@@ -321,7 +337,7 @@ func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner int) {
 }
 
 // ArgMinAxis writes into dst the index (along the middle axis) of the first
-// minimum for each [outer][inner] position.
+// minimum for each [outer][inner] position, or of the first NaN.
 func ArgMinAxis(dst []float64, src []float64, outer, axisLen, inner int) {
 	for o := 0; o < outer; o++ {
 		base := o * inner
@@ -329,8 +345,8 @@ func ArgMinAxis(dst []float64, src []float64, outer, axisLen, inner int) {
 		for i := 0; i < inner; i++ {
 			best := src[block+i]
 			bi := 0
-			for k := 1; k < axisLen; k++ {
-				if v := src[block+k*inner+i]; v < best {
+			for k := 1; k < axisLen && !math.IsNaN(best); k++ {
+				if v := src[block+k*inner+i]; v < best || math.IsNaN(v) {
 					best, bi = v, k
 				}
 			}
