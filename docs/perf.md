@@ -499,6 +499,27 @@ Speed, kernel only, 16 Ki elements: M4 30 µs (`math.Exp` 65 µs); one Zen 3 cor
 62 µs (`math.Exp` 215 µs, NumPy single-threaded 78 µs). Whole `Exp` on Zen 3,
 16 cores: 1 Ki ×2.7, 16 Ki ×3, 256 Ki ×1.6, 4 Mi ×1.65; from 256 Ki on it is
 2–5× NumPy. A SIMD version (AVX2 gathers for the table) is the next step.
+## Dot and mat·vec (2026-10-04)
+
+`dotRange`, under `Dot` (1-D), `MatVec` and `Dot1DP`, was a four-chain scalar
+loop (gc does not vectorise it): on one Zen 3 core 2^20 elements took 464 µs,
+2× NumPy's single thread. Two generated kernels replace it: `dotFMA` on amd64
+(four YMM accumulators, b read straight from memory by VFMADD231PD; two loads
+per FMA make it load-bound, which four chains cover), gated on the FMA probe,
+and `dotNEON` on arm64 (eight D2 accumulators for the four FP pipes of an Apple
+core). The other targets keep `dotRange`. The lane-parallel sum is a regrouping,
+held to the n·ε·Σ|aᵢbᵢ| bound and exact on integer data.
+
+| Zen 3 | before | after | NumPy 1 thread |
+|----|--:|--:|--:|
+| Dot 2^20, 1 core | 464 µs | **229 µs** | 231 µs |
+| MatVec 1024², 1 core | 482 µs | **134 µs** | 153 µs |
+| Dot 2^20, 16 cores | 159 µs | 99 µs | — |
+| MatVec 1024², 16 cores | 165 µs | 89 µs | — |
+
+NumPy's multi-threaded dot still wins on this part (24 µs): OpenMP pins its
+threads, so each one rereads its own chunk from its own L3 slice on every
+repetition, while goroutines move between core complexes.
 
 ## SIMD coverage
 

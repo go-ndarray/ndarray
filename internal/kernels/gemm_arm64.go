@@ -26,5 +26,16 @@ func gemmMicro(kc int, pa, pb, dst []float64, ldc int) {
 	gemmMicro4x8(kc, &pa[0], &pb[0], &dst[0], ldc)
 }
 
+// dotSIMD is the inner product of two equal-length slices (NEON kernel).
+func dotSIMD(a, b []float64) float64 {
+	if len(a) == 0 {
+		return 0
+	}
+	return dotNEON(&a[0], &b[0], len(a))
+}
+
+//go:noescape
+func dotNEON(a, b *float64, n int) float64
+
 //go:noescape
 func gemmMicro4x8(kc int, pa, pb, c *float64, ldc int)

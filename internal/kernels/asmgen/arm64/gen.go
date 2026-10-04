@@ -41,6 +41,7 @@ func reduceSig() arm64.Signature {
 func main() {
 	f := emit.NewFile("arm64")
 	f.Add(sumKernel())
+	f.Add(dotKernel())
 	f.Add(sqrtKernel())
 	f.Add(addKernel())
 	f.Add(subKernel())
@@ -394,6 +395,59 @@ func gemmKernel() *emit.Function {
 // exactly 1.0 is exact, and FMA(src, 1.0, acc) rounds identically to acc+src
 // (the addend is the only inexact step), so this is a true vector add, not an
 // approximation — it simply reaches it through the only vector-FP op available.
+// dotKernel builds dotNEON(a, b *float64, n int) float64, the inner product
+// with eight D2 accumulators V0..V7 (16 doubles per iteration): two loads per
+// FMA make the loop load-bound, and eight chains keep the four FP pipes of an
+// Apple core fed through the FMA latency. The accumulators are folded with
+// FMLA against 1.0 (exact; Go's assembler has no plain vector FP add), the two
+// lanes added, and the tail fused in one element at a time with FMADDD, as gc
+// fuses the scalar loop.
+func dotKernel() *emit.Function {
+	sig := arm64.Layout(
+		[]string{"a", "b", "n"}, []arm64.Type{arm64.Ptr, arm64.Ptr, arm64.Int64},
+		[]string{"ret"}, []arm64.Type{arm64.Float64},
+	)
+	b := arm64.NewFunc("dotNEON", sig, 0)
+	b.LoadArg("a", "R0").LoadArg("b", "R1").LoadArg("n", "R2")
+	b.Raw("MOVD $0x3FF0000000000000, R3")
+	b.Raw("VDUP R3, V24.D2")
+	for r := 0; r < 8; r++ {
+		b.Raw(fmt.Sprintf("VEOR V%d.B16, V%d.B16, V%d.B16", r, r, r))
+	}
+	b.Raw("dblock:")
+	b.Raw("CMP $16, R2")
+	b.Raw("BLT dfold")
+	b.Raw("VLD1.P 64(R0), [V8.D2, V9.D2, V10.D2, V11.D2]")
+	b.Raw("VLD1.P 64(R0), [V12.D2, V13.D2, V14.D2, V15.D2]")
+	b.Raw("VLD1.P 64(R1), [V16.D2, V17.D2, V18.D2, V19.D2]")
+	b.Raw("VLD1.P 64(R1), [V20.D2, V21.D2, V22.D2, V23.D2]")
+	for r := 0; r < 8; r++ {
+		b.Raw(fmt.Sprintf("VFMLA V%d.D2, V%d.D2, V%d.D2", 16+r, 8+r, r)) // V(r) += a*b
+	}
+	b.Raw("SUB $16, R2")
+	b.Raw("B dblock")
+	b.Raw("dfold:")
+	for _, p := range [][2]int{{1, 0}, {3, 2}, {5, 4}, {7, 6}, {2, 0}, {6, 4}, {4, 0}} {
+		b.Raw(fmt.Sprintf("VFMLA V%d.D2, V24.D2, V%d.D2", p[0], p[1])) // V(p1) += V(p0)
+	}
+	b.Raw("VMOV V0.D[0], R3")
+	b.Raw("VMOV V0.D[1], R4")
+	b.Raw("FMOVD R3, F0")
+	b.Raw("FMOVD R4, F9")
+	b.Raw("FADDD F9, F0, F0")
+	b.Raw("dtail:")
+	b.Raw("CBZ R2, ddone")
+	b.Raw("FMOVD.P 8(R0), F10")
+	b.Raw("FMOVD.P 8(R1), F11")
+	b.Raw("FMADDD F11, F0, F10, F0") // F0 += F10*F11
+	b.Raw("SUB $1, R2")
+	b.Raw("B dtail")
+	b.Raw("ddone:")
+	b.StoreRet("F0", "ret")
+	b.Ret()
+	return b.Func()
+}
+
 func sumKernel() *emit.Function {
 	b := arm64.NewFunc("sumNEON", reduceSig(), 0)
 	b.LoadArg("a", "R0").

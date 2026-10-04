@@ -330,3 +330,42 @@ func TestDot1DP(t *testing.T) {
 		}
 	}
 }
+
+// TestDotSIMD holds the SIMD inner product (AVX2/FMA, NEON, or dotRange on the
+// other targets) to a sequential oracle: exactly on integer data for every
+// length 0..70 (main loop, folds and tail), within the regrouping bound
+// n*eps*sum|a_i*b_i| on random data, and NaN/Inf propagation.
+func TestDotSIMD(t *testing.T) {
+	naive := func(a, b []float64) (s, abs float64) {
+		for i := range a {
+			s += a[i] * b[i]
+			abs += math.Abs(a[i] * b[i])
+		}
+		return s, abs
+	}
+	for n := 0; n <= 70; n++ {
+		a, b := intMat(1, n, int64(n)), intMat(1, n, int64(n+100))
+		if want, _ := naive(a, b); dotSIMD(a, b) != want {
+			t.Fatalf("n=%d: %v != %v", n, dotSIMD(a, b), want)
+		}
+	}
+	for _, n := range []int{17, 1000, 4099} {
+		a, b := randVec(n, int64(n)), randVec(n, int64(2*n))
+		want, abs := naive(a, b)
+		if got := dotSIMD(a, b); math.Abs(got-want) > float64(n)*0x1p-52*abs {
+			t.Errorf("n=%d: %v vs %v", n, got, want)
+		}
+	}
+	for _, special := range []float64{math.NaN(), math.Inf(1)} {
+		for _, at := range []int{0, 20, 37} {
+			a := intMat(1, 38, 5)
+			a[at] = special
+			b := intMat(1, 38, 6)
+			b[at] = 1
+			got := dotSIMD(a, b)
+			if math.IsNaN(special) != math.IsNaN(got) || !math.IsNaN(special) && !math.IsInf(got, 1) {
+				t.Errorf("%v at %d: dot = %v", special, at, got)
+			}
+		}
+	}
+}

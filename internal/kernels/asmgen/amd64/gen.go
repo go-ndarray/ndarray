@@ -46,6 +46,7 @@ func main() {
 	f.Add(binKernel("mulSSE2", "MULPD", "MULSD"))
 	f.Add(binKernel("divSSE2", "DIVPD", "DIVSD"))
 	f.Add(gemmFMAKernel())
+	f.Add(dotFMAKernel())
 	f.Add(gemmSSE2HalfKernel())
 	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
 
@@ -376,6 +377,57 @@ func gemmFMAKernel() *emit.Function {
 		}
 	}
 	b.Raw("VZEROUPPER") // no AVX-SSE transition penalty in the Go code after
+	b.Ret()
+	return b.Func()
+}
+
+// dotFMAKernel builds dotFMA(a, b *float64, n int) float64, the inner product
+// with four YMM accumulators (16 doubles per iteration, one VFMADD231PD per 4
+// doubles reading b straight from memory): two loads per FMA make the loop
+// load-bound, and four chains cover the FMA latency at that rate. The
+// accumulators are folded pairwise, then the four lanes, then the tail is
+// fused in one element at a time. Gated on hasFMA like the GEMM kernel.
+func dotFMAKernel() *emit.Function {
+	sig := amd64.Layout(
+		[]string{"a", "b", "n"}, []amd64.Type{amd64.Ptr, amd64.Ptr, amd64.Int64},
+		[]string{"ret"}, []amd64.Type{amd64.Float64},
+	)
+	b := amd64.NewFunc("dotFMA", sig, 0)
+	b.LoadArg("a", "SI").LoadArg("b", "DI").LoadArg("n", "CX")
+	for r := 0; r < 4; r++ {
+		b.Raw(fmt.Sprintf("VXORPD Y%d, Y%d, Y%d", r, r, r))
+	}
+	b.Raw("dloop:")
+	b.Raw("CMPQ CX, $16")
+	b.Raw("JL dfold")
+	for r := 0; r < 4; r++ {
+		b.Raw(fmt.Sprintf("VMOVUPD %d(SI), Y%d", 32*r, 4+r))
+		b.Raw(fmt.Sprintf("VFMADD231PD %d(DI), Y%d, Y%d", 32*r, 4+r, r))
+	}
+	b.Raw("ADDQ $128, SI")
+	b.Raw("ADDQ $128, DI")
+	b.Raw("SUBQ $16, CX")
+	b.Raw("JMP dloop")
+	b.Raw("dfold:")
+	b.Raw("VADDPD Y1, Y0, Y0")
+	b.Raw("VADDPD Y3, Y2, Y2")
+	b.Raw("VADDPD Y2, Y0, Y0")
+	b.Raw("VEXTRACTF128 $1, Y0, X1")
+	b.Raw("VADDPD X1, X0, X0")
+	b.Raw("VUNPCKHPD X0, X0, X1")
+	b.Raw("VADDSD X1, X0, X0")
+	b.Raw("dtail:")
+	b.Raw("TESTQ CX, CX")
+	b.Raw("JZ ddone")
+	b.Raw("VMOVSD (SI), X1")
+	b.Raw("VFMADD231SD (DI), X1, X0")
+	b.Raw("ADDQ $8, SI")
+	b.Raw("ADDQ $8, DI")
+	b.Raw("DECQ CX")
+	b.Raw("JMP dtail")
+	b.Raw("ddone:")
+	b.Raw("VZEROUPPER")
+	b.StoreRet("X0", "ret")
 	b.Ret()
 	return b.Func()
 }

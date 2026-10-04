@@ -23,15 +23,16 @@ const (
 	NR = 8
 )
 
-// gemmUseFMA selects the FMA kernel. It is a var so tests can force the SSE2
-// path on hardware that has FMA (never the reverse: that would fault).
-var gemmUseFMA = hasFMA()
+// useFMA selects the FMA kernels (GEMM, dot). It is a var so tests can force
+// the SSE2 / pure-Go paths on hardware that has FMA (never the reverse: that
+// would fault).
+var useFMA = hasFMA()
 
 // gemmMicro adds the MR x NR tile sum_p pa[p*MR..]*pb[p*NR..] into the C block at
 // dst[0:], whose rows are ldc apart. pa, pb hold at least kc*MR and kc*NR packed
 // (zero-padded) doubles; dst has at least (MR-1)*ldc + NR elements.
 func gemmMicro(kc int, pa, pb, dst []float64, ldc int) {
-	if gemmUseFMA {
+	if useFMA {
 		gemmMicro6x8FMA(kc, &pa[0], &pb[0], &dst[0], ldc)
 		return
 	}
@@ -44,6 +45,18 @@ func gemmMicro6x8FMA(kc int, pa, pb, c *float64, ldc int)
 
 //go:noescape
 func gemmMicro6x4SSE2(kc int, pa, pb, c *float64, ldc int)
+
+// dotSIMD is the inner product of two equal-length slices: the AVX2/FMA
+// kernel when the CPU has FMA, else dotRange.
+func dotSIMD(a, b []float64) float64 {
+	if !useFMA || len(a) == 0 {
+		return dotRange(a, b)
+	}
+	return dotFMA(&a[0], &b[0], len(a))
+}
+
+//go:noescape
+func dotFMA(a, b *float64, n int) float64
 
 // hasFMA reports CPU and OS support for the FMA kernel (go-asmgen FeatureProbe).
 func hasFMA() bool
