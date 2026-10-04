@@ -37,6 +37,7 @@ func sqrtSIMD(dst, src []float64) {
 		sqrtScalar(dst, src)
 		return
 	}
+	_ = src[len(dst)-1] // the kernel reads len(dst) of src
 	sqrtLASX(&dst[0], &src[0], len(dst))
 }
 
@@ -49,6 +50,7 @@ func addBin(dst, a, b []float64) {
 		Add(dst, a, b)
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	addLASX(&dst[0], &a[0], &b[0], len(dst))
 }
 
@@ -57,6 +59,7 @@ func subBin(dst, a, b []float64) {
 		Sub(dst, a, b)
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	subLASX(&dst[0], &a[0], &b[0], len(dst))
 }
 
@@ -65,6 +68,7 @@ func mulBin(dst, a, b []float64) {
 		Mul(dst, a, b)
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	mulLASX(&dst[0], &a[0], &b[0], len(dst))
 }
 
@@ -73,6 +77,7 @@ func divBin(dst, a, b []float64) {
 		Div(dst, a, b)
 		return
 	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
 	divLASX(&dst[0], &a[0], &b[0], len(dst))
 }
 

@@ -56,7 +56,11 @@ func (a *Array) scanAxis(
 	outer, axisLen, inner := a.reduceLayout(axis)
 	src := a.materialize()
 	dst := a.alloc(len(src), false)
-	kernel(dst, src, outer, axisLen, inner)
+	// An empty array can still have a huge axis, (0, 2^58), and the kernel
+	// walks outer*axisLen*inner: skip it rather than loop over nothing.
+	if len(dst) > 0 {
+		kernel(dst, src, outer, axisLen, inner)
+	}
 	shape := append([]int(nil), a.shape...)
 	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}, nil
 }

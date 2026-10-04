@@ -11,6 +11,9 @@ func Linspace(start, stop float64, num int) (*Array, error) {
 		return nil, fmt.Errorf("%w: linspace num must be non-negative, got %d",
 			ErrShapeMismatch, num)
 	}
+	if err := validateShape([]int{num}); err != nil {
+		return nil, err
+	}
 	data := make([]float64, num)
 	switch {
 	case num == 1:

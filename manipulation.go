@@ -102,9 +102,20 @@ func Concatenate(arrays []*Array, axis int) (*Array, error) {
 					ErrShapeMismatch, arr.shape, first.shape, d)
 			}
 		}
+		// Sum with an overflow guard: every length is at most maxSize, but
+		// enough of them would wrap axisTotal negative.
+		if arr.shape[ax] > maxSize-axisTotal {
+			return nil, fmt.Errorf("%w: concatenate along axis %d is too big",
+				ErrShapeMismatch, ax)
+		}
 		axisTotal += arr.shape[ax]
 	}
 	out[ax] = axisTotal
+	// Zero-size operands do not bound the result: (2^58, 0) stacked 9 times is
+	// (9, 2^58, 0), which numpy rejects as too big.
+	if err := validateShape(out); err != nil {
+		return nil, err
+	}
 	return concatInto(arrays, ax, out), nil
 }
 
@@ -116,6 +127,10 @@ func concatInto(arrays []*Array, ax int, out []int) *Array {
 	outer := prod(out[:ax])
 	axisTotal := out[ax]
 	data := wsOf(arrays...).alloc(outer*axisTotal*inner, false) // every slab is copied in
+	if len(data) == 0 {
+		// Nothing to copy, but outer alone can be 2^58: do not walk it.
+		return &Array{data: data, shape: out, strides: rowMajorStrides(out), ws: wsOf(arrays...)}
+	}
 	// Column offset (in the joined axis) where the next array's slab begins.
 	colBase := 0
 	for _, arr := range arrays {

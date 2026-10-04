@@ -14,6 +14,7 @@ const (
 
 func gemmMicro(kc int, pa, pb, dst []float64, ldc int) {
 	if useLASX {
+		_, _, _ = pa[kc*MR-1], pb[kc*NR-1], dst[(MR-1)*ldc+NR-1] // the kernel's whole reach
 		gemmMicro8x8LASX(kc, &pa[0], &pb[0], &dst[0], ldc)
 		return
 	}
@@ -47,6 +48,7 @@ func dotSIMD(a, b []float64) float64 {
 	if !useLASX || len(a) == 0 {
 		return dotRange(a, b)
 	}
+	_ = b[len(a)-1] // the kernel reads len(a) of b
 	return dotLASX(&a[0], &b[0], len(a))
 }
 
