@@ -520,6 +520,33 @@ held to the n·ε·Σ|aᵢbᵢ| bound and exact on integer data.
 NumPy's multi-threaded dot still wins on this part (24 µs): OpenMP pins its
 threads, so each one rereads its own chunk from its own L3 slice on every
 repetition, while goroutines move between core complexes.
+## Log and Log10 (2026-10-04)
+
+`Log` went through `Map(math.Log)`: 11.6 ns per element on a Zen 3 core
+against NumPy's 4.2. It is now a port of the double-precision log of Arm's
+optimized-routines (the companion of `Exp`, also glibc's since 2.28; MIT
+licence): x = 2^k·z, z split into 128 subintervals, log(x) = k·ln2 + log(c) +
+log1p(z/c − 1) with 1/c and log(c) from a table and a degree-6 polynomial;
+inputs within 2⁻⁴ of 1 take a degree-12 polynomial. z/c − 1 is one
+`math.FMA` (exact on every target), so the second table the non-FMA variant
+needs is not used. `Log10` is log(x)·(1/ln10), the formula of `math.Log10`, on
+this log.
+
+- **Accuracy:** worst 0.508 ULP over 10 000 inputs (whole range, near 1,
+  subnormals), against a 300-bit reference (log m = 2·atanh((m−1)/(m+1)));
+  `math.Log` measured 0.727 on arm64. `TestLogTable` checks each of the 128
+  entries against the properties `log_data.c` documents (1/invc inside its
+  subinterval, logc = log(c) within the rounding of invc, 0x1.8p9 + logc
+  exact).
+- **A second Go bug it removes:** on amd64, Go 1.26's `math.Log` is wrong for
+  subnormal inputs. `math.Log(5e-324)` returns −709.09 instead of −744.44, and
+  `math.Log(1e-310)` −709.09 instead of −713.80 (NumPy: −744.44, −713.80); the
+  error measured 7·10¹³ ULP. Its assembly does not normalise them. Confirmed on
+  a real Zen 3. `Log` and `Log10` inherited it; `TestLogSubnormal` pins the fix.
+  (`Log2` already normalised through `math.Frexp` and was right.)
+
+Speed, 16 Ki elements, one core: M4 37 µs (`math.Log` 72), Zen 3 73 µs
+(`math.Log` 175, NumPy 69).
 
 ## SIMD coverage
 

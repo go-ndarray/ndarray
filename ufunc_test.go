@@ -116,3 +116,17 @@ func TestExpTopOfRange(t *testing.T) {
 	}
 	wantData(t, v.Exp(), []int{3}, []float64{1.3549863193146328e+308, 1.7928227943945155e+308, 0})
 }
+
+// TestLogSubnormal: Log and Log10 are right for subnormal inputs on every
+// arch. Go 1.26's amd64 math.Log returns -709.09 for both 5e-324 and 1e-310,
+// which Log and Log10 used to inherit; numpy gives -744.44 and -713.80.
+func TestLogSubnormal(t *testing.T) {
+	x := mustArr(t, ok(FromData([]float64{5e-324, 1e-310, 1, math.E}, 4)))
+	wantData(t, x.Log(), []int{4}, []float64{-744.4400719213812, -713.8013788281542, 0, 1})
+	got := x.Log10()
+	for i, want := range []float64{-323.3062153431158, -310, 0, 0.4342944819032518} {
+		if math.Abs(got.data[i]-want) > 2e-16*math.Abs(want) {
+			t.Errorf("Log10[%d] = %v, want %v", i, got.data[i], want)
+		}
+	}
+}
