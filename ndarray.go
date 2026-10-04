@@ -139,21 +139,56 @@ func FromData(data []float64, shape ...int) (*Array, error) {
 
 // Arange returns a 1-D array of evenly spaced values over [start, stop) with the
 // given step, matching numpy.arange. step must be non-zero.
+//
+// It follows numpy's algorithm rather than accumulating v += step: the length is
+// ceil((stop-start)/step), and element i is start + i*delta with delta =
+// (start+step) - start. Accumulating drifts (Arange(1, 1.3, 0.1) gave 3
+// elements; numpy gives 4), and it never terminates when start+step == start
+// (Arange(1e16, 1e16+10, 1)) or stop is infinite. A NaN operand or a length
+// beyond the addressable size is an error, as in numpy.
 func Arange(start, stop, step float64) (*Array, error) {
 	if step == 0 {
 		return nil, fmt.Errorf("%w: step must be non-zero", ErrShapeMismatch)
 	}
-	var data []float64
-	if step > 0 {
-		for v := start; v < stop; v += step {
-			data = append(data, v)
-		}
-	} else {
-		for v := start; v > stop; v += step {
-			data = append(data, v)
+	span := stop - start
+	length := span / step
+	if length == 0 && span != 0 {
+		// |step| so large the quotient underflowed: numpy still emits start
+		// when step points towards stop.
+		if !math.Signbit(length) {
+			length = 1
 		}
 	}
-	return FromData(data, len(data))
+	length = math.Ceil(length)
+	if math.IsNaN(length) {
+		return nil, fmt.Errorf("%w: arange cannot compute length of [%g, %g) step %g",
+			ErrShapeMismatch, start, stop, step)
+	}
+	if length > maxSize {
+		return nil, fmt.Errorf("%w: arange of [%g, %g) step %g is too big",
+			ErrShapeMismatch, start, stop, step)
+	}
+	n := 0
+	if length > 0 {
+		n = int(length)
+	}
+	data := make([]float64, n)
+	if n > 0 {
+		data[0] = start
+	}
+	if n > 1 {
+		data[1] = start + step
+		delta := data[1] - data[0]
+		for i := 2; i < n; i++ {
+			// The explicit float64 conversion forbids fusing this into an FMA
+			// (the Go spec allows it on arm64, ppc64le, s390x), so every arch
+			// rounds the product and the sum separately, as numpy's x86_64
+			// builds do. (numpy's arm64 builds fuse it, so numpy itself can
+			// differ by an ULP between architectures here.)
+			data[i] = start + float64(float64(i)*delta)
+		}
+	}
+	return FromData(data, n)
 }
 
 // Shape returns a copy of the array's shape.
