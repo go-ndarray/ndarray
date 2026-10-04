@@ -623,14 +623,35 @@ func TestAxisReductionErrors(t *testing.T) {
 		}
 	}
 
-	// Reduction along a zero-length axis is rejected (empty-reduction case),
-	// for both the kernel-backed reductions and the Sum-derived Mean.
+	// Along a zero-length axis, as numpy 2.5.3 does: Sum and Prod give their
+	// identity (np.zeros((0, 3)).sum(axis=0) is [0, 0, 0]); Max, Min, ArgMax
+	// and ArgMin have none and are rejected (numpy raises ValueError); Mean is
+	// rejected too, where numpy returns NaN with a RuntimeWarning.
 	z := mustArr(t, ok(New(0, 3)))
-	if _, err := z.SumAxis(0, false); !errors.Is(err, ErrShapeMismatch) {
-		t.Fatalf("zero-axis Sum: %v", err)
+	for name, c := range map[string]struct {
+		f    func(int, bool) (*Array, error)
+		want float64
+	}{"Sum": {z.SumAxis, 0}, "Prod": {z.ProdAxis, 1}} {
+		r := mustArr(t, ok(c.f(0, false)))
+		eqInts(t, r.Shape(), []int{3})
+		for i := 0; i < 3; i++ {
+			if r.At(i) != c.want {
+				t.Fatalf("zero-axis %s[%d] = %v, want %v", name, i, r.At(i), c.want)
+			}
+		}
+		rk := mustArr(t, ok(c.f(0, true)))
+		eqInts(t, rk.Shape(), []int{1, 3})
 	}
-	if _, err := z.MeanAxis(0, false); !errors.Is(err, ErrShapeMismatch) {
-		t.Fatalf("zero-axis Mean: %v", err)
+	for name, f := range map[string]func(int, bool) (*Array, error){
+		"Mean": z.MeanAxis, "Max": z.MaxAxis, "Min": z.MinAxis,
+		"ArgMax": z.ArgMaxAxis, "ArgMin": z.ArgMinAxis,
+	} {
+		if _, err := f(0, false); !errors.Is(err, ErrShapeMismatch) {
+			t.Fatalf("zero-axis %s: %v", name, err)
+		}
+	}
+	if _, err := z.MeanAxis(9, false); !errors.Is(err, ErrAxis) {
+		t.Fatalf("MeanAxis bad axis: %v", err)
 	}
 	// Reducing a non-zero axis of an array that still has zero elements keeps an
 	// empty result rather than erroring (axisLen > 0 but inner produces nothing).

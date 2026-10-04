@@ -39,10 +39,39 @@ bounds checks do not cover, so they are held to the following:
   `TestEmptyArraysWithHugeAxesReturnPromptly` covers concatenation, the axis
   reductions and the scans.
 
+- **Memory is the caller's to bound.** Validation guarantees a shape is
+  representable, not that it fits in memory, and a Go program that runs out of
+  memory dies (NumPy raises `MemoryError`). Broadcasting, `Outer`, `MatMul` and
+  summing the empty axis of `(0, n)` produce more than their operands hold;
+  with untrusted shapes, check the result's size first.
+- **Fuzzed against an oracle.** `FuzzOps` (`fuzz_test.go`) drives slices,
+  reshapes, transposes, squeezes, broadcasting arithmetic, axis reductions,
+  `Take`, `MaskSelect`, concatenation, `MatMul` and scans from arbitrary bytes,
+  and compares every result element by element with an oracle written in the
+  test from NumPy's definitions (Python's `slice.indices`, the broadcasting
+  rule, ...). The library must reject exactly the calls the oracle rejects and
+  never panic.
+
 The minimum Go version (`go` in `go.mod`) is kept on a release that fixes the
 standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
+
+**2026-10-04 (v0.4.0).**
+
+- `FuzzOps` ran 47 million executions without a divergence. A first version
+  that only checked an array against its own `Copy` was **blind**: with
+  `Squeeze` deliberately given wrong strides it found nothing in 31 million
+  executions, because a wrong view reads the same wrong values both ways. The
+  oracle version finds the same sabotage in 11 seconds; its failing input is
+  kept in `testdata/fuzz/FuzzOps`.
+- It found two places where the library and NumPy differ. `Slice` with fewer
+  indices than axes was an error; it now takes the rest whole, as NumPy does.
+  `MaskSelect` accepts a mask that broadcasts to the array, which NumPy
+  rejects; this is kept as a documented extension.
+- `SumAxis`/`ProdAxis` along a zero-length axis now return 0s/1s as NumPy does
+  (they were errors, unlike `Sum`/`Prod` of an empty array). This makes the
+  memory caveat above concrete, and it is documented there.
 
 **2026-10-04 (v0.3.0).**
 
