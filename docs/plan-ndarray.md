@@ -121,9 +121,12 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
     validated per-arch in CI (bit-identical to the scalar oracle for the
     elementwise/sqrt/max ops; tight-tolerance for the sum reduction, whose
     lane-parallel grouping is a valid reordering — the same trade-off as
-    NumPy's pairwise sum). The other four targets keep the validated scalar
-    oracles plus a scalar 4×4 GEMM micro-kernel over the packed panels, and
-    still win via packing + cache-blocking + multicore. Split-CI: the pure-Go
+    NumPy's pairwise sum). Since v0.2.3 ppc64le has VSX kernels too (sum,
+    dot, sqrt, elementwise, an 8×8 GEMM micro-kernel), through go-asmgen's
+    VSX encoders. The other targets (riscv64, loong64, s390x, 32-bit) keep the
+    validated scalar oracles plus a scalar 4×4 GEMM micro-kernel over the
+    packed panels, with packing + cache-blocking + multicore; they have not
+    been measured against NumPy. Split-CI: the pure-Go
     core + multicore are held to 100% statement coverage; the generated `.s`
     is validated by the per-arch native/qemu execution jobs.
   - **SIMD `Sqrt`/`Max` and the packed, cache-blocked GEMM — DONE (no longer
