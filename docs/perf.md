@@ -660,7 +660,7 @@ host has no route to package mirrors), so there is no external reference.
 - **ppc64le (VSX)**, since v0.2.3: sum, dot, sqrt, add/sub/mul/div and an 8×8
   GEMM micro-kernel; max/min stay scalar (the ISA's `xvmaxdp` NaN rule is not
   NumPy's). See the ppc64le section above.
-- **loong64 (LASX)**, since v0.2.4, when the kernel reports LASX in AT_HWCAP
+- **loong64 (LASX)**, since v0.2.5, when the kernel reports LASX in AT_HWCAP
   (not every LoongArch CPU has it): sum, dot, sqrt, add/sub/mul/div and an 8×8
   GEMM micro-kernel; max/min stay scalar. See the loong64 section above.
 - The other two 64-bit Go targets — **riscv64, s390x** — keep

@@ -123,7 +123,7 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
     lane-parallel grouping is a valid reordering — the same trade-off as
     NumPy's pairwise sum). Since v0.2.3 ppc64le has VSX kernels too (sum,
     dot, sqrt, elementwise, an 8×8 GEMM micro-kernel), through go-asmgen's
-    VSX encoders, and since v0.2.4 loong64 has LASX kernels (used when the CPU
+    VSX encoders, and since v0.2.5 loong64 has LASX kernels (used when the CPU
     reports LASX). The other targets (riscv64, s390x, 32-bit) keep the
     validated scalar oracles plus a scalar 4×4 GEMM micro-kernel over the
     packed panels, with packing + cache-blocking + multicore; they have not
