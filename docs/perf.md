@@ -212,22 +212,25 @@ round implements the full OpenBLAS/BLIS structure and ships it for **all** sizes
   The micro-kernel then streams conflict-free memory **regardless of the source
   stride** — this is the precise fix for the power-of-two L1 set-conflicts that
   defeated the unpacked attempt. Edge tiles are zero-padded so the kernel always
-  sees a full MR×NR block; the ragged right/bottom borders take a scalar path.
+  sees a full MR×NR block; a ragged right/bottom tile runs the same micro-kernel
+  into a scratch tile, and only its valid corner is added to C.
 - **Cache blocking** — an `NC` (columns) → `KC` (contraction) → `MC` (rows) loop
   nest keeps the packed B panel L2-resident and each packed A panel in L1.
   Defaults `MC=256, KC=256, NC=512` (tuned on this VM).
 - **SIMD-FMA micro-kernel** (go-asmgen) — **NEON 4×8 on arm64** (16 D2
-  accumulators, the source of the win), **SSE2 4×4 on amd64** (8 XMM
-  accumulators; SSE2 has no FMA, so explicit MULPD+ADDPD), **scalar 4×4** on the
+  accumulators, the source of the win), **AVX2/FMA 6×8 on amd64** (12 YMM
+  accumulators, picked at run time by a CPUID probe; an SSE2 6×4 pair without
+  FMA is the fallback), **scalar 4×4** on the
   four arches without vector-double asm — which still gain from contiguous packed
   data + blocking + multicore.
 - **Parallelism** — the M rows are split into MR-aligned bands, one per core,
   each writing a disjoint region of C.
 
-The arithmetic is the standard ikj order `dst[i][j] += a[i][p]·b[p][j]`; packing
-only relocates the operands, so the result is **bit-for-bit identical** to the
-scalar oracle and to NumPy's `A@B` (max abs diff **0.0**, verified at 128×128
-against OpenBLAS).
+The arithmetic is the ikj order `dst[i][j] += a[i][p]·b[p][j]`, summed per KC
+block; for k ≤ KC that is the scalar oracle's order exactly, and above it the
+block partials regroup the sum (a valid reordering, as in every blocked BLAS).
+At 128×128 the result matched NumPy's `A@B` against OpenBLAS with max abs diff
+**0.0**.
 
 ### Packed GEMM vs the PRIOR kernel (why it ships)
 
@@ -261,8 +264,8 @@ there the gap is *fixed per-call overhead*, not compute:
 This is a small-matrix overhead ceiling. Closing it further would mean a
 serial-vs-parallel crossover tuned per size and a cheaper pack for tiny panels;
 it is not a Go-assembler or algorithm limit, and it does not affect the
-large-matrix parity result. (`GOAMD64=v3`/AVX2-FMA would likewise lift the amd64
-micro-kernel, which today is SSE2-only; the arm64 path already has its FMA.)
+large-matrix parity result. (amd64 now has its AVX2/FMA kernel too; see the
+real-hardware section below.)
 
 ### Footnote: vs reference BLAS
 
@@ -310,15 +313,70 @@ The SIMD kernels are also validated against the scalar oracle per-arch in CI:
 | `MatMul` vs tuned BLAS (OpenBLAS) | **FIXED — parity at n=1024 (~0.99×, ~203 GFLOP/s); 0.97× at n=512** | by-lane FMLA micro-kernel (`FMLA Vd.2D,Vn.2D,Vm.D[i]` via `WORD`) closed the prior 0.76× gap. Only small n=256 trails (0.67×) on per-call overhead, not throughput — see above |
 | other `Map` ufuncs (`Exp`, `Log`, `Sin`…) | NumPy ~parity (libm-bound) | a packed `VEXP`/`VLOG` is libm-accuracy work; the math, not the dispatch, dominates here |
 
+## amd64 on real hardware (2026-10-04)
+
+Every figure above was taken on Apple silicon. This round measured amd64 for
+the first time, on an AMD EPYC 7773X (Zen 3, GCC Compile Farm cfarm421), with
+go-ndarray and NumPy both pinned to the same 16 cores of one NUMA node
+(`taskset -c 16-31`; Go's GOMAXPROCS follows the affinity mask). NumPy 2.5.3
+with its bundled OpenBLAS 0.3.34 (DYNAMIC_ARCH, Haswell kernels on Zen 3),
+once with `OPENBLAS_NUM_THREADS=1` and once with 16. go rows are the minimum
+of three runs interleaved with the previous version, so drift on a shared host
+hits both alike.
+
+| op | before | after | gain | vs OpenBLAS 1 thread | vs OpenBLAS 16 threads |
+|----|------:|------:|:--:|:--:|:--:|
+| MatMul 1024² | 21.87 ms | **8.05 ms** | ×2.72 | 5.93× | 0.60× |
+| MatMul 512² | 3.69 ms | 1.56 ms | ×2.36 | 3.89× | 0.66× |
+| MatMul 256² | 0.661 ms | 0.558 ms | ×1.19 | 1.36× | 0.30× |
+| MatMul 128² | 0.210 ms | 0.141 ms | ×1.49 | 0.73× | 0.36× |
+| MatMul 1024×256·256×1024 | 5.72 ms | 2.71 ms | ×2.11 | 4.55× | 0.54× |
+| Inner 512² (a·bᵀ) | 5.87 ms | **1.47 ms** | ×4.00 | 4.19× | **0.96×** |
+
+Four changes, each measured on its own before the next:
+
+1. **AVX2/FMA 6×8 micro-kernel** (the BLIS Haswell shape). In L1 it runs at
+   43 GFLOP/s on one Cascade Lake core, the FMA ports' peak at that clock; the
+   SSE2 4×4 it replaces had no FMA and half the vector width.
+2. **Edge tiles through the micro-kernel.** With MR=6, every 256-row MC block
+   ends in a 4-row edge panel, and the scalar edge loop took **40%** of a 512²
+   product (profiled). A partial tile now runs the kernel into a scratch tile.
+3. **Prefetch** of the C tile at kernel entry and of the A panel eight steps
+   ahead: serial 768² went from 27.5 to 34.7 GFLOP/s (+26%); 90% of the time was
+   already in the kernel, stalled on memory. A sweep of MC (48–252) and KC
+   (128–512) moved nothing (±3%), so the blocking is unchanged.
+4. **B packed by all workers.** MatMulP packs the shared B block once per
+   (jc, pc) round, and one goroutine did it while the others waited: +30–70%
+   in parallel. Below 64 Ki elements the launch costs more than the copy (M4:
+   −8–15% at 96³–128²), so small blocks are still packed by one.
+
+`Inner` gained the most because it used to materialise bᵀ before multiplying.
+The GEMM now reads any 2-D view through its strides while packing (the copy it
+makes anyway), so a transposed, sliced, reversed or broadcast operand costs no
+extra pass.
+
+**Still behind OpenBLAS with 16 threads** (0.54–0.66× on large products, 0.3×
+below 256²): per-core throughput in the parallel run is about a third of the
+serial kernel's, so the next lever is the parallel schedule (a persistent
+worker pool instead of a goroutine launch per round, and the BLIS jr-loop
+split for short m), then an AVX-512 kernel for the hosts that have it.
+
+Correctness was checked on real hardware for five of the six 64-bit targets:
+amd64 (Zen 3, FMA path), arm64 (cfarm185), ppc64le (cfarm120), riscv64 (cfarm94)
+and loong64 (cfarm401). The s390x host (LinuxONE) did not answer; s390x stays
+covered by the qemu lane in CI.
+
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`
   (packed `SQRTPD`), `max`/`min` (`MAXPD`/`MINPD` + `CMPPD` NaN scan), the
   **elementwise `add`/`sub`/`mul`/`div`** (packed `ADD/SUB/MUL/DIVPD`, 8
-  doubles/iter + scalar tail), and the **GEMM micro-kernel** (`gemmMicro4x4`: a
-  4×4 SSE2 `MULPD`+`ADDPD` tile, no FMA at the v1 baseline), generated by
-  go-asmgen and validated per-arch in CI (and cross-run under qemu-x86_64 — the
-  GEMM tile included).
+  doubles/iter + scalar tail), all at the GOAMD64=v1 baseline, and the **GEMM
+  micro-kernel**: `gemmMicro6x8FMA` (6×8, 12 YMM accumulators, `VBROADCASTSD` +
+  `VFMADD231PD`, C and A prefetched) when go-asmgen's CPUID probe reports FMA
+  with the OS saving YMM state, else a pair of SSE2 6×4 `MULPD`+`ADDPD` tiles
+  over the same packing. Generated by go-asmgen and validated per-arch in CI;
+  the FMA kernel on real Cascade Lake and Zen 3 hosts.
 - **arm64 (NEON)** ships hand-vectorized `sum`, **packed `sqrt`** (`FSQRT V.2D`),
   the **elementwise `add`/`sub`/`mul`** (via `VFMLA`/`VFMLS` against a `1.0`
   vector — `add: b+a·1`, `sub: a−b·1`, `mul: 0+a·b`, each FMA exact so
@@ -344,5 +402,5 @@ per-arch job regenerates the committed `.s`, fails if it is stale, vets
 (asmdecl), builds (cmd/asm encodes), and runs the bit/NaN-correctness suite. The
 multicore path and the packed/cache-blocked GEMM driver are
 architecture-independent; only the GEMM micro-kernel is per-arch (NEON 4×8 on
-arm64, SSE2 4×4 on amd64, scalar 4×4 on the other four — all bit-identical to the
+arm64, AVX2/FMA 6×8 or SSE2 on amd64, scalar 4×4 on the other four — all bit-identical to the
 scalar ikj oracle, validated per-arch in CI incl. amd64 under qemu-x86_64).

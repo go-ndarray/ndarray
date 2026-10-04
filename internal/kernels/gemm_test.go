@@ -140,6 +140,30 @@ func TestGemmBandSizing(t *testing.T) {
 	})
 }
 
+// TestGemmParallelPackB forces packBP's split path (normally only for blocks of
+// 64 Ki elements or more) on small products, so the NR-panel ranges handed to
+// each goroutine — including a ragged last panel and more workers than panels
+// — must reassemble the exact packed block the serial packB writes.
+func TestGemmParallelPackB(t *testing.T) {
+	o := packBParMin
+	packBParMin = 1
+	defer func() { packBParMin = o }()
+	withMaxProcs(4, func() {
+		withThresholds(1<<14, 1, func() { // force MatMulP's parallel path
+			for _, s := range []struct{ m, k, n int }{
+				{13, 9, 3 * NR},    // whole panels
+				{20, 17, 5*NR + 3}, // ragged last panel
+				{7, 5, NR - 1},     // one partial panel, more workers than panels
+				{33, 40, 11*NR + 1},
+			} {
+				a, b := intMat(s.m, s.k, int64(s.n)), intMat(s.k, s.n, int64(s.m))
+				assertGemm(t, s.m, s.k, s.n, a, b)
+				withBlocks(MR, 3, 2*NR, func() { assertGemm(t, s.m, s.k, s.n, a, b) })
+			}
+		})
+	})
+}
+
 // TestGemmFloatTolerance validates the packed GEMM against the oracle for
 // genuinely floating-point (non-integer) operands. The packed kernel uses the
 // identical ikj summation order, so it is in fact bit-identical here too; we

@@ -11,14 +11,21 @@ import (
 // multiply).
 var ErrLinalg = fmt.Errorf("ndarray: incompatible shapes for linear algebra")
 
-// matmul2D multiplies a contiguous (m x k) by a contiguous (k x n), returning a
-// fresh (m x n) array. The operands are materialised so strided/transposed
-// views work transparently.
+// matmul2D multiplies an (m x k) by a (k x n), returning a fresh (m x n)
+// array. Either operand may be any 2-D view: the GEMM packs it through its
+// strides (matView), so nothing is materialised first.
 func matmul2D(a, b *Array, m, k, n int) *Array {
 	dst := make([]float64, m*n)
-	kernels.MatMulP(dst, a.contiguousData(), b.contiguousData(), m, k, n)
+	kernels.MatMulStridedP(dst, a.matView(), b.matView(), m, k, n)
 	shape := []int{m, n}
 	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape)}
+}
+
+// matView is a 2-D array as the GEMM's strided operand view. The packing
+// reads it in place, so a transposed or sliced operand (Inner's bᵀ, a[:, ::2])
+// is never materialised into a contiguous copy first.
+func (a *Array) matView() kernels.Mat {
+	return kernels.Mat{Data: a.data, Off: a.offset, RS: a.strides[0], CS: a.strides[1]}
 }
 
 // MatMul returns the matrix product of two 2-D arrays, matching numpy.matmul

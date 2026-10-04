@@ -31,7 +31,8 @@ The numeric inner loops are kept behind a narrow kernel API. Behind it,
 **large** elementwise ops, reductions and matmul run **multicore** (across
 `GOMAXPROCS`); the sum reduction uses a **go-asmgen SIMD kernel** (NEON on
 arm64, SSE2 on amd64); and `MatMul` is a **panel-packed, cache-blocked GEMM**
-with a go-asmgen SIMD-FMA micro-kernel (NEON 4×8 on arm64, SSE2 4×4 on amd64) —
+with a go-asmgen SIMD-FMA micro-kernel (NEON 4×8 on arm64; AVX2/FMA 6×8 on
+amd64, chosen at run time, with an SSE2 fallback) —
 the OpenBLAS/BLIS structure. So go-ndarray **beats single-threaded NumPy** on
 its core ops on large arrays (Add/Mul ~2×, Sum ~2.4×), and `MatMul` reaches
 **tuned-BLAS parity at 1024²**: ≈0.99× vs multi-threaded OpenBLAS 0.3.29 on an
