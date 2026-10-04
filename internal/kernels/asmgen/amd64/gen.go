@@ -45,7 +45,9 @@ func main() {
 	f.Add(binKernel("subSSE2", "SUBPD", "SUBSD"))
 	f.Add(binKernel("mulSSE2", "MULPD", "MULSD"))
 	f.Add(binKernel("divSSE2", "DIVPD", "DIVSD"))
-	f.Add(gemmKernel())
+	f.Add(gemmFMAKernel())
+	f.Add(gemmSSE2HalfKernel())
+	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
 
 	if err := os.WriteFile("sum_amd64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -290,97 +292,160 @@ func binKernel(name, vec, sca string) *emit.Function {
 	return b.Func()
 }
 
-// gemmKernel builds gemmMicro4x4(kc int, pa, pb, c *float64, ldc int): the SSE2
-// 4x4 register-blocked GEMM micro-kernel for the packed GEMM.
-//
-// It computes a 4-row x 4-col tile of C from packed panels and ADDS it into C:
-//
-//	for p in [0,kc):  C[r][col] += pa[p*4+r] * pb[p*4+col]   (r<4, col<4)
-//
-// pa is the packed A panel (MR=4 contiguous A values per k step), pb the packed
-// B panel (NR=4 contiguous B values per k step) — both unit-stride, so the loads
-// are conflict-free regardless of the source matrices' strides (the point of
-// packing: it removes the power-of-two L1 set-conflicts that defeat an unpacked
-// register-blocked kernel).
-//
-// amd64 baseline is SSE2 (GOAMD64=v1) which has NO fused multiply-add (FMA is
-// FMA3/AVX2), so each step is an explicit MULPD then ADDPD. SSE2 *does* have a
-// packed FP add, so the running accumulation is the ordinary dst += a*b, in the
-// same ikj order as the scalar oracle — the tile is bit-identical to it.
-//
-// Register map: the 4x4 C tile lives in X0..X7 (4 rows x 2 XMM, 2 doubles each);
-// the per-step B row in X8,X9 (4 doubles); the broadcast A value in X10; the two
-// products in X11,X12.
-func gemmKernel() *emit.Function {
-	sig := amd64.Layout(
+// gemmMR, gemmNR are the micro-tile the packing in gemm.go produces on amd64:
+// 6 rows of packed A per k step, 8 columns of packed B.
+const (
+	gemmMR = 6
+	gemmNR = 8
+)
+
+func gemmSig() amd64.Signature {
+	return amd64.Layout(
 		[]string{"kc", "pa", "pb", "c", "ldc"},
 		[]amd64.Type{amd64.Int64, amd64.Ptr, amd64.Ptr, amd64.Ptr, amd64.Int64},
 		nil, nil,
 	)
-	b := amd64.NewFunc("gemmMicro4x4", sig, 0)
+}
+
+// gemmFMAKernel builds gemmMicro6x8FMA(kc int, pa, pb, c *float64, ldc int):
+//
+//	for p in [0,kc):  C[r][col] += pa[p*6+r] * pb[p*8+col]   (r<6, col<8)
+//
+// the BLIS Haswell dgemm shape (6x8, row-major here). Each k step loads the
+// 8-double B row into two YMM, broadcasts each of the 6 A values with
+// VBROADCASTSD straight from the panel, and issues 12 VFMADD231PD into the 12
+// accumulators Y0..Y11 (row r in Y(2r), Y(2r+1)). Twelve independent chains
+// cover the FMA latency on both ports (Haswell: 5 cycles x 2 ports needs >= 10),
+// and 8 loads per 12 FMAs stay under the 2-loads-per-cycle budget, so the loop
+// is FMA-throughput bound — the property that makes it a real dgemm kernel.
+//
+// Fused: each step rounds a*b+c once, as tuned BLAS (and gc's own scalar code at
+// GOAMD64=v3, and arm64's) do. The SSE2 fallback below does not fuse, so on
+// non-integer data the two can differ in the last place; both are the ikj sum.
+// The caller gates this kernel on hasFMA (CPUID FMA+AVX+OSXSAVE and XCR0 YMM).
+func gemmFMAKernel() *emit.Function {
+	b := amd64.NewFunc("gemmMicro6x8FMA", gemmSig(), 0)
 	b.LoadArg("kc", "CX")
 	b.LoadArg("pa", "SI") // A panel
 	b.LoadArg("pb", "DI") // B panel
 	b.LoadArg("c", "DX")  // C base
 	b.LoadArg("ldc", "R8")
 	b.Raw("SHLQ $3, R8") // ldc -> bytes
-	// Zero the eight C accumulators X0..X7.
-	b.Raw("XORPS X0, X0")
-	b.Raw("XORPS X1, X1")
-	b.Raw("XORPS X2, X2")
-	b.Raw("XORPS X3, X3")
-	b.Raw("XORPS X4, X4")
-	b.Raw("XORPS X5, X5")
-	b.Raw("XORPS X6, X6")
-	b.Raw("XORPS X7, X7")
-	b.Raw("TESTQ CX, CX")
-	b.Raw("JZ gstore")
-	b.Raw("gkloop:")
-	// B row: 4 contiguous doubles into X8 (cols 0,1) and X9 (cols 2,3).
-	b.Raw("MOVUPD (DI), X8")
-	b.Raw("MOVUPD 16(DI), X9")
-	b.Raw("ADDQ $32, DI")
-	// For each of the 4 A values, broadcast and fuse into that row's two XMM.
-	gemmRow(b, "X0", "X1", 0)
-	gemmRow(b, "X2", "X3", 8)
-	gemmRow(b, "X4", "X5", 16)
-	gemmRow(b, "X6", "X7", 24)
-	b.Raw("ADDQ $32, SI") // advance A panel by 4 doubles
-	b.Raw("DECQ CX")
-	b.Raw("JNZ gkloop")
-	// C += accumulators, row by row (ordinary packed ADDPD, bit-identical).
-	b.Raw("gstore:")
-	gemmStore(b, "X0", "X1", true) // row0 at (DX)
-	gemmStore(b, "X2", "X3", false)
-	gemmStore(b, "X4", "X5", false)
-	gemmStore(b, "X6", "X7", false)
+	// Prefetch the C tile now: its rows are ldc apart, so they are 6 different
+	// cache lines (12 when a row straddles two), usually not in L1, and the
+	// store at the end would otherwise stall on each of them in turn. Issued
+	// first, they arrive while the k loop runs. The last byte of each row is
+	// fetched too, for a row that does not start on a line boundary.
+	b.Raw("MOVQ DX, R9")
+	for r := 0; r < gemmMR; r++ {
+		b.Raw("PREFETCHT0 (R9)")
+		b.Raw("PREFETCHT0 63(R9)")
+		if r < gemmMR-1 {
+			b.Raw("ADDQ R8, R9")
+		}
+	}
+	for r := 0; r < 12; r++ {
+		b.Raw(fmt.Sprintf("VXORPD Y%d, Y%d, Y%d", r, r, r))
+	}
+	// Unrolled by two k steps, with a one-step tail. The A panel streams from
+	// L2 (the B micro-panel stays in L1 across the whole A block), so each pair
+	// of steps prefetches the A line 8 steps ahead.
+	b.Raw("MOVQ CX, R10")
+	b.Raw("SHRQ $1, R10")
+	b.Raw("JZ ftail")
+	b.Raw("fkloop:")
+	b.Raw(fmt.Sprintf("PREFETCHT0 %d(SI)", 8*gemmMR*8))
+	fmaStep(b, 0)
+	fmaStep(b, 1)
+	b.Raw(fmt.Sprintf("ADDQ $%d, SI", 2*8*gemmMR))
+	b.Raw(fmt.Sprintf("ADDQ $%d, DI", 2*8*gemmNR))
+	b.Raw("DECQ R10")
+	b.Raw("JNZ fkloop")
+	b.Raw("ftail:")
+	b.Raw("TESTQ $1, CX")
+	b.Raw("JZ fstore")
+	fmaStep(b, 0)
+	b.Raw("fstore:")
+	for r := 0; r < gemmMR; r++ {
+		b.Raw(fmt.Sprintf("VADDPD (DX), Y%d, Y15", 2*r))
+		b.Raw("VMOVUPD Y15, (DX)")
+		b.Raw(fmt.Sprintf("VADDPD 32(DX), Y%d, Y15", 2*r+1))
+		b.Raw("VMOVUPD Y15, 32(DX)")
+		if r < gemmMR-1 {
+			b.Raw("ADDQ R8, DX")
+		}
+	}
+	b.Raw("VZEROUPPER") // no AVX-SSE transition penalty in the Go code after
 	b.Ret()
 	return b.Func()
 }
 
-// gemmRow fuses one A value (at offset off in the A panel SI) into one C row's
-// two XMM accumulators (lo cols 0,1 = accLo; hi cols 2,3 = accHi): broadcast
-// a -> X10, X11 = Brow_lo*a, X12 = Brow_hi*a, then add into the accumulators.
-func gemmRow(b *amd64.Builder, accLo, accHi string, off int) {
-	b.Raw(fmt.Sprintf("MOVDDUP %d(SI), X10", off)) // X10 = [a,a]
-	b.Raw("MOVAPS X8, X11")
-	b.Raw("MULPD X10, X11") // X11 = Brow_lo * a
-	b.Raw("ADDPD X11, " + accLo)
-	b.Raw("MOVAPS X9, X12")
-	b.Raw("MULPD X10, X12") // X12 = Brow_hi * a
-	b.Raw("ADDPD X12, " + accHi)
+// fmaStep emits one k step of the 6x8 FMA tile, step reading the A and B
+// values at that many steps past SI and DI.
+func fmaStep(b *amd64.Builder, step int) {
+	ao, bo := 8*gemmMR*step, 8*gemmNR*step
+	b.Raw(fmt.Sprintf("VMOVUPD %d(DI), Y12", bo))    // B cols 0..3
+	b.Raw(fmt.Sprintf("VMOVUPD %d(DI), Y13", bo+32)) // B cols 4..7
+	for r := 0; r < gemmMR; r++ {
+		b.Raw(fmt.Sprintf("VBROADCASTSD %d(SI), Y14", ao+8*r))
+		b.Raw(fmt.Sprintf("VFMADD231PD Y12, Y14, Y%d", 2*r))
+		b.Raw(fmt.Sprintf("VFMADD231PD Y13, Y14, Y%d", 2*r+1))
+	}
 }
 
-// gemmStore adds one C row's two accumulators into memory at the current row
-// pointer (DX), then advances DX by ldc bytes (R8) unless this is the last row.
-func gemmStore(b *amd64.Builder, accLo, accHi string, first bool) {
-	b.Raw("MOVUPD (DX), X11")
-	b.Raw("ADDPD " + accLo + ", X11")
-	b.Raw("MOVUPD X11, (DX)")
-	b.Raw("MOVUPD 16(DX), X12")
-	b.Raw("ADDPD " + accHi + ", X12")
-	b.Raw("MOVUPD X12, 16(DX)")
-	b.Raw("ADDQ R8, DX")
+// gemmSSE2HalfKernel builds gemmMicro6x4SSE2(kc int, pa, pb, c *float64, ldc
+// int), the baseline (GOAMD64=v1, no FMA) fallback over the same 6x8 packing:
+// it computes the 6-row x 4-col half of the tile whose B columns start at pb,
+// so the Go side calls it twice (pb, c) and (pb+4, c+4). A whole 6x8 tile in
+// XMM would need 24 accumulators; the half needs 12 (X0..X11, row r in X(2r),
+// X(2r+1)) plus the B half-row X12,X13, the broadcast A X14 and a product X15.
+// The B stride is still the full NR=8 doubles per k step.
+//
+// SSE2 has no fused multiply-add, so each step is MULPD then ADDPD: the
+// running sum is the plain dst += a*b in ikj order, like the scalar oracle at
+// GOAMD64=v1.
+func gemmSSE2HalfKernel() *emit.Function {
+	b := amd64.NewFunc("gemmMicro6x4SSE2", gemmSig(), 0)
+	b.LoadArg("kc", "CX")
+	b.LoadArg("pa", "SI")
+	b.LoadArg("pb", "DI")
+	b.LoadArg("c", "DX")
+	b.LoadArg("ldc", "R8")
+	b.Raw("SHLQ $3, R8")
+	for r := 0; r < 12; r++ {
+		b.Raw(fmt.Sprintf("XORPS X%d, X%d", r, r))
+	}
+	b.Raw("TESTQ CX, CX")
+	b.Raw("JZ hstore")
+	b.Raw("hkloop:")
+	b.Raw("MOVUPD (DI), X12")
+	b.Raw("MOVUPD 16(DI), X13")
+	for r := 0; r < gemmMR; r++ {
+		b.Raw(fmt.Sprintf("MOVDDUP %d(SI), X14", 8*r)) // X14 = [a,a]
+		b.Raw("MOVAPS X12, X15")
+		b.Raw("MULPD X14, X15")
+		b.Raw(fmt.Sprintf("ADDPD X15, X%d", 2*r))
+		b.Raw("MULPD X13, X14") // the broadcast is spent: reuse it for the product
+		b.Raw(fmt.Sprintf("ADDPD X14, X%d", 2*r+1))
+	}
+	b.Raw(fmt.Sprintf("ADDQ $%d, SI", 8*gemmMR))
+	b.Raw(fmt.Sprintf("ADDQ $%d, DI", 8*gemmNR))
+	b.Raw("DECQ CX")
+	b.Raw("JNZ hkloop")
+	b.Raw("hstore:")
+	for r := 0; r < gemmMR; r++ {
+		b.Raw("MOVUPD (DX), X14")
+		b.Raw(fmt.Sprintf("ADDPD X%d, X14", 2*r))
+		b.Raw("MOVUPD X14, (DX)")
+		b.Raw("MOVUPD 16(DX), X15")
+		b.Raw(fmt.Sprintf("ADDPD X%d, X15", 2*r+1))
+		b.Raw("MOVUPD X15, 16(DX)")
+		if r < gemmMR-1 {
+			b.Raw("ADDQ R8, DX")
+		}
+	}
+	b.Ret()
+	return b.Func()
 }
 
 // nanScan emits: X9 = (reg unordered reg) ? all-ones : 0 ; X8 |= X9, i.e. it

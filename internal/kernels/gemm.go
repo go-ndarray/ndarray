@@ -17,13 +17,17 @@ import (
 // matrices' strides. A cache-blocking loop nest (NC over columns, KC over the
 // contraction, MC over rows) keeps the packed B panel resident in L2/L3 and each
 // packed A panel in L1, and a register-blocked SIMD-FMA micro-kernel
-// (gemmMicro, arch-specific: NEON 4x8 on arm64, SSE2 4x4 on amd64, scalar 4x4
-// elsewhere) does the inner work. Parallelised across row bands.
+// (gemmMicro, arch-specific: NEON 4x8 on arm64, AVX2/FMA 6x8 or SSE2 on amd64,
+// scalar 4x4 elsewhere) does the inner work. Parallelised across row bands.
 //
-// The arithmetic is the standard ikj accumulation dst[i][j] += a[i][p]*b[p][j];
-// the packed layout only relocates the operands, it does not reorder the sum, so
-// the result is bit-identical to the scalar oracle (validated in CI and against
-// numpy's A@B).
+// The arithmetic is the ikj accumulation dst[i][j] += a[i][p]*b[p][j]: within
+// one KC block the products are summed in p order, and each block's sum is then
+// added into dst. For k <= KC that is the scalar oracle's order exactly; above
+// it the block partials regroup the sum, a valid reordering that can move the
+// last place (as every blocked BLAS does). Kernels that fuse the multiply-add
+// (arm64, amd64 with FMA) round once per step where an unfused one rounds
+// twice. On data whose products and sums are exact (the integer-valued tests)
+// every path equals the oracle bit for bit.
 
 // Block sizes for the cache-blocking loop nest. They are vars so tests can pin
 // them (forcing the multi-block paths on small inputs) and so they can be tuned
@@ -43,6 +47,20 @@ var (
 // balance the M-series P/E cores, while large enough that the per-band A-pack and
 // goroutine-loop overhead stays amortized. A var so it can be tuned/pinned.
 var bandTilesMR = 8
+
+// Mat is a read-only strided view of a matrix: element (i, j) is
+// Data[Off + i*RS + j*CS]. Packing reads the operands through it, so a
+// transposed, sliced or offset view is multiplied in place — the packing copy
+// the GEMM makes anyway does the gather — instead of being materialised into
+// a contiguous copy first (what BLAS's trans flags buy). Strides may be
+// negative or zero; every (i, j) in range must index Data.
+type Mat struct {
+	Data        []float64
+	Off, RS, CS int
+}
+
+// rowMajor views a contiguous row-major matrix with ld elements per row.
+func rowMajor(data []float64, ld int) Mat { return Mat{Data: data, RS: ld, CS: 1} }
 
 // packBuf is one worker's reusable pair of pack buffers: paBuf for the MC*KC A
 // panel, pbBuf for the KC*NC B panel. Pooling them keeps the per-call GEMM
@@ -95,14 +113,14 @@ func getPackBuf() *packBuf {
 // r0 (the parallel splitter guarantees this) so packed A panels never straddle a
 // band boundary; r1 may be m. This is the single-worker entry: it packs its own
 // B panel. The multi-worker path (gemmBand) shares one packed B across workers.
-func packGemmRows(r0, r1 int, dst, a, b []float64, k, n int, buf *packBuf) {
+func packGemmRows(r0, r1 int, dst []float64, a, b Mat, k, n int, buf *packBuf) {
 	pa, pb := buf.pa, buf.pb
 	for jc := 0; jc < n; jc += blockNC { // L3 column block of B
 		nc := min(blockNC, n-jc)
 		for pc := 0; pc < k; pc += blockKC { // L2 contraction block
 			kc := min(blockKC, k-pc)
-			packB(b, n, pc, kc, jc, nc, pb) // pack B(kc x nc) -> NR-wide panels
-			gemmBand(r0, r1, jc, nc, pc, kc, dst, a, k, n, pa, pb)
+			packB(b, pc, kc, jc, nc, pb) // pack B(kc x nc) -> NR-wide panels
+			gemmBand(r0, r1, jc, nc, pc, kc, dst, a, n, pa, pb)
 		}
 	}
 }
@@ -116,10 +134,10 @@ func packGemmRows(r0, r1 int, dst, a, b []float64, k, n int, buf *packBuf) {
 // is what lets several workers share one packed B: the redundant full-B repack
 // each worker used to do — 1 MiB copied GOMAXPROCS times per kc block — was the
 // dominant non-scaling cost of the old row-split parallelism.
-func gemmBand(r0, r1, jc, nc, pc, kc int, dst, a []float64, k, n int, pa, pb []float64) {
+func gemmBand(r0, r1, jc, nc, pc, kc int, dst []float64, a Mat, n int, pa, pb []float64) {
 	for ic := r0; ic < r1; ic += blockMC { // L1 row block of A
 		mc := min(blockMC, r1-ic)
-		packA(a, k, ic, mc, pc, kc, pa) // pack A(mc x kc) -> MR-tall panels
+		packA(a, ic, mc, pc, kc, pa) // pack A(mc x kc) -> MR-tall panels
 		for jr := 0; jr < nc; jr += NR {
 			nr := min(NR, nc-jr)
 			for ir := 0; ir < mc; ir += MR {
@@ -136,18 +154,35 @@ func gemmBand(r0, r1, jc, nc, pc, kc int, dst, a []float64, k, n int, pa, pb []f
 }
 
 // packB copies B[pc:pc+kc][jc:jc+nc] into NR-wide column panels: for each panel
-// jr the layout is pb[jr*kc + p*NR + c] = B[(pc+p)*ldb + jc+jr+c], with the c >=
-// nr columns of an edge panel zero-filled so the micro-kernel reads a full NR.
-func packB(b []float64, ldb, pc, kc, jc, nc int, pb []float64) {
+// jr the layout is pb[jr*kc + p*NR + c] = B(pc+p, jc+jr+c), with the c >= nr
+// columns of an edge panel zero-filled so the micro-kernel reads a full NR.
+// A unit column stride copies row runs; any other (a transposed B) walks each
+// column down its own unit-or-not row stride, writing the panel column-wise.
+func packB(b Mat, pc, kc, jc, nc int, pb []float64) {
 	for jr := 0; jr < nc; jr += NR {
 		nr := min(NR, nc-jr)
 		dst := pb[jr*kc:]
-		for p := 0; p < kc; p++ {
-			srcRow := b[(pc+p)*ldb+jc+jr:]
-			d := dst[p*NR:]
-			for c := 0; c < nr; c++ {
-				d[c] = srcRow[c]
+		if b.CS == 1 {
+			for p := 0; p < kc; p++ {
+				srcRow := b.Data[b.Off+(pc+p)*b.RS+jc+jr:]
+				d := dst[p*NR:]
+				for c := 0; c < nr; c++ {
+					d[c] = srcRow[c]
+				}
+				for c := nr; c < NR; c++ {
+					d[c] = 0
+				}
 			}
+			continue
+		}
+		for c := 0; c < nr; c++ {
+			src := b.Off + pc*b.RS + (jc+jr+c)*b.CS
+			for p := 0; p < kc; p++ {
+				dst[p*NR+c] = b.Data[src+p*b.RS]
+			}
+		}
+		for p := 0; p < kc; p++ {
+			d := dst[p*NR:]
 			for c := nr; c < NR; c++ {
 				d[c] = 0
 			}
@@ -155,17 +190,43 @@ func packB(b []float64, ldb, pc, kc, jc, nc int, pb []float64) {
 	}
 }
 
+// packBParMin is the B-block size, in elements, from which packBP splits the
+// packing across workers (64 Ki doubles = 512 KiB). A var so tests can pin it.
+var packBParMin = 1 << 16
+
+// packBP is packB with the NR-wide panels split across w goroutines. MatMulP
+// packs the shared B block once per (jc, pc) round, and done by one goroutine
+// it is a serial step while every other worker waits at the round's start:
+// a 1 MiB strided copy, eight times in a 1024^2 product.
+//
+// Below packBParMin elements the goroutine launch costs more than the copy
+// (measured on M4: a 128x128 block packed in parallel made 96^3..128^2
+// products 8-15% slower), so a small block is packed by the caller alone.
+func packBP(b Mat, pc, kc, jc, nc int, pb []float64, w int) {
+	if kc*nc < packBParMin {
+		packB(b, pc, kc, jc, nc, pb)
+		return
+	}
+	panels := (nc + NR - 1) / NR
+	parallelFor(panels, min(w, panels), func(lo, hi int) {
+		j0 := lo * NR
+		packB(b, pc, kc, jc+j0, min(hi*NR, nc)-j0, pb[j0*kc:])
+	})
+}
+
 // packA copies A[ic:ic+mc][pc:pc+kc] into MR-tall row panels: for each panel ir
-// the layout is pa[ir*kc + p*MR + r] = A[(ic+ir+r)*lda + pc+p], with the r >= mr
-// rows of an edge panel zero-filled so the micro-kernel reads a full MR.
-func packA(a []float64, lda, ic, mc, pc, kc int, pa []float64) {
+// the layout is pa[ir*kc + p*MR + r] = A(ic+ir+r, pc+p), with the r >= mr rows
+// of an edge panel zero-filled so the micro-kernel reads a full MR.
+func packA(a Mat, ic, mc, pc, kc int, pa []float64) {
 	for ir := 0; ir < mc; ir += MR {
 		mr := min(MR, mc-ir)
 		dst := pa[ir*kc:]
+		src := a.Off + (ic+ir)*a.RS + pc*a.CS
 		for p := 0; p < kc; p++ {
 			d := dst[p*MR:]
+			at := src + p*a.CS
 			for r := 0; r < mr; r++ {
-				d[r] = a[(ic+ir+r)*lda+pc+p]
+				d[r] = a.Data[at+r*a.RS]
 			}
 			for r := mr; r < MR; r++ {
 				d[r] = 0
@@ -174,19 +235,20 @@ func packA(a []float64, lda, ic, mc, pc, kc int, pa []float64) {
 	}
 }
 
-// gemmEdge is the scalar fallback for a partial (mr < MR or nr < NR) tile: it
-// does the same dst[c0 + r*ldc + c] += sum_p pa[p*MR+r]*pb[p*NR+c] the micro-
-// kernel does, reading the already-packed (and zero-padded) panels, so it stays
-// contiguous and produces the identical ikj-order result. Only the matrix's
-// ragged right/bottom edges take this path.
+// gemmEdge computes a partial (mr < MR or nr < NR) tile with the micro-kernel
+// itself, the way BLIS does: the packed panels are already zero-padded to a full
+// MR x NR, so the kernel runs into a zeroed MR x NR scratch tile and only the
+// valid mr x nr corner is added into dst. Every element of C is therefore summed
+// by the same kernel, edge or not. The scalar loop this replaces ran ~20x slower
+// per element, and on amd64 (MR=6) every 256-row MC block ends in a 4-row edge
+// panel: it measured 40% of a 512^2 product there.
 func gemmEdge(kc int, pa, pb, dst []float64, c0, ldc, mr, nr int) {
+	var tile [MR * NR]float64
+	gemmMicro(kc, pa, pb, tile[:], NR)
 	for r := 0; r < mr; r++ {
-		for c := 0; c < nr; c++ {
-			var s float64
-			for p := 0; p < kc; p++ {
-				s += pa[p*MR+r] * pb[p*NR+c]
-			}
-			dst[c0+r*ldc+c] += s
+		row := dst[c0+r*ldc : c0+r*ldc+nr]
+		for c := range row {
+			row[c] += tile[r*NR+c]
 		}
 	}
 }
@@ -239,6 +301,14 @@ var matVecThreshold = 1 << 14
 //     straggling). With many small bands the P-cores simply grab more of them, so
 //     adding the E-cores helps instead of hurting.
 func MatMulP(dst, a, b []float64, m, k, n int) {
+	MatMulStridedP(dst, rowMajor(a, k), rowMajor(b, n), m, k, n)
+}
+
+// MatMulStridedP is MatMulP over strided operand views (see Mat): dst (m x n,
+// contiguous, zeroed by the caller) = a (m x k) * b (k x n). The views are
+// only read, through the packing, so a transposed or sliced operand costs no
+// copy beyond the one the packed GEMM makes anyway.
+func MatMulStridedP(dst []float64, a, b Mat, m, k, n int) {
 	if m*n < GemmThreshold {
 		buf := getPackBuf()
 		packGemmRows(0, m, dst, a, b, k, n, buf)
@@ -280,7 +350,7 @@ func MatMulP(dst, a, b []float64, m, k, n int) {
 		nc := min(blockNC, n-jc)
 		for pc := 0; pc < k; pc += blockKC { // L2 contraction block
 			kc := min(blockKC, k-pc)
-			packB(b, n, pc, kc, jc, nc, pb) // pack B once for all workers
+			packBP(b, pc, kc, jc, nc, pb, w) // pack B once, by all workers
 
 			var next atomic.Int64 // shared band cursor
 			var wg sync.WaitGroup
@@ -296,7 +366,7 @@ func MatMulP(dst, a, b []float64, m, k, n int) {
 						}
 						r0 := bi * bandRows
 						r1 := min(r0+bandRows, m)
-						gemmBand(r0, r1, jc, nc, pc, kc, dst, a, k, n, ab.pa, pb)
+						gemmBand(r0, r1, jc, nc, pc, kc, dst, a, n, ab.pa, pb)
 					}
 					packPool.Put(ab)
 				}()
@@ -312,13 +382,14 @@ func MatMulP(dst, a, b []float64, m, k, n int) {
 // non-parallel computation.
 func MatMul(dst, a, b []float64, m, k, n int) {
 	buf := getPackBuf()
-	packGemmRows(0, m, dst, a, b, k, n, buf)
+	packGemmRows(0, m, dst, rowMajor(a, k), rowMajor(b, n), k, n, buf)
 	packPool.Put(buf)
 }
 
 // dotRange returns sum(a[i]*b[i]) over equal-length slices, using four
-// independent accumulators so the compiler keeps the FMA chain unrolled and (on
-// amd64/arm64) auto-vectorises the multiply-add. The four-way grouping is a fixed
+// independent accumulators, so four multiply-add chains are in flight instead of
+// one (gc does not vectorise this loop; the gain is latency hiding). The
+// four-way grouping is a fixed
 // reassociation of the sum; MatVecP/Dot1DP document the ULP trade-off where it is
 // observable. It is the contiguous building block for both mat·vec and the 1-D
 // dot — neither needs to go through the packing GEMM.
