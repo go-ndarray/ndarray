@@ -62,9 +62,11 @@ type Mat struct {
 // rowMajor views a contiguous row-major matrix with ld elements per row.
 func rowMajor(data []float64, ld int) Mat { return Mat{Data: data, RS: ld, CS: 1} }
 
-// packBuf is one worker's reusable pair of pack buffers: paBuf for the MC*KC A
-// panel, pbBuf for the KC*NC B panel. Pooling them keeps the per-call GEMM
-// allocation-free above the goroutine launch, which matters at small n.
+// packBuf is a pair of pack buffers: pa for the MC*KC A panel, pb for the KC*NC
+// B panel. The two come from separate pools, because the parallel GEMM needs
+// one pa per worker but only two pb in all: drawing a pair per worker held
+// 16 MiB of unused B buffers at 16 workers, which the garbage collector empties
+// out of the pool and the next call zeroes again.
 type packBuf struct {
 	pa []float64
 	pb []float64
@@ -83,27 +85,29 @@ func roundUp(x, m int) int { return (x + m - 1) / m * m }
 func paCap() int { return roundUp(blockMC, MR) * blockKC }
 func pbCap() int { return blockKC * roundUp(blockNC, NR) }
 
-var packPool = sync.Pool{New: func() any {
-	return &packBuf{
-		pa: make([]float64, paCap()),
-		pb: make([]float64, pbCap()),
-	}
-}}
+var paPool, pbPool sync.Pool
 
-// getPackBuf returns a pooled buffer pair sized for the current block params. If
-// the pooled buffers are too small for (possibly test-tuned) larger blocks it
-// reallocates them, so a test that raises blockMC/KC/NC still gets valid scratch.
-func getPackBuf() *packBuf {
-	b := packPool.Get().(*packBuf)
-	if cap(b.pa) < paCap() {
-		b.pa = make([]float64, paCap())
+// getPA and getPB return a pooled pack buffer sized for the current block
+// parameters, allocating one when the pool is empty or its buffer is too small
+// (a test may raise blockMC/KC/NC). putPA and putPB return it.
+func getPA() []float64  { return getScratch(&paPool, paCap()) }
+func getPB() []float64  { return getScratch(&pbPool, pbCap()) }
+func putPA(b []float64) { paPool.Put(&b) }
+func putPB(b []float64) { pbPool.Put(&b) }
+
+func getScratch(p *sync.Pool, n int) []float64 {
+	if b, ok := p.Get().(*[]float64); ok && cap(*b) >= n {
+		return (*b)[:n]
 	}
-	if cap(b.pb) < pbCap() {
-		b.pb = make([]float64, pbCap())
-	}
-	b.pa = b.pa[:paCap()]
-	b.pb = b.pb[:pbCap()]
-	return b
+	return make([]float64, n)
+}
+
+// getPackBuf returns a pooled pair, for the single-worker paths.
+func getPackBuf() *packBuf { return &packBuf{pa: getPA(), pb: getPB()} }
+
+func putPackBuf(b *packBuf) {
+	putPA(b.pa)
+	putPB(b.pb)
 }
 
 // packGemmRows computes the row band [r0,r1) of dst = a(m x k) * b(k x n) with
@@ -288,7 +292,7 @@ func MatMulStridedP(dst []float64, a, b Mat, m, k, n int) {
 	if m*n < GemmThreshold {
 		buf := getPackBuf()
 		packGemmRows(0, m, dst, a, b, k, n, buf)
-		packPool.Put(buf)
+		putPackBuf(buf)
 		return
 	}
 	w := runtime.GOMAXPROCS(0)
@@ -316,66 +320,70 @@ func MatMulStridedP(dst []float64, a, b Mat, m, k, n int) {
 	}
 
 	// The workers are started once per call and stay for every (jc, pc) block,
-	// meeting at a spinning barrier between blocks instead of being forked and
-	// joined per block. A fork/join wakes the parked worker threads one after
-	// another; measured on a 16-vCPU Zen 3 guest it costs 26 µs at 2 workers,
-	// 165 µs at 8 and 330 µs at 16, against ~0.8 ms of work per block of a
-	// 1024² product. With two fork/joins per block (pack B, then the bands)
-	// that was ~40% of the wall time, and why the CPUs were busy only 7 of 16.
+	// instead of being forked and joined per block. A fork/join wakes the
+	// parked worker threads one after another; measured on a 16-vCPU Zen 3
+	// guest it costs 26 µs at 2 workers, 165 µs at 8 and 330 µs at 16, against
+	// ~0.8 ms of work per block of a 1024² product, and there were two per
+	// block (pack B, then the bands): ~40% of the wall time.
 	//
-	// pb is double-buffered so one barrier per block suffices: block i packs
-	// into pbs[i%2] while nobody can still be reading it, because reading it
-	// for block i-2 ended before everyone passed block i-1's barrier.
-	shared, shared2 := getPackBuf(), getPackBuf()
-	defer packPool.Put(shared)
-	defer packPool.Put(shared2)
-	pbs := [2][]float64{shared.pb, shared2.pb}
+	// The workers synchronise on work done, never on workers arrived: a block's
+	// bands start once all of its B panels are packed and all bands of the
+	// previous block are done. A worker still waking up holds nobody back, so
+	// the wake-up chain stays off the critical path; a barrier that waited for
+	// every worker put it right back on it for small products (96³ on 8 POWER9
+	// cores: 0.57x). Claimed work never waits, so the scheme cannot deadlock.
+	//
+	// pb is double-buffered, so block i can be packed while block i-1 is being
+	// multiplied. Tiles of C are still accumulated in pc order, since block i's
+	// bands wait for block i-1's.
+	pbs := [2][]float64{getPB(), getPB()}
+	defer putPB(pbs[0])
+	defer putPB(pbs[1])
 
-	type block struct{ jc, nc, pc, kc int }
+	type block struct{ jc, nc, pc, kc, chunks int }
+	const chunk = 4 // B panels packed per claim
 	var blocks []block
 	for jc := 0; jc < n; jc += blockNC { // L3 column block of B
+		nc := min(blockNC, n-jc)
+		panels := (nc + NR - 1) / NR
 		for pc := 0; pc < k; pc += blockKC { // L2 contraction block
-			blocks = append(blocks, block{jc, min(blockNC, n-jc), pc, min(blockKC, k-pc)})
+			blocks = append(blocks, block{jc, nc, pc, min(blockKC, k-pc), (panels + chunk - 1) / chunk})
 		}
 	}
-	// Each block has its own band cursor (dynamic banding within a block) and
-	// its own B-panel cursor (packing shared by whoever is free).
-	bandNext := make([]atomic.Int64, len(blocks))
-	packNext := make([]atomic.Int64, len(blocks))
-	bar := newSpinBarrier(w)
+	type progress struct {
+		packNext, packDone, bandNext, bandDone atomic.Int64
+		_                                      [32]byte // keep blocks' counters off one cache line
+	}
+	prog := make([]progress, len(blocks))
+	bandsDone := func(i int) bool { return i < 0 || prog[i].bandDone.Load() == int64(nBands) }
 
 	work := func() {
-		ab := getPackBuf()
-		defer packPool.Put(ab)
+		pa := getPA()
+		defer putPA(pa)
 		for i, bl := range blocks {
-			pb := pbs[i%2]
-			panels := (bl.nc + NR - 1) / NR
+			// pbs[i%2] is free: its last reader was block i-2, and to get here
+			// this worker passed block i-1's wait, which requires every band of
+			// block i-2 done.
+			pr, pb := &prog[i], pbs[i%2]
 			for {
-				// B panels in chunks, so packing is shared without one atomic
-				// per 8-column panel.
-				const chunk = 4
-				p0 := int(packNext[i].Add(chunk)) - chunk
-				if p0 >= panels {
+				c := int(pr.packNext.Add(1)) - 1
+				if c >= bl.chunks {
 					break
 				}
-				j0, j1 := p0*NR, min((p0+chunk)*NR, bl.nc)
+				j0, j1 := c*chunk*NR, min((c+1)*chunk*NR, bl.nc)
 				packB(b, bl.pc, bl.kc, bl.jc+j0, j1-j0, pb[j0*bl.kc:])
+				pr.packDone.Add(1)
 			}
-			bar.wait() // pb for block i is complete
+			spinUntil(func() bool { return pr.packDone.Load() == int64(bl.chunks) && bandsDone(i-1) })
 			for {
-				bi := int(bandNext[i].Add(1)) - 1
+				bi := int(pr.bandNext.Add(1)) - 1
 				if bi >= nBands {
 					break
 				}
 				r0 := bi * bandRows
-				gemmBand(r0, min(r0+bandRows, m), bl.jc, bl.nc, bl.pc, bl.kc, dst, a, n, ab.pa, pb)
+				gemmBand(r0, min(r0+bandRows, m), bl.jc, bl.nc, bl.pc, bl.kc, dst, a, n, pa, pb)
+				pr.bandDone.Add(1)
 			}
-			// No barrier here: the next block packs into the other buffer, and
-			// the barrier after that packing orders this block's reads of pb
-			// before the packing of block i+2 into it. Tiles of C are still
-			// accumulated in pc order: a band of block i+1 starts only after
-			// every worker has passed block i+1's barrier, i.e. finished its
-			// bands of block i.
 		}
 	}
 	var wg sync.WaitGroup
@@ -394,7 +402,7 @@ func MatMulStridedP(dst []float64, a, b Mat, m, k, n int) {
 func MatMul(dst, a, b []float64, m, k, n int) {
 	buf := getPackBuf()
 	packGemmRows(0, m, dst, rowMajor(a, k), rowMajor(b, n), k, n, buf)
-	packPool.Put(buf)
+	putPackBuf(buf)
 }
 
 // dotRange returns sum(a[i]*b[i]) over equal-length slices, using four

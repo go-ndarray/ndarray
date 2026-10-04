@@ -1,42 +1,41 @@
 package kernels
 
 import (
-	"sync"
 	"sync/atomic"
 	"testing"
 )
 
-// TestSpinBarrier: no goroutine leaves a generation before all have arrived,
-// over many back-to-back generations, both spinning and yielding.
-func TestSpinBarrier(t *testing.T) {
+// TestSpinUntil waits on a condition another goroutine makes true, both
+// spinning and yielding from the first poll.
+func TestSpinUntil(t *testing.T) {
 	for _, iters := range []int{spinIters, 0} {
 		saved := spinIters
 		spinIters = iters
-		const n, rounds = 4, 2000
-		bar := newSpinBarrier(n)
-		var arrived atomic.Int64
-		var bad atomic.Int64
-		var wg sync.WaitGroup
-		for g := 0; g < n; g++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for r := int64(1); r <= rounds; r++ {
-					arrived.Add(1)
-					bar.wait()
-					// Everyone has arrived for round r, and nobody can have
-					// arrived for round r+1 before this goroutine has.
-					if got := arrived.Load(); got < r*n || got > r*n+n-1 {
-						bad.Add(1)
-					}
-					bar.wait()
-				}
-			}()
-		}
-		wg.Wait()
+		var flag atomic.Bool
+		go func() {
+			for i := 0; i < 1000; i++ {
+				_ = i * i
+			}
+			flag.Store(true)
+		}()
+		spinUntil(flag.Load)
 		spinIters = saved
-		if bad.Load() != 0 {
-			t.Fatalf("spinIters=%d: %d early departures", iters, bad.Load())
-		}
 	}
+}
+
+// TestGemmParallelYielding runs the parallel GEMM with every wait yielding at
+// once, as on an oversubscribed machine, and with more workers than CPUs.
+func TestGemmParallelYielding(t *testing.T) {
+	saved := spinIters
+	spinIters = 0
+	defer func() { spinIters = saved }()
+	withMaxProcs(8, func() {
+		withThresholds(1<<14, 1, func() {
+			for _, s := range []struct{ m, k, n int }{{50, 70, 90}, {13, 300, 7}, {97, 31, 600}} {
+				a, b := intMat(s.m, s.k, 3), intMat(s.k, s.n, 4)
+				assertGemm(t, s.m, s.k, s.n, a, b)
+				withBlocks(MR, 8, 2*NR, func() { assertGemm(t, s.m, s.k, s.n, a, b) })
+			}
+		})
+	})
 }

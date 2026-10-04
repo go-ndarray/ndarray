@@ -3,7 +3,6 @@ package kernels
 import (
 	"runtime"
 	"sync"
-	"sync/atomic"
 )
 
 // Multicore kernels.
@@ -267,34 +266,18 @@ func MaxP(a []float64) float64 { return reduceP(a, maxSIMD) }
 // NaN-propagating like numpy.min.
 func MinP(a []float64) float64 { return reduceP(a, minSIMD) }
 
-// spinBarrier is a reusable barrier for n goroutines that are all running, as
-// the GEMM workers are between their blocks. Waiting is a spin, then a spin
-// that yields (runtime.Gosched) so an oversubscribed machine still makes
-// progress; it never parks, because parking is exactly the cost it replaces:
-// waking n parked threads one after another.
-//
-// The arrival count only ever grows: the c-th arrival (from 1) belongs to
-// generation (c-1)/n and leaves once the count reaches the end of it. With no
-// reset there is no window in which a released goroutine could arrive before
-// the count is cleared.
-type spinBarrier struct {
-	n     int64
-	count atomic.Int64
-}
-
-func newSpinBarrier(n int) *spinBarrier { return &spinBarrier{n: int64(n)} }
-
-// spinIters is how many times a waiter polls before it starts yielding. A var
-// so tests can make every wait yield.
-var spinIters = 1 << 10
-
-// wait blocks until n goroutines have called it for the current generation.
-func (b *spinBarrier) wait() {
-	c := b.count.Add(1)
-	end := ((c-1)/b.n + 1) * b.n
-	for i := 0; b.count.Load() < end; i++ {
+// spinUntil waits for done to become true, which other running goroutines
+// will make so: a spin, then a spin that yields (runtime.Gosched) so an
+// oversubscribed machine still makes progress. It never parks, because parking
+// is exactly the cost the GEMM workers avoid: waking threads one after another.
+func spinUntil(done func() bool) {
+	for i := 0; !done(); i++ {
 		if i >= spinIters {
 			runtime.Gosched()
 		}
 	}
 }
+
+// spinIters is how many times spinUntil polls before it starts yielding. A var
+// so tests can make every wait yield.
+var spinIters = 1 << 10
