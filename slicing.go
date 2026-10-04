@@ -99,9 +99,11 @@ func (ix Index) resolveRange(length int) (first, count, step int, err error) {
 		if ix.hasStop {
 			stop = normBound(ix.stop, length, 0, length)
 		}
+		// ceil((stop-first)/step), written so that it cannot overflow for a
+		// step near MaxInt (stop-first+step-1 would).
 		count = 0
 		if stop > first {
-			count = (stop - first + step - 1) / step
+			count = (stop-first-1)/step + 1
 		}
 		return first, count, step, nil
 	}
@@ -115,9 +117,12 @@ func (ix Index) resolveRange(length int) (first, count, step int, err error) {
 	if ix.hasStop {
 		stop = normBound(ix.stop, length, -1, length-1)
 	}
+	// ceil((first-stop)/-step) without overflow. For step == MinInt, -step
+	// wraps to MinInt; the quotient is then 0 (the dividend is smaller in
+	// magnitude), which still yields the right count of 1.
 	count = 0
 	if first > stop {
-		count = (first - stop - step - 1) / (-step)
+		count = (first-stop-1)/(-step) + 1
 	}
 	return first, count, step, nil
 }
