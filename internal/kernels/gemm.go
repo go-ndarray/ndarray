@@ -418,7 +418,7 @@ func dotRange(a, b []float64) float64 {
 func MatVecP(dst, a, v []float64, m, k int) {
 	body := func(lo, hi int) {
 		for i := lo; i < hi; i++ {
-			dst[i] = dotRange(a[i*k:i*k+k], v)
+			dst[i] = dotSIMD(a[i*k:i*k+k], v)
 		}
 	}
 	if m*k < matVecThreshold {
@@ -455,7 +455,7 @@ func VecMatP(dst, v, a []float64, k, n int) {
 func Dot1DP(a, b []float64) float64 {
 	n := len(a)
 	if n < ParThreshold {
-		return dotRange(a, b)
+		return dotSIMD(a, b)
 	}
 	w := numWorkers(n)
 	partials := make([]float64, w)
@@ -474,7 +474,7 @@ func Dot1DP(a, b []float64) float64 {
 			if e > n {
 				e = n
 			}
-			partials[idx] = dotRange(a[s:e], b[s:e])
+			partials[idx] = dotSIMD(a[s:e], b[s:e])
 		}
 	})
 	return Sum(partials)

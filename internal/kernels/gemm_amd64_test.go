@@ -7,10 +7,11 @@ import "testing"
 // (or a hypervisor that masks FMA) takes. The FMA path is the default and is
 // exercised by the rest of the suite wherever hasFMA is true.
 func TestGemmSSE2Fallback(t *testing.T) {
-	saved := gemmUseFMA
-	gemmUseFMA = false
-	defer func() { gemmUseFMA = saved }()
+	saved := useFMA
+	useFMA = false
+	defer func() { useFMA = saved }()
 	t.Run("correctness", TestGemmCorrectness)
 	t.Run("bands", TestGemmBandSizing)
 	t.Run("float", TestGemmFloatTolerance)
+	t.Run("dot", TestDotSIMD)
 }

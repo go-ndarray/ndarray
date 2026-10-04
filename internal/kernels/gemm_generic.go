@@ -12,6 +12,9 @@ package kernels
 // fan-out (MatMulP) keep it well ahead of an unblocked scalar loop and beat
 // single-threaded numpy on large products.
 
+// dotSIMD is dotRange here: no vector-double kernel on these targets.
+func dotSIMD(a, b []float64) float64 { return dotRange(a, b) }
+
 // MR, NR are the register-block dimensions; 4x4 keeps 16 + a few scalars live in
 // the GP/FP register file on these targets without spilling.
 const (
