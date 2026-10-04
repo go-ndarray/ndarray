@@ -401,10 +401,28 @@ makes anyway), so a transposed, sliced, reversed or broadcast operand costs no
 extra pass.
 
 **Still behind OpenBLAS with 16 threads** (0.54–0.66× on large products, 0.3×
-below 256²): per-core throughput in the parallel run is about a third of the
-serial kernel's, so the next lever is the parallel schedule (a persistent
-worker pool instead of a goroutine launch per round, and the BLIS jr-loop
-split for short m), then an AVX-512 kernel for the hosts that have it.
+below 256²). Where the parallel loss is, measured on the Zen 3:
+
+- It is not the hardware: 16 *independent* serial 512² GEMMs, one per core,
+  each ran at 41 GFLOP/s (656 in total), while the parallel 1024² GEMM ran its
+  kernel at 15–17 GFLOP/s per core. Per-core efficiency already drops from 40
+  to ~30 GFLOP/s at 2 cores.
+- It is not scheduling overhead: 83% of the parallel profile is the
+  micro-kernel itself, which stalls on the shared packed B panel. On this
+  part the last-level cache is split between core complexes, so the panel is
+  partly remote.
+- Taller row bands (more reuse of each B micro-panel) do not help: interleaved
+  over 5 runs they were worse at 1024² and equal at 2048².
+- **A 2-D tiling of C with private packing** (no barrier, nothing shared) was
+  built and measured, and is **not shipped**: ×1.24 at 1024² on the Zen 3, but
+  ×0.62 at 512² and Inner, and ×0.70–0.93 at every size on M4, whose cluster
+  L2 holds the shared panel well. A tile repacks (rows + cols)·k elements for
+  rows·cols·k multiply-adds, and a strided pack costs far more per element than
+  an FMA, so tiles under ~256×256 lose.
+
+The next lever is therefore a shared B panel per core complex (or per cache
+domain), not a different split of C, then an AVX-512 kernel for the hosts that
+have it.
 
 Correctness was checked on real hardware for five of the six 64-bit targets:
 amd64 (Zen 3, FMA path), arm64 (cfarm185), ppc64le (cfarm120), riscv64 (cfarm94)
@@ -450,6 +468,37 @@ across cores. Below 64 elements per block the old path is kept.
 |----|--:|--:|--:|
 | before | 3.1 ms | 1.76 ms | 460 µs |
 | after | **0.84 ms** | **114–196 µs** | 460 µs |
+## Exp (2026-10-04)
+
+`Exp` went through `Map(math.Exp)`, and `math.Exp` itself was the cost: 13.2 ns
+per element on one Zen 3 core, 3.9 ns on M4 (the func-pointer call added only
+15–20%). It is now a port of the double-precision exp of Arm's
+optimized-routines (Szabolcs Nagy; glibc's exp since 2.28; MIT licence): x =
+k·ln2/128 + r, 2^(k/128) from a 128-entry table as scale·(1+tail), exp(r)−1 from
+a degree-5 polynomial. The common case is written out in the loop, because the
+function is too large to inline and a call per element cost a third of the
+time.
+
+- **Accuracy:** worst 0.504 ULP over 80 000 inputs across the whole finite
+  range, the region near 0, the overflow edge and the subnormal range,
+  measured against a 300-bit reference (`math/big`, ln 2 from its atanh
+  series), against Arm's documented 0.509. `math.Exp` measured 0.879 ULP on
+  the same inputs on arm64. The table was not trusted as copied:
+  `TestExpTable` re-derives all 256 entries from 2^(k/128) at 300 bits.
+- **A Go bug it removes:** on amd64, Go 1.26's `math.Exp` returns **+Inf for
+  x ≥ 1023.5·ln 2 ≈ 709.436**, although the result is finite up to
+  ln(MaxFloat64) ≈ 709.7827 (NumPy: `exp(709.5)` = 1.3549863193146328e+308).
+  Its assembly rounds k = x·log2(e) to 1024 there, and the biased-exponent
+  check treats that as overflow although the reduced factor is below 1. Seen on
+  real Zen 3 hardware, not only Rosetta. go-ndarray's `Exp` inherited it until
+  now; `TestExpTopOfRange` pins the fix.
+- Also just above ln(2^-1075), exp now rounds up to the smallest subnormal as
+  it should, where `math.Exp` returns 0.
+
+Speed, kernel only, 16 Ki elements: M4 30 µs (`math.Exp` 65 µs); one Zen 3 core
+62 µs (`math.Exp` 215 µs, NumPy single-threaded 78 µs). Whole `Exp` on Zen 3,
+16 cores: 1 Ki ×2.7, 16 Ki ×3, 256 Ki ×1.6, 4 Mi ×1.65; from 256 Ki on it is
+2–5× NumPy. A SIMD version (AVX2 gathers for the table) is the next step.
 
 ## SIMD coverage
 
