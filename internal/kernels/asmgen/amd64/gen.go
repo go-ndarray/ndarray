@@ -1,5 +1,3 @@
-//go:build ignore
-
 // Command gen produces sum_amd64.s, the SSE2 float64 kernels, via go-asmgen.
 // Run with: go run gen.go (or `go generate` from the kernels package).
 //

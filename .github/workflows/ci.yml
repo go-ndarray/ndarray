@@ -115,6 +115,8 @@ jobs:
           - { goarch: loong64, qemu: qemu-loongarch64-static }
           - { goarch: ppc64le, qemu: qemu-ppc64le-static }
           - { goarch: s390x,   qemu: qemu-s390x-static }
+          # 32-bit: int is 32 bits, so shape/size overflow paths differ.
+          - { goarch: arm,     qemu: qemu-arm-static }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -125,3 +127,50 @@ jobs:
         run: |
           GOOS=linux GOARCH=${{ matrix.goarch }} go vet ./...
           GOARCH=${{ matrix.goarch }} go test -exec=${{ matrix.qemu }} ./...
+
+  # 386 runs natively on the amd64 runner (the kernel executes 32-bit x86
+  # binaries), not under qemu-i386, whose emulation loses x87/SSE state across
+  # preemption. It is the second 32-bit word-size lane, beside arm.
+  arch-386:
+    name: arch 386
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: Vet + test (GOARCH=386)
+        run: |
+          GOARCH=386 go vet ./...
+          GOARCH=386 go test ./...
+
+  # Every GOOS/GOARCH pair Go supports must at least compile the library's
+  # tests: a test that does not compile on a target is a test
+  # that never runs there, and nothing else would notice (a 1<<62 literal
+  # once broke every 32-bit target this way). Execution is the lanes above.
+  cross-compile:
+    name: compile tests on every target
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: go test -c (go vet on android/ios) for each go tool dist list pair
+        run: |
+          fail=0
+          for t in $(go tool dist list); do
+            os=${t%/*}; arch=${t#*/}
+            # android/ios refuse to build without a cgo linker, even for vet;
+            # with cgo nominally on and CC=false, vet type-checks the package
+            # and its tests (there is no import "C" to compile).
+            case $os in android|ios) mode=vet ;; *) mode=test ;; esac
+            for p in $(go list ./...); do
+              if [ $mode = test ]; then
+                out=$(CGO_ENABLED=0 GOOS=$os GOARCH=$arch go test -c -o /dev/null "$p" 2>&1) || { echo "::error::$t $p: $out"; fail=1; }
+              else
+                out=$(CGO_ENABLED=1 CC=false GOOS=$os GOARCH=$arch go vet "$p" 2>&1) || { echo "::error::$t $p: $out"; fail=1; }
+              fi
+            done
+          done
+          exit $fail

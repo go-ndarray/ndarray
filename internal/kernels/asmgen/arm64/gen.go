@@ -1,5 +1,3 @@
-//go:build ignore
-
 // Command gen produces sum_arm64.s, the NEON float64 sum-reduction kernel, via
 // go-asmgen. Run with: go run gen.go (or `go generate` from the kernels
 // package).
@@ -10,14 +8,14 @@
 // floating-point grouping. So we hand-vectorize with NEON and multiple
 // accumulators, the same parallelism numpy uses inside one core.
 //
-//   sumNEON(a *float64, n int) float64
-//     Sums a[0..n) with FOUR independent V.D2 accumulators (8 float64 lanes),
-//     then folds the lanes pairwise and adds a scalar tail. Floating-point
-//     addition is not associative, so this lane-parallel grouping can differ
-//     from a strictly sequential sum by a few ULP — exactly the trade-off
-//     numpy's own pairwise/SIMD summation makes. It is therefore NOT held
-//     bit-identical to the scalar oracle; the kernels package validates it to a
-//     tight relative tolerance against the oracle and against numpy.
+//	sumNEON(a *float64, n int) float64
+//	  Sums a[0..n) with FOUR independent V.D2 accumulators (8 float64 lanes),
+//	  then folds the lanes pairwise and adds a scalar tail. Floating-point
+//	  addition is not associative, so this lane-parallel grouping can differ
+//	  from a strictly sequential sum by a few ULP — exactly the trade-off
+//	  numpy's own pairwise/SIMD summation makes. It is therefore NOT held
+//	  bit-identical to the scalar oracle; the kernels package validates it to a
+//	  tight relative tolerance against the oracle and against numpy.
 //
 // (A max-reduction SIMD kernel is intentionally not shipped: NEON FMAX's NaN
 // propagation differs from the scalar `if v > m` oracle, so a bit-identical
