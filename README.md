@@ -57,33 +57,56 @@ from 1.18 ms to 0.39 ms (7.5× NumPy). ⚠ An array allocated from the workspace
 is invalid after `Reset`; `Detach` is how a result leaves it. The `*Into`
 methods (`AddInto`, `SqrtInto`, …) remain the way to reuse one named buffer.
 
-The numeric inner loops are kept behind a narrow kernel API. Behind it,
-**large** elementwise ops, reductions and matmul run **multicore** (across
-`GOMAXPROCS`); the sum reduction uses a **go-asmgen SIMD kernel** (NEON on
-arm64, SSE2 on amd64); and `MatMul` is a **panel-packed, cache-blocked GEMM**
-with a go-asmgen SIMD-FMA micro-kernel (NEON 4×8 on arm64; AVX2/FMA 6×8 on
-amd64, chosen at run time, with an SSE2 fallback) —
-the OpenBLAS/BLIS structure. So go-ndarray **beats single-threaded NumPy** on
-its core ops on large arrays (Add/Mul ~2×, Sum ~2.4×), and `MatMul` reaches
-**tuned-BLAS parity at 1024²**: ≈0.99× vs multi-threaded OpenBLAS 0.3.29 on an
-arm64 VM (~203 GFLOP/s, up from an earlier ~156 GFLOP/s / 0.76× before the
-by-lane-FMLA micro-kernel fix — see **[docs/perf.md](docs/perf.md)**), and
-≈1.00× of single-threaded vecLib on an Apple M4 Max (~373 GFLOP/s), where it
-also decisively **beats the pure-Go `gonum` 4–10×** at every size — see
-**[BENCHMARKS.md](BENCHMARKS.md)**. Where a faster reference exists —
-`Sqrt`/`Max` small sizes, and tuned BLAS at small matmul sizes — it says so.
-It is a **standalone, reusable** module and the cgo-free ndarray backend behind
+The numeric inner loops are kept behind a narrow kernel API. Behind it, large
+elementwise ops, reductions and products run **multicore** (across
+`GOMAXPROCS`). On **amd64 and arm64** the hot loops are
+[go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels: sum,
+max/min, add/sub/mul/div, sqrt and the dot product (SSE2 or AVX2/FMA on amd64,
+NEON on arm64), and a **panel-packed, cache-blocked GEMM** with an SIMD-FMA
+micro-kernel (NEON 4×8; AVX2/FMA 6×8 chosen at run time, SSE2 fallback), the
+OpenBLAS/BLIS structure. The other four 64-bit targets (riscv64, loong64,
+ppc64le, s390x) and the 32-bit ones run the same pure-Go code those kernels
+are tested against. `Exp` and `Log` are ports of Arm's optimized-routines
+(≤ 0.51 ULP measured, against up to 0.88 and 0.72 for Go's
+`math.Exp`/`math.Log` on arm64),
+and they are correct where amd64's `math.Exp` returns +Inf
+([golang/go#81995](https://github.com/golang/go/issues/81995)) and `math.Log`
+is wrong on subnormals
+([golang/go#56600](https://github.com/golang/go/issues/56600)).
+
+**Measured against NumPy 2.5.3 (OpenBLAS 0.3.34) on an AMD Zen 3, 16 cores**
+(full tables in **[docs/perf.md](docs/perf.md)**):
+
+- **Faster:** whole-array reductions (`Sum`/`Mean`/`Max` at 4 Mi: 2.3–4.5×),
+  row reductions (`SumAxis(1)` 2.2×, `MaxAxis(1)` 1.7×), `Exp` from 256 Ki
+  elements (2.4–5.6×), the `*Into` forms of `Add`/`Mul`/`Sqrt` (faster or at
+  parity at every size), and `MatMul` against single-threaded OpenBLAS
+  (3.7–5.9× from 512²); in a `Workspace`, `x + y` and `sqrt(x*y + x)` match or
+  beat NumPy at every size measured.
+- **At parity:** `SumAxis(0)`, `Inner` against 16-thread OpenBLAS, `Log` on
+  one core.
+- **Slower:** `MatMul` against 16-thread OpenBLAS (0.55× at 1024², 0.3× at
+  256² and below); `Dot`/mat·vec against NumPy's threaded BLAS (0.16×); `Exp`
+  below 256 Ki elements (0.82×); the *allocating* forms of elementwise ops up
+  to 256 Ki elements, `Concatenate`/`Stack` and slice copies outside a
+  `Workspace` (0.2–0.5×: Go's allocator and garbage collector, which
+  `Workspace` largely removes).
+
+On Apple silicon the GEMM reached parity with tuned BLAS at 1024² (OpenBLAS in
+an arm64 VM, single-threaded vecLib on an M4 Max), and every product beats the
+pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). It is a
+**standalone, reusable** module and the cgo-free ndarray backend behind
 [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby)'s `NDArray` class.
 
-> ⚠️ **Status: float64 NumPy parity for the core surface, and faster than NumPy
-> on it.** Creation, slicing/views, broadcasting elementwise + ufuncs,
-> reductions (incl. arg/cumulative/clip/where), manipulation, and linear algebra
-> are complete, **100%-covered**, six-arch CI-green, and differentially checked
-> against numpy. The hot paths are **multicore + SIMD** and beat single-threaded
-> NumPy on large arrays (**[docs/perf.md](docs/perf.md)**). See
-> **[docs/plan-ndarray.md](docs/plan-ndarray.md)** for the roadmap (more SIMD
-> kernels, more dtypes). The Ruby binding has shipped — go-embedded-ruby's
-> `NDArray` class binds this module.
+> ⚠️ **Status: float64 NumPy parity for the core surface.** Creation,
+> slicing/views, broadcasting elementwise + ufuncs, reductions (incl.
+> arg/cumulative/clip/where), manipulation, linear algebra and `Workspace` are
+> complete, **100%-covered**, and differentially checked against NumPy. CI runs
+> the suite on amd64, arm64, 386, and riscv64/loong64/ppc64le/s390x/arm under
+> qemu, on Linux, macOS and Windows, and compiles it for every `GOOS/GOARCH`
+> pair Go supports; v0.1.0 and v0.2.0 were also run on real amd64, arm64,
+> ppc64le, riscv64 and loong64 hardware. See **[docs/plan-ndarray.md](docs/plan-ndarray.md)**
+> for the roadmap (more dtypes, more SIMD targets).
 
 ## Why this module?
 
@@ -91,10 +114,10 @@ It is a **standalone, reusable** module and the cgo-free ndarray backend behind
 **amd64-only**. More broadly, **Ruby has no cgo-free ndarray** (`Numo::NArray`,
 `NMatrix` are C extensions). A pure-Go core whose kernels are generated for every
 arch is therefore a durable foundation. The numeric loops live in
-`internal/kernels`; **Phase 1** replaces them with
-[go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels across all six
-64-bit Go targets (amd64, arm64, riscv64, loong64, ppc64le, s390x), selected at
-runtime, behind the same API and the same tests.
+`internal/kernels`, each with a pure-Go reference implementation;
+[go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels replace them
+on amd64 and arm64 today, behind the same API and held to the same tests, and
+the other 64-bit targets are next.
 
 ## Example
 

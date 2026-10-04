@@ -340,7 +340,7 @@ writes every element (elementwise, ufuncs, copies, broadcasts, concatenation,
 `Where`, `Clip`, scans, `Take`, `Outer`, mat·vec) skip the zeroing. Those that
 accumulate (GEMM, vec·mat, axis reductions) clear their slot.
 
-Zen 3, 16 cores pinned, NumPy 2.5.3 single-threaded, median of two runs:
+Zen 3, 16 cores pinned, NumPy 2.5.3 single-threaded, best of two runs:
 
 | op | n | heap | **Workspace** | `*Into` | NumPy | Workspace vs NumPy |
 |----|--:|--:|--:|--:|--:|:--:|
@@ -381,14 +381,17 @@ hits both alike.
 Four changes, each measured on its own before the next:
 
 1. **AVX2/FMA 6×8 micro-kernel** (the BLIS Haswell shape). In L1 it runs at
-   43 GFLOP/s on one Cascade Lake core, the FMA ports' peak at that clock; the
-   SSE2 4×4 it replaces had no FMA and half the vector width.
+   43 GFLOP/s on one Cascade Lake core (16 flops per cycle at about 2.7 GHz,
+   if the virtual machine's unknown clock is near that); the SSE2 4×4 it
+   replaces had no FMA and half the vector width.
 2. **Edge tiles through the micro-kernel.** With MR=6, every 256-row MC block
-   ends in a 4-row edge panel, and the scalar edge loop took **40%** of a 512²
-   product (profiled). A partial tile now runs the kernel into a scratch tile.
+   ends in a 4-row edge panel, and the scalar edge loop took **40%** of one
+   profile covering serial 64² and 512² products. A partial tile now runs the
+   kernel into a scratch tile.
 3. **Prefetch** of the C tile at kernel entry and of the A panel eight steps
-   ahead: serial 768² went from 27.5 to 34.7 GFLOP/s (+26%); 90% of the time was
-   already in the kernel, stalled on memory. A sweep of MC (48–252) and KC
+   ahead: serial 768² went from 27.5 to 34.7 GFLOP/s (+26%). 90% of the time was
+   already in the kernel, which ran at 28 GFLOP/s there against 43 with its
+   panels in L1, so it was waiting on memory. A sweep of MC (48–252) and KC
    (128–512) moved nothing (±3%), so the blocking is unchanged.
 4. **B packed by all workers.** MatMulP packs the shared B block once per
    (jc, pc) round, and one goroutine did it while the others waited: +30–70%
@@ -408,9 +411,11 @@ below 256²). Where the parallel loss is, measured on the Zen 3:
   kernel at 15–17 GFLOP/s per core. Per-core efficiency already drops from 40
   to ~30 GFLOP/s at 2 cores.
 - It is not scheduling overhead: 83% of the parallel profile is the
-  micro-kernel itself, which stalls on the shared packed B panel. On this
-  part the last-level cache is split between core complexes, so the panel is
-  partly remote.
+  micro-kernel itself, so the kernel runs slower when cores share work. Why is
+  **not established**. The shared packed B panel is the suspect (on this part
+  the last-level cache is split between core complexes, so the panel is partly
+  remote), but the drop already shows at 2 cores of one complex, which that
+  explanation does not cover.
 - Taller row bands (more reuse of each B micro-panel) do not help: interleaved
   over 5 runs they were worse at 1024² and equal at 2048².
 - **A 2-D tiling of C with private packing** (no barrier, nothing shared) was
@@ -420,9 +425,9 @@ below 256²). Where the parallel loss is, measured on the Zen 3:
   rows·cols·k multiply-adds, and a strided pack costs far more per element than
   an FMA, so tiles under ~256×256 lose.
 
-The next lever is therefore a shared B panel per core complex (or per cache
-domain), not a different split of C, then an AVX-512 kernel for the hosts that
-have it.
+The next step is to find where the kernel stalls at 2 cores (hardware
+counters: cache misses per FMA, serial against parallel) before choosing a
+lever; then an AVX-512 kernel for the hosts that have it.
 
 Correctness was checked on real hardware for five of the six 64-bit targets:
 amd64 (Zen 3, FMA path), arm64 (cfarm185), ppc64le (cfarm120), riscv64 (cfarm94)
@@ -482,18 +487,23 @@ time.
 - **Accuracy:** worst 0.504 ULP over 80 000 inputs across the whole finite
   range, the region near 0, the overflow edge and the subnormal range,
   measured against a 300-bit reference (`math/big`, ln 2 from its atanh
-  series), against Arm's documented 0.509. `math.Exp` measured 0.879 ULP on
-  the same inputs on arm64. The table was not trusted as copied:
+  series), against Arm's documented 0.509; the committed test samples 20 000
+  of them and finds 0.501. `math.Exp` measured 0.879 ULP on the 80 000 inputs
+  on arm64 (0.841 on the test's 20 000). The table was not trusted as copied:
   `TestExpTable` re-derives all 256 entries from 2^(k/128) at 300 bits.
-- **A Go bug it removes:** on amd64, Go 1.26's `math.Exp` returns **+Inf for
-  x ≥ 1023.5·ln 2 ≈ 709.436**, although the result is finite up to
-  ln(MaxFloat64) ≈ 709.7827 (NumPy: `exp(709.5)` = 1.3549863193146328e+308).
-  Its assembly rounds k = x·log2(e) to 1024 there, and the biased-exponent
-  check treats that as overflow although the reduced factor is below 1. Seen on
-  real Zen 3 hardware, not only Rosetta. go-ndarray's `Exp` inherited it until
-  now; `TestExpTopOfRange` pins the fix.
-- Also just above ln(2^-1075), exp now rounds up to the smallest subnormal as
-  it should, where `math.Exp` returns 0.
+- **A Go bug it removes**, reported as
+  [golang/go#81995](https://github.com/golang/go/issues/81995): on amd64,
+  `math.Exp` returns **+Inf for 709.436139303104 ≤ x < 709.782712893384**,
+  although the result is finite there (NumPy, glibc and mpmath:
+  `exp(709.5)` = 1.3549863193146328e+308). Its assembly rounds k = x·log2(e) to
+  1024 from x = 1023.5·ln 2, and the biased-exponent check treats that as
+  overflow although the reduced factor is below 1. Reproduced with Go 1.26.8 and
+  1.27.1 on AMD Zen 3, Intel Cascade Lake and Intel Haswell, with and without
+  the FMA path; the assembly is unchanged on master. go-ndarray's `Exp`
+  inherited it until v0.2.0; `TestExpTopOfRange` pins the fix.
+- Just above ln(2^-1075), exp rounds up to the smallest subnormal, as glibc
+  and NumPy do. Go's arm64 `math.Exp` returns 0 there (amd64 does not); that is
+  one unit of the last subnormal place, not a contract violation.
 
 Speed, kernel only, 16 Ki elements: M4 30 µs (`math.Exp` 65 µs); one Zen 3 core
 62 µs (`math.Exp` 215 µs, NumPy single-threaded 78 µs). Whole `Exp` on Zen 3,
@@ -517,9 +527,12 @@ held to the n·ε·Σ|aᵢbᵢ| bound and exact on integer data.
 | Dot 2^20, 16 cores | 159 µs | 99 µs | — |
 | MatVec 1024², 16 cores | 165 µs | 89 µs | — |
 
-NumPy's multi-threaded dot still wins on this part (24 µs): OpenMP pins its
-threads, so each one rereads its own chunk from its own L3 slice on every
-repetition, while goroutines move between core complexes.
+NumPy's multi-threaded dot still wins on this part (24 µs). The go-ndarray
+version stops scaling at about 90 GB/s from 4 cores on. A likely cause, **not
+verified**, is cache affinity: OpenMP keeps each thread on one core, so it
+rereads its own chunk from its own L3 slice on every repetition, while
+goroutines move between core complexes.
+
 ## Log and Log10 (2026-10-04)
 
 `Log` went through `Map(math.Log)`: 11.6 ns per element on a Zen 3 core
@@ -532,17 +545,20 @@ inputs within 2⁻⁴ of 1 take a degree-12 polynomial. z/c − 1 is one
 needs is not used. `Log10` is log(x)·(1/ln10), the formula of `math.Log10`, on
 this log.
 
-- **Accuracy:** worst 0.508 ULP over 10 000 inputs (whole range, near 1,
-  subnormals), against a 300-bit reference (log m = 2·atanh((m−1)/(m+1)));
-  `math.Log` measured 0.727 on arm64. `TestLogTable` checks each of the 128
+- **Accuracy:** worst 0.508 ULP over the test's 10 000 inputs (whole range,
+  near 1, subnormals), against a 300-bit reference (log m =
+  2·atanh((m−1)/(m+1))); `math.Log` measured 0.724 on the same inputs on
+  arm64. `TestLogTable` checks each of the 128
   entries against the properties `log_data.c` documents (1/invc inside its
   subinterval, logc = log(c) within the rounding of invc, 0x1.8p9 + logc
   exact).
-- **A second Go bug it removes:** on amd64, Go 1.26's `math.Log` is wrong for
-  subnormal inputs. `math.Log(5e-324)` returns −709.09 instead of −744.44, and
-  `math.Log(1e-310)` −709.09 instead of −713.80 (NumPy: −744.44, −713.80); the
-  error measured 7·10¹³ ULP. Its assembly does not normalise them. Confirmed on
-  a real Zen 3. `Log` and `Log10` inherited it; `TestLogSubnormal` pins the fix.
+- **A second Go bug it removes**, known since 2022 as
+  [golang/go#56600](https://github.com/golang/go/issues/56600) (fix pending in
+  CL 448216): on amd64, `math.Log` is wrong for every subnormal input.
+  `math.Log(5e-324)` returns −709.09 instead of −744.44, and `math.Log(1e-310)`
+  −709.09 instead of −713.80 (NumPy, glibc: −744.44, −713.80). Its assembly
+  inlines `Frexp` with bit masks that assume a normal input. Reproduced with Go
+  1.26.8 and 1.27.1 on three x86 CPUs. `Log` and `Log10` inherited it; `TestLogSubnormal` pins the fix.
   (`Log2` already normalised through `math.Frexp` and was right.)
 
 Speed, 16 Ki elements, one core: M4 37 µs (`math.Log` 72), Zen 3 73 µs

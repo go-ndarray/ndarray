@@ -144,8 +144,8 @@ func TestExpSpecial(t *testing.T) {
 		}
 	}
 	// Against the reference: the subnormal range (just above ln(2^-1075) exp
-	// rounds up to the smallest subnormal; math.Exp gives 0), and the top of
-	// the finite range, where Go 1.26's amd64 math.Exp returns +Inf from
+	// rounds up to the smallest subnormal; arm64's math.Exp gives 0), and the
+	// top of the finite range, where amd64's math.Exp (golang/go#81995) returns +Inf from
 	// x >= 1023.5*ln2 ~ 709.436 (its k = round(x*log2e) reaches 1024 and the
 	// biased exponent check calls that overflow, though fr*2^1024 is finite).
 	for _, x := range []float64{-745.13, -745.1332, -740, -720.5, -708.5, -708.39,
