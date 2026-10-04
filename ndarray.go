@@ -626,12 +626,47 @@ func (a *Array) binOp(b *Array, kernel func(dst, x, y []float64)) (*Array, error
 	if err != nil {
 		return nil, err
 	}
+	if full, rep, repFirst, ok := repeatOperands(a, b, shape); ok {
+		dst := a.alloc(prod(shape), false)
+		kernels.RepeatP(kernel, dst, full, rep, repFirst)
+		cp := append([]int(nil), shape...)
+		return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: a.ws}, nil
+	}
 	x := a.operandFor(shape)
 	y := b.operandFor(shape)
 	dst := a.alloc(prod(shape), false)
 	kernel(dst, x, y)
 	cp := append([]int(nil), shape...)
 	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: a.ws}, nil
+}
+
+// repeatMin is the shortest repeated operand binOp streams block by block;
+// below it a kernel call per block costs more than materialising.
+const repeatMin = 64
+
+// repeatOperands recognises the broadcast that is a plain repetition: one
+// operand is contiguous with the full result shape, the other is contiguous
+// and its shape, leading 1s dropped, is a suffix of the result shape (a matrix
+// plus a row, a 3-D stack minus a 2-D mean). The second then repeats in
+// consecutive blocks of its own length, and binOp can stream the live slices
+// instead of materialising the broadcast (see kernels.RepeatP).
+func repeatOperands(a, b *Array, shape []int) (full, rep []float64, repFirst, ok bool) {
+	isRep := func(r *Array) bool {
+		s := r.shape
+		for len(s) > 0 && s[0] == 1 {
+			s = s[1:]
+		}
+		return r.isContiguous() && r.Size() >= repeatMin &&
+			len(s) <= len(shape) && sameShape(s, shape[len(shape)-len(s):])
+	}
+	isFull := func(f *Array) bool { return f.isContiguous() && sameShape(f.shape, shape) }
+	switch {
+	case isFull(a) && isRep(b):
+		return a.data, b.data, false, true
+	case isFull(b) && isRep(a):
+		return b.data, a.data, true, true
+	}
+	return nil, nil, false, false
 }
 
 // Add returns the elementwise sum a+b with broadcasting.

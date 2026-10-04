@@ -436,6 +436,20 @@ Zen 3, 16 cores pinned, minimum of three interleaved runs:
 | MaxAxis(1) | 601 µs | **93 µs** | 189 µs | 2.0× |
 
 On M4: MaxAxis(1) ×6–8, SumAxis(0) ×1.9.
+## Broadcasting a row without materialising it (2026-10-04)
+
+`M + row` (1024×1024 plus 1×1024) lost to NumPy 0.26× on the Zen 3 even with a
+`Workspace`: the broadcast path copied the row out to a full 8 MiB matrix
+before adding. When one operand has the full shape and the other, leading 1s
+dropped, is a suffix of it (a row, a 2-D mean subtracted from a 3-D stack), the
+second simply repeats in blocks of its own length, so `binOp` now streams the
+live slices block by block through the SIMD kernel (`kernels.RepeatP`), split
+across cores. Below 64 elements per block the old path is kept.
+
+| BroadcastAdd 1024²+row, Zen 3 | heap | `Workspace` | NumPy 1 thread |
+|----|--:|--:|--:|
+| before | 3.1 ms | 1.76 ms | 460 µs |
+| after | **0.84 ms** | **114–196 µs** | 460 µs |
 
 ## SIMD coverage
 

@@ -83,6 +83,33 @@ func runBinaryP(k binaryKernel, dst, a, b []float64) {
 // IEEE-754 op — no reduction grouping), so the result matches the serial scalar
 // computation for every input.
 
+// RepeatP computes dst = full OP rep, where rep is repeated along full in
+// consecutive blocks of len(rep) — a broadcast of rep over the leading axes,
+// such as a matrix plus a row. Each block is one call of the elementwise
+// kernel k on live slices, so rep is never materialised to full's size; the
+// blocks are split across cores above ParThreshold. With repFirst the operands
+// are swapped (dst = rep OP full), for the non-commutative ops. len(dst) ==
+// len(full) is a multiple of len(rep) >= 1.
+func RepeatP(k func(dst, a, b []float64), dst, full, rep []float64, repFirst bool) {
+	m := len(rep)
+	blocks := len(dst) / m
+	body := func(lo, hi int) {
+		for b := lo; b < hi; b++ {
+			s := b * m
+			if repFirst {
+				k(dst[s:s+m], rep, full[s:s+m])
+			} else {
+				k(dst[s:s+m], full[s:s+m], rep)
+			}
+		}
+	}
+	if len(dst) < ParThreshold {
+		body(0, blocks)
+		return
+	}
+	parallelFor(blocks, min(numWorkers(len(dst)), blocks), body)
+}
+
 // AddP writes a[i]+b[i] into dst[i], parallelised above ParThreshold.
 func AddP(dst, a, b []float64) { runBinaryP(addBin, dst, a, b) }
 
