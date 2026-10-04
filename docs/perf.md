@@ -411,9 +411,13 @@ below 256²). Where the parallel loss is, measured on the Zen 3:
   each ran at 41 GFLOP/s (656 in total), while the parallel 1024² GEMM ran its
   kernel at 15–17 GFLOP/s per core. Per-core efficiency already drops from 40
   to ~30 GFLOP/s at 2 cores.
-- It is not scheduling overhead: 83% of the parallel profile is the
-  micro-kernel itself, so the kernel runs slower when cores share work. Why is
-  **not established**. The shared packed B panel is the suspect (on this part
+- ~~It is not scheduling overhead: 83% of the parallel profile is the
+  micro-kernel itself, so the kernel runs slower when cores share work.~~
+  **Wrong, corrected the same day:** a profile of cycles samples only the cores
+  that run, never the ones that wait. `perf stat` shows 7.1 of 16 CPUs busy
+  during a 1024² product: the loss was mostly waiting, and the fix is in
+  [Parallel GEMM: start once, wait on work](#parallel-gemm-start-once-wait-on-work-2026-10-04).
+  Why the kernel itself also runs slower in parallel is still **not established**. The shared packed B panel is the suspect (on this part
   the last-level cache is split between core complexes, so the panel is partly
   remote), but the drop already shows at 2 cores of one complex, which that
   explanation does not cover.
@@ -426,9 +430,8 @@ below 256²). Where the parallel loss is, measured on the Zen 3:
   rows·cols·k multiply-adds, and a strided pack costs far more per element than
   an FMA, so tiles under ~256×256 lose.
 
-The next step is to find where the kernel stalls at 2 cores (hardware
-counters: cache misses per FMA, serial against parallel) before choosing a
-lever; then an AVX-512 kernel for the hosts that have it.
+The hardware counters were read the same day; see the next-but-one
+section. An AVX-512 kernel for the hosts that have it remains open.
 
 Correctness was checked on real hardware for five of the six 64-bit targets:
 amd64 (Zen 3, FMA path), arm64 (cfarm185), ppc64le (cfarm120), riscv64 (cfarm94)
@@ -636,6 +639,86 @@ At 4 Mi elements in parallel, sum and sqrt are memory-bound (parity); the
 parallel 4 Mi sum is bimodal on this host (1.6 ms or 7 ms in either version),
 so only the minima are compared. No NumPy or BLAS is installable there (the
 host has no route to package mirrors), so there is no external reference.
+
+## Parallel GEMM: start once, wait on work (2026-10-04)
+
+**Diagnosis, from hardware counters** (`perf stat`, Zen 3 guest cfarm421,
+steady state, 1024², 3 s per configuration):
+
+| workers | CPUs busy | IPC | instructions |
+|---|---|---|---|
+| 1 | 1.00 | 3.35 | 37.5 G |
+| 2 | 1.91 | 2.00 | 37.6 G |
+| 8 | 5.58 | 2.16 | 172 G (192 products) |
+| 16 | 7.08 | 2.28 | 193 G (226 products) |
+
+The instruction count does not grow, so nobody busy-waits. L1 misses do not
+grow either. What changes is that at 16 workers the CPUs are busy only 44% of
+the time. The driver forked and joined goroutines twice per (jc, pc) block of
+the product, once to pack B and once for the row bands, 16 times in a 1024²
+product. A fork/join wakes parked threads one after another. A micro-benchmark
+on the same guest (16 goroutines, 700 µs of work each) measures its cost at
+**26 µs with 2 workers, 165 µs with 8, 330 µs with 16**. 16 × 330 µs is ~40%
+of a 12.5 ms product.
+
+Two hypotheses were tested and **refuted** first:
+
+- SMT siblings. The guest has 128 vCPUs, as many as the host has threads.
+  Two serial GEMMs pinned on vCPU 16 and any other vCPU slow each other by
+  0–10%, never by half.
+- A block of A larger than L2. With MC = 256, the A block is 512 KiB, all of
+  Zen 3's L2, against BLIS's MC = 72. Sweeping MC over {72, 120, 144, 192, 256}
+  changed nothing beyond the noise at 2 workers, and gave +17% at 16 workers
+  for 1024² but −8% for 512².
+
+**The change.** The workers start once per product. They synchronise on
+**work done**, never on workers arrived: a block's bands start once all of its
+B panels are packed and all bands of the previous block are done, and the
+packing is shared in claims of four NR-wide panels. A first version used a
+barrier that waited for every worker, and it put the wake-up chain straight
+back on the critical path for small products: 96³ on 8 POWER9 cores ran at
+0.57×. B is double-buffered, so block i+1 is packed while block i is still
+being multiplied. Each C tile is still accumulated in pc order, so the result
+is bit-identical to the serial product. The pack buffers moved to two pools,
+one for A and one for B: a pair per worker had held 16 MiB of unused B buffers
+at 16 workers, which the collector empties and the next call zeroes again
+(`memclr` page faults, 20% of the cycles in a KVM spinlock in one profile).
+
+**Measured.** Every figure is the median of interleaved runs against the
+previous driver.
+
+| | 2 workers | 8 workers | 16 workers |
+|---|---|---|---|
+| Zen 3 guest, 1024² | 1.06× | 1.33× | 1.39× |
+| Zen 3 guest, 512² | 1.20× | 1.20× | 1.33× |
+| Zen 3 guest, 256² | 0.92× | 1.19× | 1.24× |
+| Zen 3 guest, 128² | **0.89×** | 1.50× | 1.16× |
+| Zen 3 guest, (1024×256)·(256×1024) | **0.82×** | 1.07× | 0.89× (p25 1.00×) |
+| POWER9 bare metal, 512² | 1.34× | 1.37× | |
+| POWER9 bare metal, 256² | 1.61× | 1.78× | |
+| POWER9 bare metal, (1024×256)·(256×1024) | 1.13× | 1.18× | |
+
+The Zen 3 runs were 12 rounds and the POWER9 runs 6, except 24 for 128² and
+256² at 8 workers. Those two are bimodal on that machine, in both drivers, and
+6 rounds had shown 256² at 0.72×. POWER9 used one thread per core (CPUs 0, 4,
+8, …).
+
+**Still behind.** On the Zen 3 guest, two workers lose 8–18% on mid-size
+products, where a fork/join costs only 26 µs. Bare-metal POWER9 gains at two
+workers, so this is not a property of the scheme, and no second code path was
+added for it. Against OpenBLAS with 16 threads, measured three ways in one run:
+
+| n | OpenBLAS-16 | previous driver | new driver |
+|---|---|---|---|
+| 256 | 708 µs | 1.06× | **1.44×** |
+| 512 | 789 µs | 0.29× | 0.42× |
+| 1024 | 4.60 ms | 0.43× | 0.51× |
+
+(× = OpenBLAS time / ours, so higher is faster). On this guest, absolute times
+drift through the day: the previous driver measured 0.54–0.66× of OpenBLAS in
+the morning. Only ratios taken in the same run are comparable. Not measured on
+Apple M-series, whose machine was shared with other jobs at the time. The bands
+stay dynamic, so its slower efficiency cores are handled as before.
 
 ## SIMD coverage
 
