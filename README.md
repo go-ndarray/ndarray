@@ -4,7 +4,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-013243)](https://go-ndarray.github.io/docs/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.26.6%2B-00ADD8)](https://go.dev/dl/)
+[![Go](https://img.shields.io/badge/go-1.27.1%2B-00ADD8)](https://go.dev/dl/)
 [![Status](https://img.shields.io/badge/status-numpy%20parity%20(float64)-9a6700)](docs/plan-ndarray.md)
 
 **A pure-Go (CGO=0) NumPy-style N-dimensional array library.** Row-major

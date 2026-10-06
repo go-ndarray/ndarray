@@ -70,10 +70,10 @@ dloop:
 	XVMOVQ 64(R6), X10
 	XVMOVQ 96(R4), X7
 	XVMOVQ 96(R6), X11
-	WORD $0x0a202080 // xvfmadd.d $xr0, $xr4, $xr8, $xr0
-	WORD $0x0a20a4a1 // xvfmadd.d $xr1, $xr5, $xr9, $xr1
-	WORD $0x0a2128c2 // xvfmadd.d $xr2, $xr6, $xr10, $xr2
-	WORD $0x0a21ace3 // xvfmadd.d $xr3, $xr7, $xr11, $xr3
+	WORD $0x0a202080 // XVFMADDD X0, X8, X4, X0
+	WORD $0x0a20a4a1 // XVFMADDD X1, X9, X5, X1
+	WORD $0x0a2128c2 // XVFMADDD X2, X10, X6, X2
+	WORD $0x0a21ace3 // XVFMADDD X3, X11, X7, X3
 	ADDV $128, R4
 	ADDV $128, R6
 	ADDV $-16, R5
@@ -348,22 +348,22 @@ gloop:
 	XVMOVQ 40(R6), X23.V4
 	XVMOVQ 48(R6), X24.V4
 	XVMOVQ 56(R6), X25.V4
-	WORD $0x0a204240 // xvfmadd.d $xr0, $xr18, $xr16, $xr0
-	WORD $0x0a20c641 // xvfmadd.d $xr1, $xr18, $xr17, $xr1
-	WORD $0x0a214262 // xvfmadd.d $xr2, $xr19, $xr16, $xr2
-	WORD $0x0a21c663 // xvfmadd.d $xr3, $xr19, $xr17, $xr3
-	WORD $0x0a224284 // xvfmadd.d $xr4, $xr20, $xr16, $xr4
-	WORD $0x0a22c685 // xvfmadd.d $xr5, $xr20, $xr17, $xr5
-	WORD $0x0a2342a6 // xvfmadd.d $xr6, $xr21, $xr16, $xr6
-	WORD $0x0a23c6a7 // xvfmadd.d $xr7, $xr21, $xr17, $xr7
-	WORD $0x0a2442c8 // xvfmadd.d $xr8, $xr22, $xr16, $xr8
-	WORD $0x0a24c6c9 // xvfmadd.d $xr9, $xr22, $xr17, $xr9
-	WORD $0x0a2542ea // xvfmadd.d $xr10, $xr23, $xr16, $xr10
-	WORD $0x0a25c6eb // xvfmadd.d $xr11, $xr23, $xr17, $xr11
-	WORD $0x0a26430c // xvfmadd.d $xr12, $xr24, $xr16, $xr12
-	WORD $0x0a26c70d // xvfmadd.d $xr13, $xr24, $xr17, $xr13
-	WORD $0x0a27432e // xvfmadd.d $xr14, $xr25, $xr16, $xr14
-	WORD $0x0a27c72f // xvfmadd.d $xr15, $xr25, $xr17, $xr15
+	WORD $0x0a204240 // XVFMADDD X0, X16, X18, X0
+	WORD $0x0a20c641 // XVFMADDD X1, X17, X18, X1
+	WORD $0x0a214262 // XVFMADDD X2, X16, X19, X2
+	WORD $0x0a21c663 // XVFMADDD X3, X17, X19, X3
+	WORD $0x0a224284 // XVFMADDD X4, X16, X20, X4
+	WORD $0x0a22c685 // XVFMADDD X5, X17, X20, X5
+	WORD $0x0a2342a6 // XVFMADDD X6, X16, X21, X6
+	WORD $0x0a23c6a7 // XVFMADDD X7, X17, X21, X7
+	WORD $0x0a2442c8 // XVFMADDD X8, X16, X22, X8
+	WORD $0x0a24c6c9 // XVFMADDD X9, X17, X22, X9
+	WORD $0x0a2542ea // XVFMADDD X10, X16, X23, X10
+	WORD $0x0a25c6eb // XVFMADDD X11, X17, X23, X11
+	WORD $0x0a26430c // XVFMADDD X12, X16, X24, X12
+	WORD $0x0a26c70d // XVFMADDD X13, X17, X24, X13
+	WORD $0x0a27432e // XVFMADDD X14, X16, X25, X14
+	WORD $0x0a27c72f // XVFMADDD X15, X17, X25, X15
 	ADDV $64, R6
 	ADDV $64, R7
 	ADDV $-1, R5
