@@ -122,6 +122,16 @@ arch is therefore a durable foundation. The numeric loops live in
 on amd64, arm64, ppc64le and loong64 today, behind the same API and held to the
 same tests; riscv64 and s390x are next.
 
+## Goroutines
+
+Operations on large arrays are spread over `GOMAXPROCS` goroutines. After the
+first one, the package keeps up to `GOMAXPROCS-1` helper goroutines alive. When
+an operation ends, they poll for the next one for 200 µs and then block, the way
+OpenBLAS's threads do, so operations issued back to back do not pay to wake
+threads. Waking threads per call made a 2^20-element dot slower on 8 POWER9 cores
+than on 4. The helpers are never stopped: a goroutine-leak check (goleak) that
+runs after ndarray operations will list them.
+
 ## Untrusted input
 
 Shapes, indices and data can come from someone else (a file, a request), so

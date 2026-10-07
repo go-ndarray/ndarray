@@ -1,10 +1,15 @@
 // Package ndarray is a pure-Go (CGO=0) NumPy-style N-dimensional array library.
 //
-// The element type for this phase is float64. The numeric kernels live in
-// internal/kernels behind a contiguous-slice API so that go-asmgen SIMD kernels
-// (amd64, arm64, riscv64, loong64, ppc64le, s390x) can replace them in a later
-// phase without touching the public API. See docs/plan-ndarray.md for the
+// The element type is float64. The numeric kernels live in internal/kernels
+// behind a contiguous-slice API: go-asmgen SIMD kernels on amd64, arm64,
+// ppc64le and loong64, pure Go elsewhere. See docs/plan-ndarray.md for the
 // roadmap.
+//
+// Large operations are spread over GOMAXPROCS goroutines. After the first one,
+// the package keeps up to GOMAXPROCS-1 helper goroutines for this: when an
+// operation ends they poll for the next one for 200 µs, then block until it
+// comes. They are never stopped, so a goroutine-leak check that runs after
+// ndarray operations will see them.
 //
 // Arrays are stored row-major (C-order). An Array is a view over a flat data
 // slice described by a shape, per-axis strides (in elements) and a base offset,
