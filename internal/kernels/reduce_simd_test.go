@@ -255,3 +255,29 @@ func BenchmarkSumSIMD(b *testing.B) {
 		}
 	})
 }
+
+// TestMaxMinSIMDSpecialsInVectorLanes puts signed zeros and infinities at every
+// position of arrays long enough for the vector kernels (8 and up), where they
+// land in each accumulator lane and in the tail: -0 must order below +0 and the
+// extremes must come through, bit for bit as the oracle gives them.
+func TestMaxMinSIMDSpecialsInVectorLanes(t *testing.T) {
+	for n := 8; n <= 40; n++ {
+		for pos := 0; pos < n; pos++ {
+			for _, fill := range []float64{-0.0, 0.0, -1, 1} {
+				for _, v := range []float64{-0.0, 0.0, math.Inf(1), math.Inf(-1)} {
+					a := make([]float64, n)
+					for i := range a {
+						a[i] = fill
+					}
+					a[pos] = v
+					if g, w := maxSIMD(a), Max(a); !bitEq(g, w) || math.Signbit(g) != math.Signbit(w) {
+						t.Fatalf("n=%d fill=%v a[%d]=%v: maxSIMD=%v, Max=%v", n, fill, pos, v, g, w)
+					}
+					if g, w := minSIMD(a), Min(a); !bitEq(g, w) || math.Signbit(g) != math.Signbit(w) {
+						t.Fatalf("n=%d fill=%v a[%d]=%v: minSIMD=%v, Min=%v", n, fill, pos, v, g, w)
+					}
+				}
+			}
+		}
+	}
+}

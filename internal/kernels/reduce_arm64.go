@@ -5,14 +5,10 @@ package kernels
 //
 //go:generate sh -c "cd asmgen/arm64 && GOFLAGS=-mod=mod go run gen.go && mv sum_arm64.s ../../sum_arm64.s"
 //
-// sqrt/max/min are NOT hand-vectorized on arm64: Go's arm64 assembler exposes
-// no packed vector-double sqrt/max/min (only VFMLA/VFMLS), but it DOES intrinsify
-// the *scalar* math.Sqrt -> FSQRTD and math.Max/math.Min -> FMAXD/FMIND. So the
-// direct scalar oracle loops already compile to the hardware instructions with no
-// per-element call overhead — the win over the old func-pointer Map path (which
-// could not intrinsify math.Sqrt and paid a real call per element, ~2.7x slower)
-// plus the multicore fan-out is what beats numpy. arm64's FMAXD/FMIND propagate
-// NaN, matching the math.Max-based oracle and numpy.
+// Every kernel here is NEON: sum, dot, sqrt, add/sub/mul/div, max/min and the
+// GEMM micro-kernel. The vector sqrt, divide and max/min use mnemonics Go's
+// assembler gained in 1.27 (VFSQRT, VFDIV, VFMAX, VFMIN); before that, sqrt was
+// a WORD and divide and max/min stayed scalar.
 
 // HaveReduceSIMD reports that this build ships at least one hand-vectorized SIMD
 // kernel (the NEON sum). The per-arch CI execution job validates it against the
@@ -29,8 +25,7 @@ func sumSIMD(a []float64) float64 {
 }
 
 // sqrtSIMD writes sqrt(src[i]) into dst[i] with the packed NEON FSQRT V.2D kernel
-// (two doubles per instruction, emitted via WORD because Go's arm64 assembler has
-// no vector-sqrt mnemonic — see asmgen/arm64/gen.go). FSQRT V.2D is correctly-
+// (two doubles per instruction, VFSQRT in Go). FSQRT V.2D is correctly-
 // rounded IEEE-754, identical lane-by-lane to the scalar FSQRTD/math.Sqrt, so it
 // is bit-identical to sqrtScalar including negatives->NaN, ±Inf and signed zeros.
 // It supersedes the prior scalar-FSQRTD loop, halving the per-element sqrt count.
@@ -42,22 +37,28 @@ func sqrtSIMD(dst, src []float64) {
 	sqrtNEON(&dst[0], &src[0], len(dst))
 }
 
-// maxSIMD / minSIMD are the four-accumulator NaN-propagating reducers: the
-// builtin max/min lower to the FMAXD/FMIND hardware instructions and the four
-// independent chains hide their latency (~3.6x over one accumulator). They are
-// bit-identical to the serial Max/Min oracle (max/min is associative for the
-// NaN-propagating rule). A packed vector max is not expressible on arm64 (Go's
-// assembler exposes no VFMAX.D2, only VFMLA/VFMLS), so this register-unrolled
-// scalar form is the arm64 SIMD path.
-func maxSIMD(a []float64) float64 { return maxUnrolled(a) }
-func minSIMD(a []float64) float64 { return minUnrolled(a) }
+// maxSIMD / minSIMD are the NaN-propagating extrema of a (non-empty): the NEON
+// FMAX/FMIN kernel with four D2 accumulators from eight elements up, the
+// scalar oracle below that. Bit-identical to the serial Max/Min
+// oracle (see extremumKernel in asmgen/arm64/gen.go).
+func maxSIMD(a []float64) float64 {
+	if len(a) < 8 {
+		return Max(a)
+	}
+	return maxNEON(&a[0], len(a))
+}
 
-// addBin/subBin/mulBin write a[i] OP b[i] into dst[i] with the NEON D2 kernels
-// (8 doubles/iter + scalar tail). Go's arm64 assembler has no plain vector
-// double add/sub/mul (only VFMLA/VFMLS), so each reaches the op through an FMA
-// against an exact constant — add: b+a*1.0, sub: a-b*1.0, mul: 0+a*b — which
-// rounds bit-identically to the plain op (the extra addend is exact), so the
-// result is bit-identical to the scalar Add/Sub/Mul oracle. They are the serial
+func minSIMD(a []float64) float64 {
+	if len(a) < 8 {
+		return Min(a)
+	}
+	return minNEON(&a[0], len(a))
+}
+
+// addBin/subBin/mulBin/divBin write a[i] OP b[i] into dst[i] with the NEON D2
+// kernels (VFADD/VFSUB/VFMUL/VFDIV, 8 doubles/iter + scalar tail). Each lane is
+// one correctly rounded IEEE-754 operation, so the result is bit-identical to
+// the scalar Add/Sub/Mul/Div oracle. They are the serial
 // elementwise inner loop the per-op fast path and runBinaryP use. Empty slices
 // are a no-op (no &a[0]).
 func addBin(dst, a, b []float64) {
@@ -84,10 +85,13 @@ func mulBin(dst, a, b []float64) {
 	mulNEON(&dst[0], &a[0], &b[0], len(dst))
 }
 
-// divBin stays on the scalar oracle: arm64 has neither a vector-double divide nor
-// an FMA form for division, and the scalar Div loop already lowers to the FDIVD
-// hardware instruction per element (the same throughput-bound op numpy runs).
-func divBin(dst, a, b []float64) { Div(dst, a, b) }
+func divBin(dst, a, b []float64) {
+	if len(dst) == 0 {
+		return
+	}
+	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
+	divNEON(&dst[0], &a[0], &b[0], len(dst))
+}
 
 //go:noescape
 func sumNEON(a *float64, n int) float64
@@ -103,3 +107,12 @@ func subNEON(dst, a, b *float64, n int)
 
 //go:noescape
 func mulNEON(dst, a, b *float64, n int)
+
+//go:noescape
+func divNEON(dst, a, b *float64, n int)
+
+//go:noescape
+func maxNEON(a *float64, n int) float64
+
+//go:noescape
+func minNEON(a *float64, n int) float64
