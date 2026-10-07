@@ -170,6 +170,19 @@ func BenchmarkMulInto(b *testing.B) {
 	}
 }
 
+func BenchmarkDivInto(b *testing.B) {
+	for _, n := range elemSizes {
+		x, y := vec(n), vec(n)
+		out, _ := nd.New(n)
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.SetBytes(int64(n * 8))
+			for i := 0; i < b.N; i++ {
+				_ = x.DivInto(out, y)
+			}
+		})
+	}
+}
+
 func BenchmarkSqrtInto(b *testing.B) {
 	for _, n := range elemSizes {
 		x := vec(n)

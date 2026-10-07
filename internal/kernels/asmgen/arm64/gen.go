@@ -43,9 +43,12 @@ func main() {
 	f.Add(sumKernel())
 	f.Add(dotKernel())
 	f.Add(sqrtKernel())
-	f.Add(addKernel())
-	f.Add(subKernel())
-	f.Add(mulKernel())
+	f.Add(binKernel("addNEON", "VFADD", "FADDD"))
+	f.Add(binKernel("subNEON", "VFSUB", "FSUBD"))
+	f.Add(binKernel("mulNEON", "VFMUL", "FMULD"))
+	f.Add(binKernel("divNEON", "VFDIV", "FDIVD"))
+	f.Add(extremumKernel("maxNEON", "VFMAX", "FMAXD"))
+	f.Add(extremumKernel("minNEON", "VFMIN", "FMIND"))
 	f.Add(gemmKernel())
 	if err := os.WriteFile("sum_arm64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -65,39 +68,27 @@ func binSig() arm64.Signature {
 	)
 }
 
-// Go's arm64 assembler exposes NO plain vector double ADD/SUB/MUL/DIV — only the
-// fused multiply-accumulates VFMLA/VFMLS (the same wall the sum reduction hit).
-// So the elementwise add/sub/mul kernels reach the op through an FMA against a
-// constant vector, each of which rounds bit-identically to the plain op:
+// The elementwise kernels use the plain vector double ops VFADD/VFSUB/VFMUL/
+// VFDIV, which Go's arm64 assembler names since Go 1.27 (this module requires
+// 1.27.1). Before that only the fused VFMLA/VFMLS existed, and add/sub/mul went
+// through an FMA against an exact constant (b + a*1.0, a - b*1.0, -0.0 + a*b),
+// bit-identical but harder to read, while division stayed scalar. Each lane is
+// one correctly rounded IEEE-754 operation, the same the scalar FADDD/FSUBD/
+// FMULD/FDIVD perform, so the kernels are bit-identical to the scalar oracle
+// (TestBinSIMD). Go's operand order is VFSUB Vm, Vn, Vd: Vd = Vn - Vm.
 //
-//	add:  dst = b + a*1.0   via VFMLA (a, 1.0, acc=b)   — FMA(a,1,b) == a+b
-//	sub:  dst = a - b*1.0   via VFMLS (b, 1.0, acc=a)   — FMA(-b,1,a) == a-b
-//	mul:  dst = 0 + a*b     via VFMLA (a, b,   acc=0)   — FMA(a,b,0)  == a*b
-//
-// In each case the FMA's extra addend is exact (a 1.0 multiply, or a +0.0 add),
-// so the single IEEE rounding lands on exactly the value the plain operation
-// would, making these bit-identical to the scalar Add/Sub/Mul oracle (validated
-// per-arch in CI). Division has neither an FMA form nor a vector-double divide on
-// arm64, so Div stays on the scalar FDIVD oracle (divBin in reduce_arm64.go).
-//
-// VFMLA Va, Vb, Vacc computes Vacc += Va*Vb; VFMLS computes Vacc -= Va*Vb (the
-// Go/asmgen operand order). The loop does 8 doubles (64 bytes) per iteration
-// across four D2 lanes, then a scalar FP tail for the (n mod 8) remainder.
+// The loop does 8 doubles (64 bytes) per iteration across four D2 lanes, then a
+// scalar FP tail for the (n mod 8) remainder.
 
 // sqrtKernel builds sqrtNEON(dst, src *float64, n int): dst[i] = sqrt(src[i])
 // with the packed NEON double square root FSQRT Vd.2D (2 doubles/op, unrolled 4x
 // = 8 lanes/iter) plus a scalar FSQRTD tail.
 //
-// Go's arm64 assembler exposes only the *scalar* FSQRTD — there is no VFSQRT
-// mnemonic for the vector form — so the vector instruction is emitted directly as
-// its fixed 32-bit encoding via WORD. FSQRT Vd.2D, Vn.2D is the Advanced-SIMD
-// two-register-misc fp64 square root: 0110_1110_1110_0001_1111_10nn_nnnd_dddd,
-// i.e. base 0x6EE1F800 | (Vn<<5) | Vd. This is the same hardware NEON double
-// sqrt OpenBLAS/numpy use; it is correctly-rounded IEEE-754, identical lane-by-
-// lane to the scalar FSQRTD (and to math.Sqrt), so the kernel is bit-identical to
-// the scalar sqrt oracle including negatives->NaN, ±Inf, and signed zeros
-// (validated bit-for-bit per-arch in CI). Using raw WORD keeps this pure Go asm
-// (no cgo); it is the one instruction the assembler cannot name.
+// FSQRT Vd.2D is VFSQRT Vn.D2, Vd.D2 in Go since 1.27; it was emitted as a raw
+// WORD before (0x6EE1F800 | Vn<<5 | Vd, the same encoding, checked against Go's
+// own disassembly). It is correctly rounded IEEE-754, identical lane by lane to
+// the scalar FSQRTD and math.Sqrt, so the kernel is bit-identical to the scalar
+// oracle including negatives->NaN, ±Inf and signed zeros.
 //
 // This replaces the previous arm64 sqrt path (the compiler's scalar FSQRTD loop,
 // one lane at a time): the packed form does two lanes per instruction, which is
@@ -117,10 +108,10 @@ func sqrtKernel() *emit.Function {
 		Raw("CMP $8, R2").
 		Raw("BLT tail").
 		Raw("VLD1.P 64(R1), [V0.D2, V1.D2, V2.D2, V3.D2]").
-		Raw("WORD $0x6EE1F800"). // FSQRT V0.2D, V0.2D
-		Raw("WORD $0x6EE1F821"). // FSQRT V1.2D, V1.2D
-		Raw("WORD $0x6EE1F842"). // FSQRT V2.2D, V2.2D
-		Raw("WORD $0x6EE1F863"). // FSQRT V3.2D, V3.2D
+		Raw("VFSQRT V0.D2, V0.D2").
+		Raw("VFSQRT V1.D2, V1.D2").
+		Raw("VFSQRT V2.D2, V2.D2").
+		Raw("VFSQRT V3.D2, V3.D2").
 		Raw("VST1.P [V0.D2, V1.D2, V2.D2, V3.D2], 64(R0)").
 		Raw("SUB $8, R2").
 		Raw("B block").
@@ -137,91 +128,63 @@ func sqrtKernel() *emit.Function {
 	return b.Func()
 }
 
-// onesVec emits V31 = [1.0, 1.0] (the IEEE bit pattern of 1.0 broadcast).
-func onesVec(b *arm64.Builder) {
-	b.Raw("MOVD $0x3FF0000000000000, R7")
-	b.Raw("VDUP R7, V31.D2")
-}
-
-// addKernel builds addNEON(dst, a, b *float64, n int): dst = a + b via FMA.
-func addKernel() *emit.Function {
-	b := arm64.NewFunc("addNEON", binSig(), 0)
+// binKernel builds NAME(dst, a, b *float64, n int): dst[i] = a[i] OP b[i],
+// with vop the vector form (Go operand order VOP Vm, Vn, Vd: Vd = Vn OP Vm) and
+// sop the scalar one for the tail (SOP Fm, Fn, Fd: Fd = Fn OP Fm).
+func binKernel(name, vop, sop string) *emit.Function {
+	b := arm64.NewFunc(name, binSig(), 0)
 	b.LoadArg("dst", "R0").LoadArg("a", "R1").LoadArg("b", "R2").LoadArg("n", "R3")
-	onesVec(b)
-	b.Raw("block:").Raw("CMP $8, R3").Raw("BLT tail").
-		Raw("VLD1.P 64(R2), [V0.D2, V1.D2, V2.D2, V3.D2]"). // acc = b
-		Raw("VLD1.P 64(R1), [V4.D2, V5.D2, V6.D2, V7.D2]"). // a
-		Raw("VFMLA V4.D2, V31.D2, V0.D2").                  // acc += a*1.0 => a+b
-		Raw("VFMLA V5.D2, V31.D2, V1.D2").
-		Raw("VFMLA V6.D2, V31.D2, V2.D2").
-		Raw("VFMLA V7.D2, V31.D2, V3.D2").
-		Raw("VST1.P [V0.D2, V1.D2, V2.D2, V3.D2], 64(R0)").
-		Raw("SUB $8, R3").Raw("B block").
-		Raw("tail:").Raw("CBZ R3, done").
-		Raw("FMOVD.P 8(R1), F0").Raw("FMOVD.P 8(R2), F1").
-		Raw("FADDD F1, F0, F0").
-		Raw("FMOVD.P F0, 8(R0)").
-		Raw("SUB $1, R3").Raw("B tail").
-		Raw("done:").Ret()
-	return b.Func()
-}
-
-// subKernel builds subNEON(dst, a, b *float64, n int): dst = a - b via FMA.
-func subKernel() *emit.Function {
-	b := arm64.NewFunc("subNEON", binSig(), 0)
-	b.LoadArg("dst", "R0").LoadArg("a", "R1").LoadArg("b", "R2").LoadArg("n", "R3")
-	onesVec(b)
-	b.Raw("block:").Raw("CMP $8, R3").Raw("BLT tail").
-		Raw("VLD1.P 64(R1), [V0.D2, V1.D2, V2.D2, V3.D2]"). // acc = a
-		Raw("VLD1.P 64(R2), [V4.D2, V5.D2, V6.D2, V7.D2]"). // b
-		Raw("VFMLS V4.D2, V31.D2, V0.D2").                  // acc -= b*1.0 => a-b
-		Raw("VFMLS V5.D2, V31.D2, V1.D2").
-		Raw("VFMLS V6.D2, V31.D2, V2.D2").
-		Raw("VFMLS V7.D2, V31.D2, V3.D2").
-		Raw("VST1.P [V0.D2, V1.D2, V2.D2, V3.D2], 64(R0)").
-		Raw("SUB $8, R3").Raw("B block").
-		Raw("tail:").Raw("CBZ R3, done").
-		Raw("FMOVD.P 8(R1), F0").Raw("FMOVD.P 8(R2), F1").
-		Raw("FSUBD F1, F0, F0").
-		Raw("FMOVD.P F0, 8(R0)").
-		Raw("SUB $1, R3").Raw("B tail").
-		Raw("done:").Ret()
-	return b.Func()
-}
-
-// mulKernel builds mulNEON(dst, a, b *float64, n int): dst = a * b via FMA into a
-// -0.0 accumulator: FMA(a, b, -0.0) == a*b *bit-for-bit, including sign-of-zero*.
-// Adding +0.0 would NOT be safe — when the product is -0.0, (-0.0)+(+0.0) rounds
-// to +0.0 under round-to-nearest, flipping the sign that plain a*b keeps. Adding
-// -0.0 is the correct identity: -0.0+(-0.0) = -0.0 and (+0.0)+(-0.0) = +0.0, so
-// the result sign matches the product's, and for any nonzero product adding -0.0
-// changes nothing. Hence the tile is bit-identical to the scalar Mul oracle
-// (asserted in TestBinSIMD, which pairs -0.0*0.0 etc.).
-func mulKernel() *emit.Function {
-	b := arm64.NewFunc("mulNEON", binSig(), 0)
-	b.LoadArg("dst", "R0").LoadArg("a", "R1").LoadArg("b", "R2").LoadArg("n", "R3")
-	// V30 = [-0.0, -0.0] (IEEE bits 0x8000000000000000), the FMA accumulator seed.
-	b.Raw("MOVD $0x8000000000000000, R7")
-	b.Raw("VDUP R7, V30.D2")
 	b.Raw("block:").Raw("CMP $8, R3").Raw("BLT tail").
 		Raw("VLD1.P 64(R1), [V0.D2, V1.D2, V2.D2, V3.D2]"). // a
-		Raw("VLD1.P 64(R2), [V4.D2, V5.D2, V6.D2, V7.D2]"). // b
-		Raw("VMOV V30.B16, V8.B16").                        // acc = -0.0
-		Raw("VMOV V30.B16, V9.B16").
-		Raw("VMOV V30.B16, V10.B16").
-		Raw("VMOV V30.B16, V11.B16").
-		Raw("VFMLA V0.D2, V4.D2, V8.D2"). // acc += a*b => a*b (sign-exact)
-		Raw("VFMLA V1.D2, V5.D2, V9.D2").
-		Raw("VFMLA V2.D2, V6.D2, V10.D2").
-		Raw("VFMLA V3.D2, V7.D2, V11.D2").
-		Raw("VST1.P [V8.D2, V9.D2, V10.D2, V11.D2], 64(R0)").
+		Raw("VLD1.P 64(R2), [V4.D2, V5.D2, V6.D2, V7.D2]")  // b
+	for r := 0; r < 4; r++ {
+		b.Raw(fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r)) // a OP b
+	}
+	b.Raw("VST1.P [V0.D2, V1.D2, V2.D2, V3.D2], 64(R0)").
 		Raw("SUB $8, R3").Raw("B block").
 		Raw("tail:").Raw("CBZ R3, done").
 		Raw("FMOVD.P 8(R1), F0").Raw("FMOVD.P 8(R2), F1").
-		Raw("FMULD F1, F0, F0").
+		Raw(sop + " F1, F0, F0").
 		Raw("FMOVD.P F0, 8(R0)").
 		Raw("SUB $1, R3").Raw("B tail").
 		Raw("done:").Ret()
+	return b.Func()
+}
+
+// extremumKernel builds NAME(a *float64, n int) float64, the maximum (or
+// minimum) of a, for n >= 8: four D2 accumulators seeded with the first eight
+// elements, folded together, then the two lanes, then the tail one at a time.
+// FMAX/FMIN return NaN when either operand is NaN and order -0 below +0, as
+// the scalar FMAXD/FMIND that Go's builtin max/min compile to do, and the
+// operation is associative under those rules, so the result is bit-identical
+// to the serial oracle (TestMaxMinSIMD).
+func extremumKernel(name, vop, sop string) *emit.Function {
+	b := arm64.NewFunc(name, reduceSig(), 0)
+	b.LoadArg("a", "R0").LoadArg("n", "R1").
+		Raw("VLD1.P 64(R0), [V0.D2, V1.D2, V2.D2, V3.D2]").
+		Raw("SUB $8, R1").
+		Raw("block:").Raw("CMP $8, R1").Raw("BLT fold").
+		Raw("VLD1.P 64(R0), [V4.D2, V5.D2, V6.D2, V7.D2]")
+	for r := 0; r < 4; r++ {
+		b.Raw(fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r))
+	}
+	b.Raw("SUB $8, R1").Raw("B block").
+		Raw("fold:").
+		Raw(vop+" V1.D2, V0.D2, V0.D2").
+		Raw(vop+" V3.D2, V2.D2, V2.D2").
+		Raw(vop+" V2.D2, V0.D2, V0.D2").
+		Raw("VMOV V0.D[0], R3").
+		Raw("VMOV V0.D[1], R4").
+		Raw("FMOVD R3, F0").
+		Raw("FMOVD R4, F9").
+		Raw(sop+" F9, F0, F0").
+		Raw("tail:").Raw("CBZ R1, done").
+		Raw("FMOVD.P 8(R0), F10").
+		Raw(sop+" F10, F0, F0").
+		Raw("SUB $1, R1").Raw("B tail").
+		Raw("done:").
+		StoreRet("F0", "ret").
+		Ret()
 	return b.Func()
 }
 
@@ -290,8 +253,8 @@ func fmlaElem(acc, breg, areg, idx int) string {
 //     ~1.28x faster on the L1-resident micro-kernel (44 -> 58 GFLOP/s/core);
 //     the earlier note claiming the indexed form is "slower" was wrong (it was
 //     never actually measured against a correct encoding). See docs/perf.md.
-//  2. There is no plain vector FP add (only VFMLA/VFMLS), so the closing C += acc
-//     is done as C = C + acc*1.0 via VFMLA against V31=[1.0,1.0]. Multiplying by
+//  2. The closing C += acc is done as C = C + acc*1.0 via VFMLA against
+//     V31=[1.0,1.0], written when Go's assembler had no VFADD (it has since 1.27). Multiplying by
 //     exactly 1.0 is exact and FMA(acc,1.0,C) rounds identically to C+acc (C is
 //     the only inexact addend), so this is a true add — the tile result is
 //     bit-identical to the scalar oracle's ikj accumulation order.
@@ -347,8 +310,8 @@ func gemmKernel() *emit.Function {
 		Raw(fmlaElem(15, 19, 21, 1)).
 		Raw("SUB $1, R0").
 		Raw("CBNZ R0, gkloop").
-		// C += acc, row by row, via VFMLA against V31=[1.0,1.0] (no vector FP add
-		// available — see header note 2). Bit-identical to C+acc.
+		// C += acc, row by row, via VFMLA against V31=[1.0,1.0]: exact, so
+		// bit-identical to C+acc (written before Go 1.27 named VFADD).
 		Raw("gstore:").
 		Raw("MOVD $0x3FF0000000000000, R6").
 		Raw("VDUP R6, V31.D2").
@@ -389,9 +352,8 @@ func gemmKernel() *emit.Function {
 
 // sumKernel builds sumNEON(a *float64, n int) float64.
 //
-// Go's arm64 assembler exposes no plain vector double ADD (only VFMLA/VFMLS,
-// the fused multiply-accumulates). So the lane-parallel accumulation is done
-// with VFMLA against a vector of 1.0: acc += src * 1.0. Multiplying a double by
+// The lane-parallel accumulation is VFMLA against a vector of 1.0: acc += src *
+// 1.0 (written when Go's assembler had no VFADD; it has since Go 1.27). Multiplying a double by
 // exactly 1.0 is exact, and FMA(src, 1.0, acc) rounds identically to acc+src
 // (the addend is the only inexact step), so this is a true vector add, not an
 // approximation — it simply reaches it through the only vector-FP op available.
@@ -399,7 +361,7 @@ func gemmKernel() *emit.Function {
 // with eight D2 accumulators V0..V7 (16 doubles per iteration): two loads per
 // FMA make the loop load-bound, and eight chains keep the four FP pipes of an
 // Apple core fed through the FMA latency. The accumulators are folded with
-// FMLA against 1.0 (exact; Go's assembler has no plain vector FP add), the two
+// FMLA against 1.0 (exact; written before Go 1.27 named VFADD), the two
 // lanes added, and the tail fused in one element at a time with FMADDD, as gc
 // fuses the scalar loop.
 func dotKernel() *emit.Function {
