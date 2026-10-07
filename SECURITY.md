@@ -57,6 +57,18 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-07 (after v0.6.1, tests only).** `TestParallelStress` runs the
+parallel kernels from 6 goroutines at once while another keeps changing
+`GOMAXPROCS`, with the thresholds lowered so that tiny arrays go parallel. The
+pool is contended, and some calls take the fork fallback. Every result is
+compared with the serial kernel on integer data, so the comparison is exact.
+A lost block hangs the call rather than corrupting it, so the test also fails,
+by name, when a call does not return in time. Both kinds of sabotage were
+caught: a pool that skips the first block of each run (hang) and a fork
+fallback that drops the last element (wrong value). It passes under `-race`
+and on real POWER9 (59,154 calls in 5 runs), X-Gene arm64 (65,798) and
+Loongson 3C5000L (36,174).
+
 **2026-10-07 (v0.6.1).** An audit of the helper pool added in v0.6.0 found
 two defects. Both are fixed, each with a test that fails without the fix.
 
