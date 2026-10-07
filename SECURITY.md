@@ -57,6 +57,22 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-06 (v0.5.1).**
+
+- The Go floor is 1.27.1 since v0.5.0. `govulncheck` reports no vulnerability
+  for the library or for its generator module.
+- go1.27.0 and go1.27.1 miscompile one loong64 pattern
+  ([golang/go#81000](https://github.com/golang/go/issues/81000): a byte-sized
+  inlined result spilled with an 8-byte store, clobbering the stack slot next
+  to it), fixed in 1.27.2. On a real Loongson 3C5000L with LASX (cfarm401),
+  built with go1.27.1, the whole suite passes, including the fence tests, and
+  `FuzzOps` ran 52.7 million executions natively without a divergence from its
+  oracle. That is evidence that this library does not hit the pattern, not
+  proof. Raise the floor to 1.27.2 once it is released.
+- go-asmgen v0.16.0 regenerates the ppc64le and loong64 kernels with
+  different comments only. The instructions, and the `WORD` encodings Go's
+  assembler still lacks, are unchanged line for line.
+
 **2026-10-04 (v0.4.0).**
 
 - `FuzzOps` ran 47 million executions without a divergence. A first version
