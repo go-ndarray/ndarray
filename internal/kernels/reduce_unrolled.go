@@ -1,14 +1,12 @@
-//go:build !amd64
+//go:build !amd64 && !arm64
 
 package kernels
 
 // maxUnrolled / minUnrolled are the four-accumulator NaN-propagating extreme
-// reducers used by the non-amd64 SIMD dispatch (arm64 and the four scalar
-// arches). amd64 has its own packed MAXPD/MINPD kernels (reduce_amd64.go ->
-// sum_amd64.s), so these Go versions would be dead code there — hence the
-// !amd64 build tag, which keeps every build's reachable statements covered
-// (the amd64 coverage job validates the .s kernel instead; arm64/generic cover
-// these). They keep FOUR independent builtin-max/min accumulators so the
+// reducers of the arches without a vector max/min kernel. amd64 (MAXPD/MINPD)
+// and arm64 (FMAX/FMIN, since v0.5.2) have their own, so these Go versions
+// would be dead code there, hence the build tag, which keeps every build's
+// reachable statements covered. They keep FOUR independent builtin-max/min accumulators so the
 // dependency chain is broken: the builtin max/min lowers to the hardware
 // FMAXD/FMIND on arm64, and four parallel chains hide its latency (~3.6x over a
 // single accumulator). max/min is associative for the NaN-propagating rule, so

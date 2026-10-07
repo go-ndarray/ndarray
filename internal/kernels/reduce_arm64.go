@@ -39,18 +39,18 @@ func sqrtSIMD(dst, src []float64) {
 
 // maxSIMD / minSIMD are the NaN-propagating extrema of a (non-empty): the NEON
 // FMAX/FMIN kernel with four D2 accumulators from eight elements up, the
-// four-chain scalar reducer below that. Bit-identical to the serial Max/Min
+// scalar oracle below that. Bit-identical to the serial Max/Min
 // oracle (see extremumKernel in asmgen/arm64/gen.go).
 func maxSIMD(a []float64) float64 {
 	if len(a) < 8 {
-		return maxUnrolled(a)
+		return Max(a)
 	}
 	return maxNEON(&a[0], len(a))
 }
 
 func minSIMD(a []float64) float64 {
 	if len(a) < 8 {
-		return minUnrolled(a)
+		return Min(a)
 	}
 	return minNEON(&a[0], len(a))
 }
