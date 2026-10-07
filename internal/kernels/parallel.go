@@ -2,7 +2,7 @@ package kernels
 
 import (
 	"runtime"
-	"sync"
+	"sync/atomic"
 )
 
 // Multicore kernels.
@@ -34,28 +34,43 @@ func numWorkers(n int) int {
 	return w
 }
 
-// parallelFor splits [0,n) into w contiguous, near-equal blocks and runs body
-// on each block in its own goroutine, waiting for all to finish. body must be
-// safe to call concurrently on disjoint [lo,hi) ranges.
+// parallelFor runs body over [0,n) split into contiguous blocks, on up to w
+// goroutines counting the caller, and returns once every block is done. body
+// must be safe to call concurrently on disjoint [lo,hi) ranges.
+//
+// The blocks are claimed from a shared counter, the caller works too, and the
+// wait is for the blocks, not for the goroutines. A goroutine that wakes up
+// after the work is gone finds nothing and exits on its own. Go wakes parked
+// threads one after another, and the old fork/join waited for the slowest
+// wake-up: on a POWER9, a 2^20-element dot ran slower on 8 cores (553 µs) than
+// on 4 (212 µs), with 2.4 of 8 CPUs busy. There are up to four blocks per
+// goroutine, so whoever is awake takes over the share of whoever is not. The
+// block boundaries depend only on n and w, never on which goroutine runs a
+// block, so a result is the same from one run to the next.
 func parallelFor(n, w int, body func(lo, hi int)) {
-	if w <= 1 {
+	if w <= 1 || n <= 1 {
 		body(0, n)
 		return
 	}
-	chunk := (n + w - 1) / w
-	var wg sync.WaitGroup
-	for lo := 0; lo < n; lo += chunk {
-		hi := lo + chunk
-		if hi > n {
-			hi = n
+	blocks := min(n, 4*w)
+	q, r := n/blocks, n%blocks // block i starts at i*q + min(i, r): no i*n overflow
+	start := func(i int) int { return i*q + min(i, r) }
+	var next, done atomic.Int64
+	run := func() {
+		for {
+			i := int(next.Add(1)) - 1
+			if i >= blocks {
+				return
+			}
+			body(start(i), start(i+1))
+			done.Add(1)
 		}
-		wg.Add(1)
-		go func(lo, hi int) {
-			defer wg.Done()
-			body(lo, hi)
-		}(lo, hi)
 	}
-	wg.Wait()
+	for g := 1; g < min(w, blocks); g++ {
+		go run()
+	}
+	run()
+	spinUntil(func() bool { return done.Load() == int64(blocks) })
 }
 
 // binaryKernel is the shape of the elementwise scalar kernels (Add, Mul, …).

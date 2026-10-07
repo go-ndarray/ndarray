@@ -39,3 +39,33 @@ func TestGemmParallelYielding(t *testing.T) {
 		})
 	})
 }
+
+// TestParallelForCoversEachIndexOnce: every index of [0,n) is visited exactly
+// once, in contiguous blocks, for any n and worker count, including more
+// workers than items and every wait yielding at once.
+func TestParallelForCoversEachIndexOnce(t *testing.T) {
+	saved := spinIters
+	defer func() { spinIters = saved }()
+	for _, iters := range []int{saved, 0} {
+		spinIters = iters
+		for _, n := range []int{0, 1, 2, 3, 7, 64, 1000, 4097} {
+			for _, w := range []int{1, 2, 3, 8, 33} {
+				seen := make([]atomic.Int32, n)
+				parallelFor(n, w, func(lo, hi int) {
+					if lo > hi || lo < 0 || hi > n {
+						t.Errorf("n=%d w=%d: bad block [%d,%d)", n, w, lo, hi)
+						return
+					}
+					for i := lo; i < hi; i++ {
+						seen[i].Add(1)
+					}
+				})
+				for i := range seen {
+					if c := seen[i].Load(); c != 1 {
+						t.Fatalf("n=%d w=%d: index %d visited %d times", n, w, i, c)
+					}
+				}
+			}
+		}
+	}
+}
