@@ -88,7 +88,7 @@ is wrong on subnormals
   one core.
 - **Slower:** `MatMul` against 16-thread OpenBLAS at 512² and up (0.42× at
   512², 0.51× at 1024², measured in one run with OpenBLAS; at 256² ours is
-  1.44× faster); `Dot`/mat·vec against NumPy's threaded BLAS (0.16×); `Exp`
+  1.44× faster); `Dot`/mat·vec against NumPy's threaded BLAS (0.16×, measured before v0.6.0's helper pool, which took the 8-core dot from 625 to 58 µs on POWER9; not yet re-measured on the Zen 3); `Exp`
   below 256 Ki elements (0.82×); the *allocating* forms of elementwise ops up
   to 256 Ki elements, `Concatenate`/`Stack` and slice copies outside a
   `Workspace` (0.2–0.5×: Go's allocator and garbage collector, which
