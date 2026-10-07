@@ -557,8 +557,41 @@ in scheduling instead: with the caller working, 2.1 of 4 CPUs were busy
 against 3.4 for the original. Its goroutines wait in the run queue of the
 caller's processor until another one is woken to steal them. With the caller
 blocking, the 4-worker case recovers, but the 8-worker gains go with it. The
-code is on the `experiment/parallel-for-scheduling` branch. Not yet solved:
-a scheduler that keeps both.
+code is on the `experiment/parallel-for-scheduling` branch.
+
+**Solved in v0.6.0 with a persistent helper pool.** The cost being paid was
+waking threads, so the fix is to stop putting them to sleep between back-to-back
+operations, as OpenBLAS and OpenMP do. Up to `GOMAXPROCS-1` helper goroutines
+are started once. After an operation they poll for the next one for 200 µs,
+then park. The work keeps owned runs with stealing (row two of the table
+above). Reductions now use four partials per worker: with one each, a helper
+that saw the job late had its only block taken by the caller, who then summed
+two in a row (Sum of 4 Mi on 4 cores: 2.8 of 4 CPUs busy). On POWER9 bare metal,
+each case in a **fresh process**, 6 interleaved rounds, against v0.5.2
+(median):
+
+| | 2 workers | 4 workers | 8 workers | 8 workers, before → after |
+|---|---|---|---|---|
+| Dot 2^20 | 3.29× | 2.41× | **10.8×** | 625 → 58 µs |
+| MatVec 1024² | 2.01× | 1.65× | 5.78× | 323 → 56 µs |
+| SumAxis(1) | 2.06× | 1.80× | 7.09× | 310 → 44 µs |
+| Sum 256 Ki | 2.33× | 3.23× | 5.60× | 61 → 11 µs |
+| Max 256 Ki | 1.75× | 1.34× | 6.78× | 757 → 112 µs |
+| AddInto 256 Ki | 2.22× | 1.91× | 5.57× | 102 → 18 µs |
+| Exp 256 Ki | 1.18× | 1.49× | 1.97× | 1013 → 513 µs |
+| Sum 4 Mi | 1.33× | 1.17× | 1.41× | 431 → 305 µs |
+| Exp 4 Mi | 1.00× | 1.10× (p25 0.84×) | 1.29× | |
+| BroadcastAdd | 0.95× | 1.01× | 1.67× | |
+| Chain (Mul, Add, Sqrt) 4 Mi | | 0.91× | 1.04× | |
+| MatMul 256², 512² (own driver) | | 1.00× | 0.96–0.99× | |
+
+A first combined run, with every benchmark in one process, also showed serial
+operations speeding up (Sqrt of 1 Ki, 1.5–2.2×). Run alone, those are equal.
+That gain belonged to whatever state the earlier benchmarks had left, not to
+this change, so only fresh-process figures are reported here. The cost: after
+an operation, the helpers spend up to 200 µs of CPU polling. They are never
+stopped (see the README, *Goroutines*). Not yet measured on amd64 or on Apple
+M, whose hosts were unreachable or loaded at the time.
 
 ## Log and Log10 (2026-10-04)
 

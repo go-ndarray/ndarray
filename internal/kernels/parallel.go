@@ -3,6 +3,7 @@ package kernels
 import (
 	"runtime"
 	"sync"
+	"sync/atomic"
 )
 
 // Multicore kernels.
@@ -34,21 +35,68 @@ func numWorkers(n int) int {
 	return w
 }
 
-// parallelFor splits [0,n) into w contiguous, near-equal blocks and runs body
-// on each block in its own goroutine, waiting for all to finish. body must be
-// safe to call concurrently on disjoint [lo,hi) ranges.
+// parallelFor runs body over [0,n) split into contiguous blocks, on up to w
+// goroutines counting the caller, and returns once every block is done. body
+// must be safe to call concurrently on disjoint [lo,hi) ranges.
+//
+// The goroutines are the caller and the pool's helpers (pool.go). Each owns a
+// contiguous run of blocks, its static share, and works through it first, then
+// takes what is left of the others' runs, so a helper that wakes late holds
+// nobody back. Block boundaries depend only on n and w, so a result is the same
+// from one run to the next. When another call holds the pool, this one forks
+// its own goroutines instead.
 func parallelFor(n, w int, body func(lo, hi int)) {
-	if w <= 1 {
+	if w <= 1 || n <= 1 {
 		body(0, n)
 		return
 	}
+	w = min(w, n)
+	if !pool.busy.TryLock() {
+		forkJoin(n, w, body)
+		return
+	}
+	defer pool.busy.Unlock()
+	ensureHelpers(w - 1)
+	blocks := min(n, 4*w)
+	q, r := n/blocks, n%blocks // block i starts at i*q + min(i, r): no i*n overflow
+	start := func(i int) int { return i*q + min(i, r) }
+	own := func(g int) int { return g * blocks / w } // owner g: [own(g), own(g+1))
+	taken := make([]paddedCounter, w)
+	var done atomic.Int64
+	run := func(g int) {
+		for k := 0; k < w; k++ {
+			o := (g + k) % w
+			lo, hi := own(o), own(o+1)
+			for {
+				i := lo + int(taken[o].Add(1)) - 1
+				if i >= hi {
+					break
+				}
+				body(start(i), start(i+1))
+				done.Add(1)
+			}
+		}
+	}
+	publish(run, w)
+	run(0)
+	spinUntil(func() bool { return done.Load() == int64(blocks) })
+}
+
+// paddedCounter is an atomic counter alone on its cache line, so owners
+// claiming their own blocks do not contend for one line.
+type paddedCounter struct {
+	atomic.Int64
+	_ [56]byte
+}
+
+// forkJoin splits [0,n) into w contiguous, near-equal blocks, runs body on each
+// in its own goroutine and waits for all: parallelFor's fallback when the pool
+// is serving another call.
+func forkJoin(n, w int, body func(lo, hi int)) {
 	chunk := (n + w - 1) / w
 	var wg sync.WaitGroup
 	for lo := 0; lo < n; lo += chunk {
-		hi := lo + chunk
-		if hi > n {
-			hi = n
-		}
+		hi := min(lo+chunk, n)
 		wg.Add(1)
 		go func(lo, hi int) {
 			defer wg.Done()
@@ -170,16 +218,21 @@ func mapReduceP(a []float64, red func([]float64) float64, combine func([]float64
 	if n < ParThreshold {
 		return red(a)
 	}
+	// Four partials per worker, each of at least reduceGrain elements: with
+	// one per worker, a helper that saw the job late had its only block taken
+	// by the caller, which then summed two in a row (Sum of 4 Mi on 4 POWER9
+	// cores: 2.8 of 4 CPUs busy, 0.76x).
 	w := numWorkers(n)
-	chunk := (n + w - 1) / w
+	parts := min(4*w, max(w, n/reduceGrain))
+	chunk := (n + parts - 1) / parts
 	// active = number of workers whose start s = idx*chunk is < n; the rest own
 	// nothing and are dropped (their start would overrun n and panic a[s:e], and
 	// there is no bit-identical reduction identity to feed combine for Max/Min).
-	// Since chunk = ceil(n/w) >= n/w, active = ceil(n/chunk) is always <= w, so
-	// dropping trailing workers never loses real data.
+	// Since chunk = ceil(n/parts), active = ceil(n/chunk) is always <= parts,
+	// so dropping trailing partials never loses real data.
 	active := (n + chunk - 1) / chunk
 	partials := make([]float64, active)
-	parallelFor(active, active, func(lo, hi int) {
+	parallelFor(active, w, func(lo, hi int) {
 		for idx := lo; idx < hi; idx++ {
 			s := idx * chunk
 			e := s + chunk
@@ -248,6 +301,9 @@ func RunAxisP(k axisKernel, dst, src []float64, outer, axisLen, inner int) {
 		})
 	}
 }
+
+// reduceGrain is the fewest elements a reduction partial covers (64 KiB).
+const reduceGrain = 8192
 
 // axisBand is the narrowest column band RunAxisP gives a worker (512 doubles,
 // 4 KiB per row): narrower bands make each row run too short to stream.

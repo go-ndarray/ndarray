@@ -467,8 +467,8 @@ func VecMatP(dst, v, a []float64, k, n int) {
 }
 
 // Dot1DP returns the inner product of two equal-length contiguous vectors,
-// fanned across cores above ParThreshold: each worker dot-products its chunk with
-// the unrolled dotRange and the partials are summed. The chunked four-way
+// fanned across cores above ParThreshold: each chunk is dot-producted with the
+// SIMD kernel and the partials are summed. The chunked four-way
 // grouping reassociates the sum (a few ULP, like SumP / numpy pairwise); callers
 // needing the exact left-to-right value use the scalar Dot1D.
 func Dot1DP(a, b []float64) float64 {
@@ -477,9 +477,10 @@ func Dot1DP(a, b []float64) float64 {
 		return dotSIMD(a, b)
 	}
 	w := numWorkers(n)
-	partials := make([]float64, w)
-	chunk := (n + w - 1) / w
-	parallelFor(w, w, func(lo, hi int) {
+	parts := min(4*w, max(w, n/reduceGrain)) // see mapReduceP
+	partials := make([]float64, parts)
+	chunk := (n + parts - 1) / parts
+	parallelFor(parts, w, func(lo, hi int) {
 		for idx := lo; idx < hi; idx++ {
 			s := idx * chunk
 			if s >= n {
