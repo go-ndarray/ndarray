@@ -57,6 +57,24 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-07 (v0.6.1).** An audit of the helper pool added in v0.6.0 found
+two defects. Both are fixed, each with a test that fails without the fix.
+
+- **Retention.** The pool kept the last job, whose closure holds the
+  operation's arrays, so the arrays of the last parallel operation could not
+  be collected until another one replaced it: up to the size of the largest
+  array, for as long as the program ran. `TestPoolDoesNotRetainLastJob` checks
+  the data is collectable once `parallelFor` returns. A first version of that
+  test passed on the defective code, because its closure captured a variable
+  the test then set to nil.
+- **Writes after a recovered panic.** Since v0.6.0 the caller runs blocks
+  itself. If one panicked there, for example a `Map` function, the panic
+  propagated while the helpers went on writing. A caller that recovered could
+  find its arrays changing under it. The caller now stops handing out blocks
+  and waits for the running ones before the panic propagates
+  (`TestPoolCallerPanicStopsTheHelpers`). A panic on a helper goroutine still
+  ends the program, as it did before v0.6.0; `Map`'s documentation says so.
+
 **2026-10-06 (v0.5.1).**
 
 - The Go floor is 1.27.1 since v0.5.0. `govulncheck` reports no vulnerability

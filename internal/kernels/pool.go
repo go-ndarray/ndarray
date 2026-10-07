@@ -84,6 +84,15 @@ func helperLoop(i int, h *poolHelper, seen uint64) {
 	}
 }
 
+// noJob replaces a finished job in pool.job. Left there, the job's closure would
+// keep the operation's arrays alive until the next parallel operation. Its w of
+// 0 admits no helper.
+var noJob = &poolJob{}
+
+// retire drops the reference to the finished job. A helper that loaded it just
+// before finds every block taken and lets go of it on return.
+func retire() { pool.job.Store(noJob) }
+
 // publish hands run to the first w-1 helpers and wakes the parked ones.
 func publish(run func(g int), w int) {
 	pool.job.Store(&poolJob{run: run, w: w})

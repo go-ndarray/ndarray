@@ -750,7 +750,10 @@ func (a *Array) DivScalar(v float64) *Array { r, _ := a.Div(scalarArray(v)); ret
 // Map returns a new contiguous array with f applied to every element. For a
 // contiguous receiver the elements are read in place (no materialise copy); the
 // elementwise pass is parallelised across cores above the kernel threshold. f
-// must be safe to call concurrently (the package's math ufuncs are).
+// must be safe to call concurrently (the package's math ufuncs are), and should
+// not panic: on a large array a panic may happen on a worker goroutine, which
+// ends the program as any unrecovered goroutine panic does. A panic on the
+// calling goroutine propagates once the workers have stopped writing.
 func (a *Array) Map(f func(float64) float64) *Array {
 	src := a.contiguousData()
 	dst := a.alloc(len(src), false)
