@@ -590,8 +590,29 @@ operations speeding up (Sqrt of 1 Ki, 1.5–2.2×). Run alone, those are equal.
 That gain belonged to whatever state the earlier benchmarks had left, not to
 this change, so only fresh-process figures are reported here. The cost: after
 an operation, the helpers spend up to 200 µs of CPU polling. They are never
-stopped (see the README, *Goroutines*). Not yet measured on amd64 or on Apple
-M, whose hosts were unreachable or loaded at the time.
+stopped (see the README, *Goroutines*).
+
+**Zen 3 (cfarm421, back up on 2026-10-07)**, each case in a fresh process,
+6 interleaved rounds, v0.6.1 against v0.5.2 (median):
+
+| | 2 workers | 8 workers | 16 workers | 16: before → after |
+|---|---|---|---|---|
+| Dot 2^20 | 1.24× | 2.06× | 2.08× | 120 → 57 µs |
+| MatVec 1024² | 1.41× | 2.26× | 1.92× | 94 → 49 µs |
+| Sum 256 Ki | 1.61× | 2.12× | 2.31× | 37 → 16 µs |
+| Sum 4 Mi | 1.10× | 1.95× | 2.07× | 184 → 89 µs |
+| Max 256 Ki | 1.47× | 2.38× | 2.36× | 41 → 18 µs |
+| SumAxis(1) | 1.25× | 2.20× | 1.63× | 93 → 57 µs |
+| AddInto 256 Ki | 1.39× | 1.22× | 1.29× | 74 → 57 µs |
+| Exp 256 Ki | 1.05× | **0.85×** | 1.13× | |
+| Exp 4 Mi | 1.28× | 1.09× | **0.94×** | |
+| Chain 4 Mi | 1.74× | 1.04× | **0.88×** | |
+
+In the same run, NumPy 2.5.3 with 16 OpenBLAS threads took 39 µs for the 2^20
+dot and 25 µs for the 1024² mat·vec, so go-ndarray is at **0.69×** and **0.52×**
+of it (0.16× before the pool). The losses at the top of each table are long,
+memory-bound chains, where all workers stream at once; not investigated further.
+Apple M not measured (shared machine).
 
 ## Log and Log10 (2026-10-04)
 
