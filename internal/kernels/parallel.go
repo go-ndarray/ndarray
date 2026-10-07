@@ -62,24 +62,45 @@ func parallelFor(n, w int, body func(lo, hi int)) {
 	start := func(i int) int { return i*q + min(i, r) }
 	own := func(g int) int { return g * blocks / w } // owner g: [own(g), own(g+1))
 	taken := make([]paddedCounter, w)
-	var done atomic.Int64
+	var done, running atomic.Int64
 	run := func(g int) {
 		for k := 0; k < w; k++ {
 			o := (g + k) % w
 			lo, hi := own(o), own(o+1)
 			for {
+				running.Add(1)
 				i := lo + int(taken[o].Add(1)) - 1
 				if i >= hi {
+					running.Add(-1)
 					break
 				}
 				body(start(i), start(i+1))
 				done.Add(1)
+				running.Add(-1)
 			}
 		}
 	}
 	publish(run, w)
+	// If body panics here, in the caller, stop handing out blocks and wait for
+	// the ones the helpers are running before the panic propagates: a caller
+	// that recovers must not see its arrays written to afterwards. Closing the
+	// runs matters even though the wait alone usually outlasts the work:
+	// running can touch zero for an instant while every helper is between two
+	// blocks, and without the closing more blocks could start after that.
+	defer func() {
+		if p := recover(); p != nil {
+			for o := range taken {
+				taken[o].Store(int64(blocks) + 1)
+			}
+			running.Add(-1) // the caller's own block, the one that panicked
+			spinUntil(func() bool { return running.Load() == 0 })
+			retire()
+			panic(p)
+		}
+	}()
 	run(0)
 	spinUntil(func() bool { return done.Load() == int64(blocks) })
+	retire()
 }
 
 // paddedCounter is an atomic counter alone on its cache line, so owners
