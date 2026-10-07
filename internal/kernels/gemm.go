@@ -477,9 +477,10 @@ func Dot1DP(a, b []float64) float64 {
 		return dotSIMD(a, b)
 	}
 	w := numWorkers(n)
-	partials := make([]float64, w)
-	chunk := (n + w - 1) / w
-	parallelFor(w, w, func(lo, hi int) {
+	parts := min(4*w, max(w, n/reduceGrain)) // see mapReduceP
+	partials := make([]float64, parts)
+	chunk := (n + parts - 1) / parts
+	parallelFor(parts, w, func(lo, hi int) {
 		for idx := lo; idx < hi; idx++ {
 			s := idx * chunk
 			if s >= n {

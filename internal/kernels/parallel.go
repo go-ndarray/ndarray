@@ -38,39 +38,59 @@ func numWorkers(n int) int {
 // goroutines counting the caller, and returns once every block is done. body
 // must be safe to call concurrently on disjoint [lo,hi) ranges.
 //
-// The blocks are claimed from a shared counter, the caller works too, and the
-// wait is for the blocks, not for the goroutines. A goroutine that wakes up
-// after the work is gone finds nothing and exits on its own. Go wakes parked
-// threads one after another, and the old fork/join waited for the slowest
-// wake-up: on a POWER9, a 2^20-element dot ran slower on 8 cores (553 µs) than
-// on 4 (212 µs), with 2.4 of 8 CPUs busy. There are up to four blocks per
-// goroutine, so whoever is awake takes over the share of whoever is not. The
-// block boundaries depend only on n and w, never on which goroutine runs a
-// block, so a result is the same from one run to the next.
+// Each goroutine owns a contiguous run of blocks, its static share as in a
+// plain fork/join, and works through it first; when its own run is exhausted it
+// takes the remaining blocks of the others, in turn. The wait is for the
+// blocks, not for the goroutines, so one that wakes late finds its blocks taken
+// and exits without holding anyone back. Go wakes parked threads one after
+// another, and a fork/join waited for the slowest wake-up: on a POWER9, a
+// 2^20-element dot ran slower on 8 cores (553 µs) than on 4 (212 µs), with 2.4
+// of 8 CPUs busy. Owning a run keeps the old cache affinity: an operation
+// repeated on the same data finds each run in the cache of the core that read it
+// last, which a shared queue of blocks gave up (Sum of 4 Mi on 4 POWER9 cores
+// dropped from 45 to 28 GB/s). Block boundaries depend only on n and w, so a
+// result is the same from one run to the next.
 func parallelFor(n, w int, body func(lo, hi int)) {
 	if w <= 1 || n <= 1 {
 		body(0, n)
 		return
 	}
+	w = min(w, n)
 	blocks := min(n, 4*w)
 	q, r := n/blocks, n%blocks // block i starts at i*q + min(i, r): no i*n overflow
 	start := func(i int) int { return i*q + min(i, r) }
-	var next, done atomic.Int64
-	run := func() {
-		for {
-			i := int(next.Add(1)) - 1
-			if i >= blocks {
-				return
+	// Owner g holds blocks [own(g), own(g+1)); taken[g] counts those claimed.
+	own := func(g int) int { return g * blocks / w }
+	taken := make([]paddedCounter, w)
+	var done atomic.Int64
+	finished := make(chan struct{})
+	run := func(g int) {
+		for k := 0; k < w; k++ {
+			o := (g + k) % w
+			lo, hi := own(o), own(o+1)
+			for {
+				i := lo + int(taken[o].Add(1)) - 1
+				if i >= hi {
+					break
+				}
+				body(start(i), start(i+1))
+				if done.Add(1) == int64(blocks) {
+					close(finished)
+				}
 			}
-			body(start(i), start(i+1))
-			done.Add(1)
 		}
 	}
-	for g := 1; g < min(w, blocks); g++ {
-		go run()
+	for g := 0; g < w; g++ {
+		go run(g)
 	}
-	run()
-	spinUntil(func() bool { return done.Load() == int64(blocks) })
+	<-finished
+}
+
+// paddedCounter is an atomic counter alone on its cache line, so owners
+// claiming their own blocks do not contend for one line.
+type paddedCounter struct {
+	atomic.Int64
+	_ [56]byte
 }
 
 // binaryKernel is the shape of the elementwise scalar kernels (Add, Mul, …).
@@ -185,8 +205,12 @@ func mapReduceP(a []float64, red func([]float64) float64, combine func([]float64
 	if n < ParThreshold {
 		return red(a)
 	}
+	// Four partials per worker, each of at least reduceGrain elements, give
+	// parallelFor blocks to share out; one per worker made a late worker's
+	// block wait for the caller to finish its own.
 	w := numWorkers(n)
-	chunk := (n + w - 1) / w
+	parts := min(4*w, max(w, n/reduceGrain))
+	chunk := (n + parts - 1) / parts
 	// active = number of workers whose start s = idx*chunk is < n; the rest own
 	// nothing and are dropped (their start would overrun n and panic a[s:e], and
 	// there is no bit-identical reduction identity to feed combine for Max/Min).
@@ -194,7 +218,7 @@ func mapReduceP(a []float64, red func([]float64) float64, combine func([]float64
 	// dropping trailing workers never loses real data.
 	active := (n + chunk - 1) / chunk
 	partials := make([]float64, active)
-	parallelFor(active, active, func(lo, hi int) {
+	parallelFor(active, w, func(lo, hi int) {
 		for idx := lo; idx < hi; idx++ {
 			s := idx * chunk
 			e := s + chunk
@@ -263,6 +287,9 @@ func RunAxisP(k axisKernel, dst, src []float64, outer, axisLen, inner int) {
 		})
 	}
 }
+
+// reduceGrain is the fewest elements a reduction partial covers (64 KiB).
+const reduceGrain = 8192
 
 // axisBand is the narrowest column band RunAxisP gives a worker (512 doubles,
 // 4 KiB per row): narrower bands make each row run too short to stream.
