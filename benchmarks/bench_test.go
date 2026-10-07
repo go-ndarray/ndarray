@@ -172,7 +172,7 @@ func BenchmarkMulInto(b *testing.B) {
 
 func BenchmarkDivInto(b *testing.B) {
 	for _, n := range elemSizes {
-		x, y := vec(n), vec(n)
+		x, y := vec(n), vec(n).AddScalar(1) // no zero divisors
 		out, _ := nd.New(n)
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			b.SetBytes(int64(n * 8))
