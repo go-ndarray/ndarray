@@ -1,12 +1,11 @@
-//go:build !arm64 && !amd64 && !ppc64le && !loong64
+//go:build !arm64 && !amd64 && !ppc64le && !loong64 && !riscv64
 
 package kernels
 
 // Generic GEMM micro-kernel for the targets without a vector-double SIMD
-// micro-kernel (riscv64, s390x and the 32-bit ones): a portable scalar 4x4
-// register tile over the packed panels. There is no hand-vectorized tile here
-// yet (riscv64 has RVV kernels for the other loops; Go's assembler has
-// vector-double arithmetic for s390x too, see docs/perf.md) — but the kernel still gets the two structural wins of the packed
+// micro-kernel (s390x and the 32-bit ones): a portable scalar 4x4 register
+// tile over the packed panels. There is no hand-vectorized tile here yet (Go's
+// assembler has vector-double arithmetic for s390x, see docs/perf.md) — but the kernel still gets the two structural wins of the packed
 // GEMM: the panels are contiguous unit-stride (so the loads are conflict-free,
 // the L1-collision fix), and the cache-blocking loop nest plus the multicore
 // fan-out (MatMulP) keep it well ahead of an unblocked scalar loop and beat

@@ -66,7 +66,7 @@ arm64, VSX on ppc64le, LASX on loong64 and RVV on riscv64 when the CPU has
 them), max/min too on
 amd64 and arm64, and a **panel-packed, cache-blocked GEMM** with an SIMD-FMA
 micro-kernel (NEON 4×8; AVX2/FMA 6×8 chosen at run time, SSE2 fallback; VSX
-8×8; LASX 8×8), the OpenBLAS/BLIS structure. s390x and the 32-bit targets run
+8×8; LASX 8×8; RVV 6×8), the OpenBLAS/BLIS structure. s390x and the 32-bit targets run
 the same pure-Go code those kernels are tested against. `Exp` and `Log` are ports of Arm's optimized-routines
 (≤ 0.51 ULP measured, against up to 0.88 and 0.72 for Go's
 `math.Exp`/`math.Log` on arm64),
