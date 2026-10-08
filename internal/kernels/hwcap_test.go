@@ -8,7 +8,7 @@ import (
 func auxvOf(pairs ...uint64) []byte {
 	b := make([]byte, 8*len(pairs))
 	for i, p := range pairs {
-		binary.LittleEndian.PutUint64(b[8*i:], p)
+		binary.NativeEndian.PutUint64(b[8*i:], p)
 	}
 	return b
 }

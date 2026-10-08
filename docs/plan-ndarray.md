@@ -126,7 +126,9 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
     VSX encoders, and since v0.2.5 loong64 has LASX kernels (used when the CPU
     reports LASX), and since v0.7.0 riscv64 has RVV kernels (sum, dot, sqrt,
     elementwise, and since v0.7.1 a 6×8 GEMM micro-kernel; used when the CPU
-    reports V). The other targets (s390x, 32-bit) keep the
+    reports V), and since v0.8.0 s390x has vector-facility kernels (sum, dot,
+    sqrt, elementwise; validated under emulation, not yet measured). The
+    32-bit targets keep the
     validated scalar oracles plus a scalar 4×4 GEMM micro-kernel over the
     packed panels, with packing + cache-blocking + multicore; they have not
     been measured against NumPy. Split-CI: the pure-Go
