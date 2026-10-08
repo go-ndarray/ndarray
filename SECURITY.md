@@ -61,7 +61,9 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 guards: each wrapper checks the reach of its kernel (`TestWrappersRefuseShortOperands`),
 and the PROT_NONE fence tests pass on a real SpacemiT X60 with V (cfarm95), as
 does the whole suite. On a riscv64 CPU without V (cfarm94, SiFive U74) the same
-build takes the scalar path, since V is gated on AT_HWCAP, and passes too. The
+build takes the scalar path, since V is gated on AT_HWCAP, and passes too. As a
+positive control for the fence on this hardware, `sumRVV` reading one element
+past the end faults (4 KiB pages). The
 tests were checked against two sabotaged kernels, a subtraction with swapped
 operands and a dot that does not advance `b`; both failed on the real hardware.
 
