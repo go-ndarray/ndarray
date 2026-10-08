@@ -124,7 +124,8 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
     NumPy's pairwise sum). Since v0.2.3 ppc64le has VSX kernels too (sum,
     dot, sqrt, elementwise, an 8×8 GEMM micro-kernel), through go-asmgen's
     VSX encoders, and since v0.2.5 loong64 has LASX kernels (used when the CPU
-    reports LASX). The other targets (riscv64, s390x, 32-bit) keep the
+    reports LASX), and since v0.7.0 riscv64 has RVV kernels (sum, dot, sqrt,
+    elementwise; used when the CPU reports V). The other targets (s390x, 32-bit) keep the
     validated scalar oracles plus a scalar 4×4 GEMM micro-kernel over the
     packed panels, with packing + cache-blocking + multicore; they have not
     been measured against NumPy. Split-CI: the pure-Go

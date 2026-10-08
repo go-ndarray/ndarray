@@ -838,7 +838,26 @@ stay dynamic, so its slower efficiency cores are handled as before.
 - **loong64 (LASX)**, since v0.2.5, when the kernel reports LASX in AT_HWCAP
   (not every LoongArch CPU has it): sum, dot, sqrt, add/sub/mul/div and an 8×8
   GEMM micro-kernel; max/min stay scalar. See the loong64 section above.
-- The other two 64-bit Go targets — **riscv64, s390x** — keep
+- **riscv64 (RVV)**, since v0.7.0, when the kernel reports V in AT_HWCAP (the
+  vector extension is optional): sum, dot, sqrt and add/sub/mul/div, in
+  vector-length-agnostic loops (`VSETVLI` strip-mining, LMUL=8, no scalar
+  tail), every instruction a Go mnemonic. max/min stay scalar: RVV's
+  `vfmax`/`vfmin` implement IEEE 754-2019 maximumNumber, which drops a NaN
+  that NumPy propagates. The GEMM micro-kernel is still the scalar 4×4. On a
+  SpacemiT X60 (cfarm95, VLEN = 256), one core pinned to an idle CPU, 6
+  interleaved rounds against the scalar code (median):
+
+  | | 1 Ki | 16 Ki | 256 Ki |
+  |---|---|---|---|
+  | `Sum` | 5.81× | 2.51× | 1.84× |
+  | `AddInto` / `MulInto` | 3.2–3.3× | 1.11–1.13× | 1.07–1.12× |
+  | `DivInto` | 2.27× | 2.30× | 2.28× |
+  | `SqrtInto` | 2.43× | 2.44× | 2.47× |
+
+  `MatVec` 1024² is 2.02× faster and `Dot` 2^20 1.29×. On a riscv64 CPU without V
+  (cfarm94, SiFive U74), the same build runs the scalar path and passes the same
+  tests.
+- The remaining 64-bit Go target — **s390x** — keeps
   the validated scalar oracles, using the same four-accumulator max/min, direct
   sqrt loop, and a **scalar 4×4 GEMM micro-kernel** over the packed panels, and
   still get the **packing + cache blocking + multicore** structure (they have
@@ -851,9 +870,8 @@ stay dynamic, so its slower efficiency cores are handled as before.
   load (`XVMOVQ off(R), X.V4` = `xvldrepl.d`), but no vector FMA, which
   go-asmgen v0.14.0 encodes (transitionally), so loong64 has kernels;
   **s390x** has them, FMA included (`VFADB`, `VFMADB`); **riscv64** has them
-  (`VFADDVV`, `VFMACCVV`), but the V extension is optional and needs a run-time
-  check. So s390x and riscv64 kernels are work not yet done, not a
-  toolchain wall. (s390x additionally exercises the big-endian path in CI.)
+  (`VFADDVV`, `VFMACCVV`) and has had kernels since v0.7.0. So s390x kernels are
+  work not yet done, not a toolchain wall. (s390x additionally exercises the big-endian path in CI.)
 
 All six are exercised in CI (native amd64/arm64 + qemu for the rest); each
 per-arch job regenerates the committed `.s`, fails if it is stale, vets

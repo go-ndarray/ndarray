@@ -59,15 +59,15 @@ methods (`AddInto`, `SqrtInto`, …) remain the way to reuse one named buffer.
 
 The numeric inner loops are kept behind a narrow kernel API. Behind it, large
 elementwise ops, reductions and products run **multicore** (across
-`GOMAXPROCS`). On **amd64, arm64, ppc64le and loong64** the hot loops are
-[go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels: sum,
+`GOMAXPROCS`). On **amd64, arm64, ppc64le, loong64 and riscv64** the hot loops
+are [go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels: sum,
 add/sub/mul/div, sqrt and the dot product (SSE2 or AVX2/FMA on amd64, NEON on
-arm64, VSX on ppc64le, LASX on loong64 when the CPU has it), max/min too on
+arm64, VSX on ppc64le, LASX on loong64 and RVV on riscv64 when the CPU has
+them), max/min too on
 amd64 and arm64, and a **panel-packed, cache-blocked GEMM** with an SIMD-FMA
 micro-kernel (NEON 4×8; AVX2/FMA 6×8 chosen at run time, SSE2 fallback; VSX
-8×8; LASX 8×8), the OpenBLAS/BLIS structure. The other 64-bit targets
-(riscv64, s390x) and the 32-bit ones run the same pure-Go code those kernels
-are tested against. `Exp` and `Log` are ports of Arm's optimized-routines
+8×8; LASX 8×8), the OpenBLAS/BLIS structure. s390x and the 32-bit targets run
+the same pure-Go code those kernels are tested against. `Exp` and `Log` are ports of Arm's optimized-routines
 (≤ 0.51 ULP measured, against up to 0.88 and 0.72 for Go's
 `math.Exp`/`math.Log` on arm64),
 and they are correct where amd64's `math.Exp` returns +Inf
@@ -119,8 +119,8 @@ pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). It is a
 arch is therefore a durable foundation. The numeric loops live in
 `internal/kernels`, each with a pure-Go reference implementation;
 [go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels replace them
-on amd64, arm64, ppc64le and loong64 today, behind the same API and held to the
-same tests; riscv64 and s390x are next.
+on amd64, arm64, ppc64le, loong64 and riscv64 today, behind the same API and
+held to the same tests; s390x is next.
 
 ## Goroutines
 

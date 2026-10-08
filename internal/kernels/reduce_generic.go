@@ -1,4 +1,4 @@
-//go:build !arm64 && !amd64 && !ppc64le && !loong64
+//go:build !arm64 && !amd64 && !ppc64le && !loong64 && !riscv64
 
 package kernels
 
@@ -7,17 +7,16 @@ package kernels
 // SIMD-vs-scalar tests (which then trivially hold, scalar == scalar) still
 // exercise this path and the package builds uniformly across all six targets.
 //
-// amd64 (SSE2), arm64 (NEON), ppc64le (VSX) and loong64 (LASX, when the CPU
-// has it) ship kernels (reduce_<arch>.go), so this file is the riscv64/s390x
-// and 32-bit fallback. For those no hand-vectorized kernel is shipped yet:
-// s390x's assembler has vector add/mul/FMA and riscv64's V extension is
-// optional (a run-time check); see docs/perf.md. The per-arch qemu jobs still
+// amd64 (SSE2), arm64 (NEON), ppc64le (VSX), loong64 (LASX) and riscv64 (RVV),
+// the last two when the CPU has them, ship kernels (reduce_<arch>.go), so this
+// file is the s390x and 32-bit fallback. s390x's assembler has vector add/mul/
+// FMA, so its kernels are work not yet done; see docs/perf.md. The per-arch qemu jobs still
 // exercise this dispatch. The scalar math.Sqrt/math.Max/math.Min still lower
 // to the hardware sqrt/max where the target has it.
 
 // HaveReduceSIMD reports whether this build routes through a hand-vectorized
-// SIMD kernel (true on amd64/arm64/ppc64le/loong64) rather than the scalar
-// oracle (false on riscv64/s390x and the 32-bit targets). The kernels test logs it so each per-arch CI
+// SIMD kernel (true on amd64/arm64/ppc64le/loong64/riscv64) rather than the
+// scalar oracle (false on s390x and the 32-bit targets). The kernels test logs it so each per-arch CI
 // run states which path it validated.
 const HaveReduceSIMD = false
 

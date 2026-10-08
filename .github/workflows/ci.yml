@@ -16,8 +16,9 @@ permissions:
 # amd64 SSE2 wrapper (reduce_amd64.go -> sum_amd64.s), the arm64 NEON wrapper
 # (reduce_arm64.go -> sum_arm64.s), the ppc64le VSX wrapper (reduce_ppc64le.go
 # -> sum_ppc64le.s), the loong64 LASX wrapper (reduce_loong64.go ->
-# sum_loong64.s), or the scalar-alias wrapper (reduce_generic.go, on
-# riscv64/s390x and 32-bit). No single build sees
+# sum_loong64.s), the riscv64 RVV wrapper (reduce_riscv64.go -> sum_riscv64.s),
+# or the scalar-alias wrapper (reduce_generic.go, on s390x and 32-bit). No
+# single build sees
 # more than one, so no single run covers them all.
 #
 # The honest split:
@@ -41,7 +42,8 @@ permissions:
 # amd64/arm64/ppc64le/loong64 ship SIMD kernels (ppc64le's and loong64's were
 # run on real POWER8/POWER9 and a Loongson 3C5000L; under qemu here loong64
 # takes its scalar fallback unless the emulated CPU reports LASX);
-# riscv64/s390x keep the validated scalar path for now.
+# riscv64 ships RVV kernels (used when the CPU reports V); s390x keeps the
+# validated scalar path for now.
 jobs:
   test:
     name: test (${{ matrix.os }})
@@ -126,7 +128,7 @@ jobs:
           go-version: 1.27.1
       - run: sudo apt-get update && sudo apt-get install -y qemu-user-static
       - name: Regenerate committed assembly and check it is current
-        if: matrix.goarch == 'ppc64le' || matrix.goarch == 'loong64'
+        if: matrix.goarch == 'ppc64le' || matrix.goarch == 'loong64' || matrix.goarch == 'riscv64'
         run: |
           ( cd internal/kernels/asmgen/${{ matrix.goarch }} && go run . )
           mv internal/kernels/asmgen/${{ matrix.goarch }}/sum_${{ matrix.goarch }}.s internal/kernels/sum_${{ matrix.goarch }}.s
