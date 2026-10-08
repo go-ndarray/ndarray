@@ -2,7 +2,7 @@
 //
 // The element type is float64. The numeric kernels live in internal/kernels
 // behind a contiguous-slice API: go-asmgen SIMD kernels on amd64, arm64,
-// ppc64le and loong64, pure Go elsewhere. See docs/plan-ndarray.md for the
+// ppc64le, loong64, riscv64 and s390x, pure Go on the 32-bit targets. See docs/plan-ndarray.md for the
 // roadmap.
 //
 // Large operations are spread over GOMAXPROCS goroutines. After the first one,

@@ -875,7 +875,19 @@ stay dynamic, so its slower efficiency cores are handled as before.
   2.1 GFLOP/s on one core this is still far from the hardware: VLEN = 256 with
   LMUL=4 uses half of each register group, which keeps one tile portable to
   every VLEN at that cost.
-- The remaining 64-bit Go target — **s390x** — keeps
+- **s390x (vector facility)**, since v0.8.0, when AT_HWCAP reports it:
+  sum, dot, sqrt and add/sub/mul/div, eight float64 per loop in four
+  two-lane registers plus a scalar tail, every instruction a Go mnemonic.
+  max/min and the GEMM micro-kernel stay scalar (the vector max with NumPy's
+  NaN rule needs the z14, beyond the z13 Go supports). The operand order of
+  `VFSDB`/`VFDDB`/`VFMADB` was **measured**, not read: each run once on known
+  inputs (`VFSDB V1, V2, V3` is V3 = V2 − V1). ⚠ **Validated under emulation
+  only** (Docker's qemu-s390x locally, qemu-s390x in CI): the whole suite, the
+  fence tests, and two sabotaged kernels that both failed. **Not measured**:
+  the LinuxONE host did not answer. AT_HWCAP is read in the machine's byte
+  order, which on big-endian s390x is not the little-endian the parser first
+  assumed.
+- The 32-bit targets keep
   the validated scalar oracles, using the same four-accumulator max/min, direct
   sqrt loop, and a **scalar 4×4 GEMM micro-kernel** over the packed panels, and
   still get the **packing + cache blocking + multicore** structure (they have
@@ -888,8 +900,8 @@ stay dynamic, so its slower efficiency cores are handled as before.
   load (`XVMOVQ off(R), X.V4` = `xvldrepl.d`), but no vector FMA, which
   go-asmgen v0.14.0 encodes (transitionally), so loong64 has kernels;
   **s390x** has them, FMA included (`VFADB`, `VFMADB`); **riscv64** has them
-  (`VFADDVV`, `VFMACCVV`) and has had kernels since v0.7.0. So s390x kernels are
-  work not yet done, not a toolchain wall. (s390x additionally exercises the big-endian path in CI.)
+  (`VFADDVV`, `VFMACCVV`) and has had kernels since v0.7.0, s390x since v0.8.0.
+  (s390x additionally exercises the big-endian path in CI.)
 
 All six are exercised in CI (native amd64/arm64 + qemu for the rest); each
 per-arch job regenerates the committed `.s`, fails if it is stale, vets

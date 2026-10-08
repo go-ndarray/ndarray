@@ -1,4 +1,4 @@
-//go:build (amd64 || arm64 || ppc64le || loong64 || riscv64) && (linux || darwin)
+//go:build (amd64 || arm64 || ppc64le || loong64 || riscv64 || s390x) && (linux || darwin)
 
 package kernels
 
