@@ -2,18 +2,15 @@
 
 package kernels
 
-// Generic GEMM micro-kernel for the targets without a vector-double SIMD kernel
-// (riscv64, s390x and the 32-bit ones): a portable scalar 4x4 register
-// tile over the packed panels. There is no hand-vectorized .s here yet (Go's
-// assembler has vector-double arithmetic for s390x and riscv64, see
-// docs/perf.md) — but the kernel still gets the two structural wins of the packed
+// Generic GEMM micro-kernel for the targets without a vector-double SIMD
+// micro-kernel (riscv64, s390x and the 32-bit ones): a portable scalar 4x4
+// register tile over the packed panels. There is no hand-vectorized tile here
+// yet (riscv64 has RVV kernels for the other loops; Go's assembler has
+// vector-double arithmetic for s390x too, see docs/perf.md) — but the kernel still gets the two structural wins of the packed
 // GEMM: the panels are contiguous unit-stride (so the loads are conflict-free,
 // the L1-collision fix), and the cache-blocking loop nest plus the multicore
 // fan-out (MatMulP) keep it well ahead of an unblocked scalar loop and beat
 // single-threaded numpy on large products.
-
-// dotSIMD is dotRange here: no vector-double kernel on these targets.
-func dotSIMD(a, b []float64) float64 { return dotRange(a, b) }
 
 // MR, NR are the register-block dimensions; 4x4 keeps 16 + a few scalars live in
 // the GP/FP register file on these targets without spilling.
