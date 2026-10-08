@@ -843,8 +843,8 @@ stay dynamic, so its slower efficiency cores are handled as before.
   vector-length-agnostic loops (`VSETVLI` strip-mining, LMUL=8, no scalar
   tail), every instruction a Go mnemonic. max/min stay scalar: RVV's
   `vfmax`/`vfmin` implement IEEE 754-2019 maximumNumber, which drops a NaN
-  that NumPy propagates. The GEMM micro-kernel is still the scalar 4×4. On a
-  SpacemiT X60 (cfarm95, VLEN = 256), one core pinned to an idle CPU, 6
+  that NumPy propagates. Since v0.7.1 the GEMM micro-kernel is a 6×8 RVV tile
+  (see below). On a SpacemiT X60 (cfarm95, VLEN = 256), one core pinned to an idle CPU, 6
   interleaved rounds against the scalar code (median):
 
   | | 1 Ki | 16 Ki | 256 Ki |
@@ -857,6 +857,24 @@ stay dynamic, so its slower efficiency cores are handled as before.
   `MatVec` 1024² is 2.02× faster and `Dot` 2^20 1.29×. On a riscv64 CPU without V
   (cfarm94, SiFive U74), the same build runs the scalar path and passes the same
   tests.
+
+  **GEMM micro-kernel (v0.7.1).** NR is fixed by the packing, while VLEN varies
+  between RISC-V cores. The V extension guarantees VLEN ≥ 128, so a group of
+  four registers (LMUL=4) holds at least eight float64, and `VSETIVLI $8`
+  gives vl = 8 on every core: a 6×8 tile, six accumulator groups, the B row
+  loaded once per step and each A value fused in with `vfmacc.vf`. Without V,
+  the same 6×8 tile runs in Go. Measured with `hostload -pick 1` to choose an
+  idle CPU on a host otherwise 64% busy, and `benchstat` over 8 interleaved runs
+  each against v0.7.0's scalar 4×4 (all p = 0.000):
+
+  | one core, X60 | 64² | 128² | 256² | 512² | 1024² |
+  |---|---|---|---|---|---|
+  | `MatMul` time | −31% | −32% | −45% | −43% | −44% (1.79 s → 1.00 s) |
+
+  `Inner` is −44%, and the small rectangular products are −22% to −38%. At about
+  2.1 GFLOP/s on one core this is still far from the hardware: VLEN = 256 with
+  LMUL=4 uses half of each register group, which keeps one tile portable to
+  every VLEN at that cost.
 - The remaining 64-bit Go target — **s390x** — keeps
   the validated scalar oracles, using the same four-accumulator max/min, direct
   sqrt loop, and a **scalar 4×4 GEMM micro-kernel** over the packed panels, and

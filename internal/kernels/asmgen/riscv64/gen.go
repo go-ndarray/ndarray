@@ -35,6 +35,7 @@ func main() {
 	} {
 		f.Add(binKernel(k.name, k.op))
 	}
+	f.Add(gemmKernel())
 	if err := os.WriteFile("sum_riscv64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -124,4 +125,46 @@ func binKernel(name, op string) *emit.Function {
 	advance(b, "X14", "X10", "X11", "X12")
 	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
 	return b.Func()
+}
+
+// gemmKernel builds gemmMicro6x8RVV(kc int, pa, pb, c *float64, ldc int) for
+// kc >= 1: C[r][0:8] += sum_p pa[p*6+r] * pb[p*8:p*8+8] for r < 6, the rows of C
+// ldc float64s apart.
+//
+// NR is fixed by the packing, while VLEN varies between RISC-V cores. The V
+// extension guarantees VLEN >= 128, so a group of four registers (LMUL=4) holds
+// at least eight float64: vl = 8 on every core. That leaves eight groups, six
+// of them accumulators, one for the B row and one for C. Each step loads the B
+// row once and fuses each A value in with vfmacc.vf (Vacc += f*Vb).
+func gemmKernel() *emit.Function {
+	sig := riscv64.Layout([]string{"kc", "pa", "pb", "c", "ldc"},
+		[]riscv64.Type{riscv64.Int64, riscv64.Ptr, riscv64.Ptr, riscv64.Ptr, riscv64.Int64}, nil, nil)
+	b := riscv64.NewFunc("gemmMicro6x8RVV", sig, 0)
+	b.LoadArg("kc", "X10").LoadArg("pa", "X11").LoadArg("pb", "X12").
+		LoadArg("c", "X13").LoadArg("ldc", "X14")
+	b.Raw("VSETIVLI $8, E64, M4, TA, MA, X15")
+	for r := 0; r < 6; r++ {
+		b.Raw("VMVVI $0, V%d", 4*r)
+	}
+	b.Raw("loop:").Raw("VLE64V (X12), V24")
+	for r := 0; r < 6; r++ {
+		b.Raw("MOVD %d(X11), F%d", 8*r, r)
+	}
+	for r := 0; r < 6; r++ {
+		b.Raw("VFMACCVF V24, F%d, V%d", r, 4*r) // acc_r += a_r * b
+	}
+	b.Raw("ADD $48, X11, X11").
+		Raw("ADD $64, X12, X12").
+		Raw("ADD $-1, X10, X10").
+		Raw("BNEZ X10, loop").
+		Raw("SLLI $3, X14, X14") // row stride in bytes
+	for r := 0; r < 6; r++ {
+		b.Raw("VLE64V (X13), V28").
+			Raw("VFADDVV V%d, V28, V28", 4*r). // C row += acc_r
+			Raw("VSE64V V28, (X13)")
+		if r < 5 {
+			b.Raw("ADD X14, X13, X13")
+		}
+	}
+	return b.Ret().Func()
 }
