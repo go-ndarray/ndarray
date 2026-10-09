@@ -11,7 +11,9 @@ import (
 // Element type sets. They list exact types, not ~T: storage is always one of
 // these slices, and the type switches that dispatch on it name them exactly.
 type (
-	intT     interface{ int8 | int16 | int32 | int64 | uint8 | uint16 | uint32 | uint64 }
+	intT interface {
+		int8 | int16 | int32 | int64 | uint8 | uint16 | uint32 | uint64
+	}
 	floatT   interface{ float32 | float64 }
 	complexT interface{ complex64 | complex128 }
 	realT    interface{ intT | floatT }
