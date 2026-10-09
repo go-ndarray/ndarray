@@ -277,9 +277,6 @@ func trsmLLU[T scalar](n, nrhs int, l []T, ldl int, b []T, ldb int) {
 			bi := b[i*ldb : i*ldb+nrhs]
 			for k := 0; k < i; k++ {
 				lik := l[i*ldl+k]
-				if lik == 0 {
-					continue
-				}
 				bk := b[k*ldb : k*ldb+nrhs]
 				for j, x := range bk {
 					bi[j] -= lik * x
@@ -302,9 +299,6 @@ func trsmLUN[T scalar](n, nrhs int, u []T, ldu int, b []T, ldb int) {
 			bi := b[i*ldb : i*ldb+nrhs]
 			for k := i + 1; k < n; k++ {
 				uik := u[i*ldu+k]
-				if uik == 0 {
-					continue
-				}
 				bk := b[k*ldb : k*ldb+nrhs]
 				for j, x := range bk {
 					bi[j] -= uik * x

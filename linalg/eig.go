@@ -1096,7 +1096,9 @@ func eigT(a *ndarray.Array, wantV bool) (*ndarray.Array, *ndarray.Array, error) 
 			return
 		}
 		copy(ws[i*n:], w)
-		copy(vs[i*n*n:], v)
+		if wantV {
+			copy(vs[i*n*n:], v)
+		}
 	})
 	if fe.err != nil {
 		return nil, nil, fe.err

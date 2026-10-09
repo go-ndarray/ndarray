@@ -49,8 +49,10 @@ func luLeaf[T scalar](m, ncol int, a []T, lda int, piv []int, c0, w int) int {
 	info := -1
 	end := c0 + w
 	for j := c0; j < end; j++ {
-		p, best := j, -1.0
-		for i := j; i < m; i++ {
+		// Like LAPACK's i*amax, a NaN in the first place is kept as the
+		// pivot (so it propagates); later NaNs never compare larger.
+		p, best := j, abs1(a[j*lda+j])
+		for i := j + 1; i < m; i++ {
 			if v := abs1(a[i*lda+j]); v > best {
 				p, best = i, v
 			}
@@ -67,24 +69,19 @@ func luLeaf[T scalar](m, ncol int, a []T, lda int, piv []int, c0, w int) int {
 					rj[c], rp[c] = rp[c], rj[c]
 				}
 			}
+			// Divide rather than multiply by the reciprocal: an entry equal
+			// to the pivot then gives a multiplier of exactly 1, so
+			// duplicated rows cancel exactly and a singular matrix is
+			// reported as such (x·(1/x) is not always 1, in complex
+			// arithmetic especially).
 			d := a[j*lda+j]
-			if abs(d) >= safmin {
-				r := 1 / d
-				for i := j + 1; i < m; i++ {
-					a[i*lda+j] *= r
-				}
-			} else {
-				for i := j + 1; i < m; i++ {
-					a[i*lda+j] /= d
-				}
+			for i := j + 1; i < m; i++ {
+				a[i*lda+j] /= d
 			}
 		}
 		rowj := a[j*lda+j+1 : j*lda+end]
 		for i := j + 1; i < m; i++ {
 			l := a[i*lda+j]
-			if l == 0 {
-				continue
-			}
 			ri := a[i*lda+j+1 : i*lda+end]
 			for c, u := range rowj {
 				ri[c] -= l * u
