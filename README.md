@@ -6,11 +6,16 @@
 [![Playground](https://img.shields.io/badge/playground-try%20it%20in%20your%20browser-013243)](https://go-ndarray.github.io/playground/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.27.2%2B-00ADD8)](https://go.dev/dl/)
-[![Status](https://img.shields.io/badge/status-numpy%20parity%20(float64)-9a6700)](docs/plan-ndarray.md)
+[![Status](https://img.shields.io/badge/status-numpy%20parity%20(13%20dtypes)-9a6700)](docs/plan-ndarray.md)
 
 **A pure-Go (CGO=0) NumPy-style N-dimensional array library.** Row-major
 (C-order) strided arrays with:
 
+- **Thirteen dtypes** — bool, int8…int64, uint8…uint64, float32/float64,
+  complex64/complex128, chosen at run time with **NumPy 2 promotion** (`AsType`,
+  `ZerosOf`, `FromSlice`, typed access with `Data[T]`/`Item[T]`, weak Go
+  scalars with `Scalar`). Float64 is the default and the SIMD-accelerated one
+  ([docs/design-dtypes.md](docs/design-dtypes.md)).
 - **Creation** — `New`/`Zeros`/`Ones`/`Full`/`FromData`/`Arange`/`Linspace`/
   `Eye`/`Identity`.
 - **Shape & views** — `Reshape` (with `-1` inference), `Ravel`/`Flatten`,
@@ -18,8 +23,9 @@
   returning strided views that share data.
 - **Elementwise** — `Add`/`Sub`/`Mul`/`Div` (+ scalar) with full **NumPy
   broadcasting**, `Map`/`Neg`/`Abs`, math **ufuncs** (`Sqrt`/`Exp`/`Log`/`Sin`/
-  `Cos`/…), and broadcasting **comparisons** (`Greater`/`Equal`/… as 0/1 masks)
-  plus `Maximum`/`Minimum`.
+  `Cos`/…), broadcasting **comparisons** (`Greater`/`Equal`/… returning Bool
+  masks), `Maximum`/`Minimum`, `Logical*`, and the complex parts
+  `Real`/`Imag`/`Conj`/`Angle`.
 - **Reductions** — whole-array (`Sum`/`Prod`/`Max`/`Min`/`Mean`), per-axis
   (`SumAxis`/… with `keepdims`), index reductions (`ArgMax`/`ArgMin` flat and
   per-axis), cumulative scans (`CumSum`/`CumProd`), `Clip`, and `Where`.
@@ -27,6 +33,9 @@
   `MaskSelect` (`a[mask]`), `Nonzero` (`flatnonzero`), and `Take`.
 - **Manipulation** — `Concatenate`/`Stack`/`VStack`/`HStack`.
 - **Linear algebra** — `MatMul`/`Dot`/`Inner`/`Outer`.
+- **Fourier transforms** — package [`fft`](fft) is `numpy.fft` on arrays
+  (`FFT`/`RFFT`/`FFT2`/`FFTN`/… with `n`/`s`, `axes` and `norm`, single
+  precision kept), on [go-fft](https://github.com/go-fft/fft).
 - **Memory reuse** — `Workspace`, an arena for loops: bind the inputs with
   `ws.Use`, compute as usual, `ws.Reset()` at the end of each pass. Results stop
   costing the garbage collector anything (see below).
@@ -108,7 +117,7 @@ and `Max` by 92–96% ([docs/perf.md](docs/perf.md), *SIMD coverage*). It is a
 **standalone, reusable** module and the cgo-free ndarray backend behind
 [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby)'s `NDArray` class.
 
-> ⚠️ **Status: float64 NumPy parity for the core surface.** Creation,
+> ⚠️ **Status: NumPy parity for the core surface, in 13 dtypes.** Creation,
 > slicing/views, broadcasting elementwise + ufuncs, reductions (incl.
 > arg/cumulative/clip/where), manipulation, linear algebra and `Workspace` are
 > complete, **100%-covered**, and differentially checked against NumPy. CI runs
@@ -117,7 +126,7 @@ and `Max` by 92–96% ([docs/perf.md](docs/perf.md), *SIMD coverage*). It is a
 > pair Go supports; v0.1.0 and v0.2.0 were also run on real amd64, arm64,
 > ppc64le, riscv64 and loong64 hardware, v0.3.0 on real amd64, arm64, ppc64le
 > and loong64. See **[docs/plan-ndarray.md](docs/plan-ndarray.md)**
-> for the roadmap (more dtypes, more SIMD targets).
+> for the roadmap (SIMD for float32, linear algebra decompositions).
 
 ## Why this module?
 
@@ -186,8 +195,17 @@ row1, _ := m.Slice(ndarray.A(1))                    // m[1]: unindexed axes are 
 
 // ufuncs and masks
 roots := m.Sqrt()
-two, _ := ndarray.Full(2, 1)
-mask, _ := m.Greater(two)                           // broadcast 0/1 mask of m > 2
+mask, _ := m.Greater(ndarray.Scalar(2))             // Bool mask of m > 2
+big, _ := m.MaskSelect(mask)                        // m[m > 2] -> [3 4 5]
+
+// dtypes, with NumPy's promotion
+i8, _ := ndarray.FromSlice([]int8{1, 2, 3}, 3)
+x, _ := i8.Add(ndarray.Scalar(1))                   // int8: a Go int is weak
+y, _ := i8.Div(i8)                                  // float64: true division
+z := i8.AsType(ndarray.Complex128)                  // complex128
+
+// numpy.fft
+spec, _ := fft.RFFT(row)                            // complex128, 2 bins
 
 // linear algebra
 b, _ := ndarray.Arange(0, 6, 1)
