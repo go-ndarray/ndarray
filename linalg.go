@@ -44,7 +44,28 @@ func (a *Array) MatMul(b *Array) (*Array, error) {
 	if err := validateShape([]int{a.shape[0], b.shape[1]}); err != nil {
 		return nil, err
 	}
+	if a.dtype != Float64 || b.dtype != Float64 {
+		return matmulTyped(a, b), nil
+	}
 	return matmul2D(a, b, a.shape[0], a.shape[1], b.shape[1]), nil
+}
+
+// matmulTyped is MatMul for operands of other dtypes, in their common dtype.
+// It is a plain triple loop; only Float64 has the blocked SIMD GEMM so far.
+func matmulTyped(a, b *Array) *Array {
+	dt := ResultType(a.dtype, b.dtype)
+	if dt == Float64 {
+		return a.toFloat64().matmulFloat64(b.toFloat64())
+	}
+	m, k, n := a.shape[0], a.shape[1], b.shape[1]
+	d := makeStore(dt, m*n)
+	matmulStore(d, a.operandStore(dt, a.shape), b.operandStore(dt, b.shape), m, k, n)
+	return a.result(d, []int{m, n})
+}
+
+// matmulFloat64 is matmul2D on two validated 2-D Float64 arrays.
+func (a *Array) matmulFloat64(b *Array) *Array {
+	return matmul2D(a, b, a.shape[0], a.shape[1], b.shape[1])
 }
 
 // Dot returns the dot product following numpy.dot for 1-D and 2-D operands:
@@ -57,6 +78,9 @@ func (a *Array) MatMul(b *Array) (*Array, error) {
 // Higher-rank operands are rejected (the general tensordot is a later phase).
 func (a *Array) Dot(b *Array) (*Array, error) {
 	na, nb := len(a.shape), len(b.shape)
+	if (a.dtype != Float64 || b.dtype != Float64) && na >= 1 && na <= 2 && nb >= 1 && nb <= 2 {
+		return a.dotTyped(b)
+	}
 	switch {
 	case na == 1 && nb == 1:
 		if a.shape[0] != b.shape[0] {
@@ -127,6 +151,12 @@ func (a *Array) Inner(b *Array) (*Array, error) {
 // operands are flattened to 1-D vectors u (length m) and v (length n), and the
 // result is the (m x n) array out[i,j] = u[i]*v[j].
 func (a *Array) Outer(b *Array) *Array {
+	if a.dtype != Float64 || b.dtype != Float64 {
+		u, _ := a.Ravel().Reshape(-1, 1) // a column and a row: these reshapes
+		v, _ := b.Ravel().Reshape(1, -1) // and their product cannot fail
+		r, _ := u.Mul(v)
+		return r
+	}
 	u := a.contiguousData()
 	v := b.contiguousData()
 	m, n := len(u), len(v)
@@ -140,4 +170,28 @@ func (a *Array) Outer(b *Array) *Array {
 	}
 	shape := []int{m, n}
 	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}
+}
+
+// dotTyped is Dot for 1-D and 2-D operands of other dtypes: vectors are made
+// matrices, multiplied, and the added axes dropped again.
+func (a *Array) dotTyped(b *Array) (*Array, error) {
+	x, y := a, b
+	if len(a.shape) == 1 {
+		x = a.view([]int{1, a.shape[0]}, []int{0, a.strides[0]}, a.offset)
+	}
+	if len(b.shape) == 1 {
+		y = b.view([]int{b.shape[0], 1}, []int{b.strides[0], 0}, b.offset)
+	}
+	r, err := x.MatMul(y)
+	if err != nil {
+		return nil, fmt.Errorf("%w: Dot %v x %v inner dims differ", ErrLinalg, a.shape, b.shape)
+	}
+	var shape []int
+	if len(a.shape) == 2 {
+		shape = append(shape, a.shape[0])
+	}
+	if len(b.shape) == 2 {
+		shape = append(shape, b.shape[1])
+	}
+	return r.Reshape(shape...)
 }

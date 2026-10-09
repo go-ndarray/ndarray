@@ -7,6 +7,9 @@ import "fmt"
 // flatten semantics; here Ravel is also a copy, but Flatten documents the
 // always-copy contract).
 func (a *Array) Flatten() *Array {
+	if a.dtype != Float64 {
+		return a.Ravel()
+	}
 	data := a.materialize()
 	return &Array{data: data, shape: []int{len(data)}, strides: []int{1}, ws: a.ws}
 }
@@ -31,7 +34,7 @@ func (a *Array) ExpandDims(axis int) (*Array, error) {
 	// The inserted axis has length 1; its stride is irrelevant, use 0.
 	strides = append(strides, 0)
 	strides = append(strides, a.strides[axis:]...)
-	return &Array{data: a.data, shape: shape, strides: strides, offset: a.offset, ws: a.ws}, nil
+	return a.view(shape, strides, a.offset), nil
 }
 
 // Squeeze returns a view with length-1 axes removed. With no axes given, every
@@ -70,7 +73,7 @@ func (a *Array) Squeeze(axes ...int) (*Array, error) {
 			strides = append(strides, a.strides[i])
 		}
 	}
-	return &Array{data: a.data, shape: shape, strides: strides, offset: a.offset, ws: a.ws}, nil
+	return a.view(shape, strides, a.offset), nil
 }
 
 // Concatenate joins the given arrays along an existing axis, matching
@@ -116,7 +119,49 @@ func Concatenate(arrays []*Array, axis int) (*Array, error) {
 	if err := validateShape(out); err != nil {
 		return nil, err
 	}
+	dt := arrays[0].dtype
+	for _, arr := range arrays[1:] {
+		dt = ResultType(dt, arr.dtype)
+	}
+	if !allFloat64(arrays) {
+		return concatStore(arrays, dt, ax, out), nil
+	}
 	return concatInto(arrays, ax, out), nil
+}
+
+// allFloat64 reports whether every array has dtype Float64.
+func allFloat64(arrays []*Array) bool {
+	for _, a := range arrays {
+		if a.dtype != Float64 {
+			return false
+		}
+	}
+	return true
+}
+
+// concatStore is concatInto for any dtype: the arrays are converted to the
+// common dtype dt and joined along ax into a result of shape out. It runs on
+// the heap; concatInto keeps the float64 workspace path.
+func concatStore(arrays []*Array, dt DType, ax int, out []int) *Array {
+	inner := prod(out[ax+1:])
+	outer := prod(out[:ax])
+	axisTotal := out[ax]
+	data := makeStore(dt, outer*axisTotal*inner)
+	r := fromStore(data, out)
+	r.ws = wsOf(arrays...)
+	if storeLen(data) == 0 {
+		return r
+	}
+	colBase := 0
+	for _, arr := range arrays {
+		src := arr.operandStore(dt, arr.shape)
+		aLen := arr.shape[ax]
+		for o := 0; o < outer; o++ {
+			copyStore(data, (o*axisTotal+colBase)*inner, src, o*aLen*inner, aLen*inner)
+		}
+		colBase += aLen
+	}
+	return r
 }
 
 // concatInto materialises arrays joined along ax into a contiguous result of
@@ -201,13 +246,7 @@ func sameShape(a, b []int) bool {
 // reshape that could fail).
 func atLeast2D(a *Array) *Array {
 	if len(a.shape) == 1 {
-		return &Array{
-			data:    a.data,
-			shape:   []int{1, a.shape[0]},
-			strides: []int{a.shape[0] * a.strides[0], a.strides[0]},
-			offset:  a.offset,
-			ws:      a.ws,
-		}
+		return a.view([]int{1, a.shape[0]}, []int{a.shape[0] * a.strides[0], a.strides[0]}, a.offset)
 	}
 	return a
 }

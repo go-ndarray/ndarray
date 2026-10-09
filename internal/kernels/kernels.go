@@ -62,56 +62,6 @@ func sqrtScalar(dst, src []float64) {
 	}
 }
 
-// b2f maps a boolean comparison result to a 0/1 float mask value.
-func b2f(b bool) float64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// Equal writes the a[i]==b[i] mask (1/0) into dst[i].
-func Equal(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = b2f(a[i] == b[i])
-	}
-}
-
-// NotEqual writes the a[i]!=b[i] mask (1/0) into dst[i].
-func NotEqual(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = b2f(a[i] != b[i])
-	}
-}
-
-// Greater writes the a[i]>b[i] mask (1/0) into dst[i].
-func Greater(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = b2f(a[i] > b[i])
-	}
-}
-
-// GreaterEqual writes the a[i]>=b[i] mask (1/0) into dst[i].
-func GreaterEqual(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = b2f(a[i] >= b[i])
-	}
-}
-
-// Less writes the a[i]<b[i] mask (1/0) into dst[i].
-func Less(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = b2f(a[i] < b[i])
-	}
-}
-
-// LessEqual writes the a[i]<=b[i] mask (1/0) into dst[i].
-func LessEqual(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = b2f(a[i] <= b[i])
-	}
-}
-
 // Maximum writes the pairwise maximum of a[i] and b[i] into dst[i]. It is
 // NaN-propagating like numpy.maximum: it uses the builtin max, not math.Max,
 // because math.Max returns +Inf for max(NaN, +Inf) where numpy returns NaN.
@@ -340,44 +290,7 @@ func ArgMin(a []float64) int {
 	return bi
 }
 
-// ArgMaxAxis writes into dst the index (along the middle axis) of the first
-// maximum for each [outer][inner] position, or of the first NaN (see ArgMax).
-// Layout matches the *Axis kernels.
-func ArgMaxAxis(dst []float64, src []float64, outer, axisLen, inner, lo, hi int) {
-	for o := 0; o < outer; o++ {
-		base := o * inner
-		block := o * axisLen * inner
-		for i := lo; i < hi; i++ {
-			best := src[block+i]
-			bi := 0
-			for k := 1; k < axisLen && !math.IsNaN(best); k++ {
-				if v := src[block+k*inner+i]; v > best || math.IsNaN(v) {
-					best, bi = v, k
-				}
-			}
-			dst[base+i] = float64(bi)
-		}
-	}
-}
 
-// ArgMinAxis writes into dst the index (along the middle axis) of the first
-// minimum for each [outer][inner] position, or of the first NaN.
-func ArgMinAxis(dst []float64, src []float64, outer, axisLen, inner, lo, hi int) {
-	for o := 0; o < outer; o++ {
-		base := o * inner
-		block := o * axisLen * inner
-		for i := lo; i < hi; i++ {
-			best := src[block+i]
-			bi := 0
-			for k := 1; k < axisLen && !math.IsNaN(best); k++ {
-				if v := src[block+k*inner+i]; v < best || math.IsNaN(v) {
-					best, bi = v, k
-				}
-			}
-			dst[base+i] = float64(bi)
-		}
-	}
-}
 
 // CumSumAxis writes the cumulative sum along the middle axis into dst (same
 // shape as src), matching numpy.cumsum along an axis. Layout is

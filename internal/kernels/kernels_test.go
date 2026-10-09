@@ -130,13 +130,8 @@ func TestArgAndScan(t *testing.T) {
 		t.Errorf("ArgMin desc = %d, want 2", got)
 	}
 
-	// Axis variants over [outer=1][axisLen=3][inner=2]: columns {3,1},{9,5} etc.
+	// Scans over [outer=1][axisLen=3][inner=2].
 	src := []float64{3, 1, 9, 5, 0, 7}
-	dst := make([]float64, 2)
-	ArgMaxAxis(dst, src, 1, 3, 2, 0, 2)
-	eqSlice(t, dst, []float64{1, 2}) // col0 max at k=1 (9); col1 max at k=2 (7)
-	ArgMinAxis(dst, src, 1, 3, 2, 0, 2)
-	eqSlice(t, dst, []float64{2, 0}) // col0 min at k=2 (0); col1 min at k=0 (1)
 
 	cs := make([]float64, 6)
 	CumSumAxis(cs, src, 1, 3, 2)
