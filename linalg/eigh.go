@@ -3,6 +3,8 @@ package linalg
 import (
 	"math"
 
+	"github.com/go-ndarray/ndarray/internal/kernels"
+
 	"github.com/go-ndarray/ndarray"
 )
 
@@ -22,24 +24,44 @@ func hermitianFrom[T scalar](n int, a []T, uplo UPLO) {
 	}
 }
 
+// hetrdBlock is the panel width of the blocked tridiagonalization, and
+// hetrdMin the order below which it is not blocked.
+var hetrdBlock, hetrdMin = 32, 96
+
 // hetrd reduces the full Hermitian n×n matrix a to real symmetric
-// tridiagonal form T = Qᴴ·A·Q by Householder reflections (LAPACK hetd2 on
-// the lower triangle, with the rank-2 updates applied to the whole trailing
-// matrix so the matrix-vector products run along contiguous rows). It
-// returns the diagonal d, the off-diagonal e and, when wantQ, Q as an n×n
-// row-major matrix. a is destroyed.
+// tridiagonal form T = Qᴴ·A·Q by Householder reflections (LAPACK hetrd, on
+// the lower triangle). Panels of hetrdBlock columns are reduced as in
+// latrd, accumulating W so the trailing matrix is updated once per panel by
+// A -= V·Wᴴ + W·Vᴴ through the GEMM; the rest is hetd2. The matrix is kept
+// in full storage, so the matrix-vector products run along contiguous rows.
+// It returns the diagonal d, the off-diagonal e and, when wantQ, Q as an
+// n×n row-major matrix. a is destroyed.
 func hetrd[T scalar](n int, a []T, wantQ bool) (d, e []float64, q []T) {
 	d = make([]float64, n)
 	e = make([]float64, max(n-1, 0))
 	var refl []T // the reflectors, in geqrf's layout on the trailing (n-1)×(n-1) block
-	var taus []T
+	taus := make([]T, max(n-1, 0))
 	if wantQ && n > 1 {
 		refl = make([]T, (n-1)*(n-1))
-		taus = make([]T, n-1)
+	}
+	store := func(i int, v []T, tau T) {
+		taus[i] = tau
+		if refl != nil {
+			for r := 1; r < len(v); r++ {
+				refl[(i+r)*(n-1)+i] = v[r]
+			}
+		}
+	}
+	i := 0
+	if n >= hetrdMin {
+		nb := hetrdBlock
+		for ; i+nb < n-nb; i += nb {
+			latrd(n, i, nb, a, d, e, store)
+		}
 	}
 	v := make([]T, n)
 	p := make([]T, n)
-	for i := 0; i < n-1; i++ {
+	for ; i < n-1; i++ {
 		s := n - i - 1 // order of the trailing block A22 = a[i+1:, i+1:]
 		var x []T
 		if s > 1 {
@@ -53,14 +75,10 @@ func hetrd[T scalar](n int, a []T, wantQ bool) (d, e []float64, q []T) {
 		}
 		if tau != 0 {
 			// p = tau·A22·v; w = p - (tau/2)(pᴴv)·v; A22 -= v·wᴴ + w·vᴴ.
+			matvec(s, s, a[(i+1)*n+i+1:], n, v, p)
 			var pv T
 			for r := 0; r < s; r++ {
-				row := a[(i+1+r)*n+i+1 : (i+1+r)*n+n]
-				var acc T
-				for c, x := range row {
-					acc += x * v[c]
-				}
-				p[r] = tau * acc
+				p[r] *= tau
 				pv += conj(p[r]) * v[r]
 			}
 			alpha := -0.5 * tau * pv
@@ -76,12 +94,7 @@ func hetrd[T scalar](n int, a []T, wantQ bool) (d, e []float64, q []T) {
 			}
 		}
 		d[i] = re(a[i*n+i])
-		if refl != nil {
-			taus[i] = tau
-			for r := 1; r < s; r++ {
-				refl[(i+r)*(n-1)+i] = v[r]
-			}
-		}
+		store(i, v[:s], tau)
 	}
 	if n > 0 {
 		d[n-1] = re(a[(n-1)*n+n-1])
@@ -100,6 +113,124 @@ func hetrd[T scalar](n int, a []T, wantQ bool) (d, e []float64, q []T) {
 		}
 	}
 	return d, e, q
+}
+
+// latrd reduces the nb columns i0..i0+nb-1 of the full Hermitian n×n a
+// (LAPACK latrd, lower), then updates the trailing matrix
+// a[i0+nb:, i0+nb:] -= V·Wᴴ + W·Vᴴ with the panel's reflectors V and the
+// accumulated W. V and W are kept transposed (one reflector per row), so
+// the corrections are dot products and axpys along contiguous rows.
+func latrd[T scalar](n, i0, nb int, a []T, d, e []float64, store func(int, []T, T)) {
+	m := n - i0 // rows of the panel, indexed from i0
+	vt := make([]T, nb*m)
+	wt := make([]T, nb*m)
+	vc := make([]T, m)
+	tmp := make([]T, m)
+	t1, t2 := make([]T, nb), make([]T, nb)
+	for j := 0; j < nb; j++ {
+		c := i0 + j
+		// Bring column c up to date with the panel's earlier reflectors:
+		// a[c:, c] -= V·conj(W[j, :j]) + W·conj(V[j, :j]).
+		if j > 0 {
+			acc := tmp[:m-j]
+			clear(acc)
+			for p := 0; p < j; p++ {
+				vp, wp := vt[p*m:(p+1)*m], wt[p*m:(p+1)*m]
+				axpy(acc, vp[j:], conj(wp[j]))
+				axpy(acc, wp[j:], conj(vp[j]))
+			}
+			for r, x := range acc {
+				a[(c+r)*n+c] -= x
+			}
+		}
+		d[c] = re(a[c*n+c])
+		s := n - c - 1
+		var x []T
+		if s > 1 {
+			x = a[(c+2)*n+c:]
+		}
+		beta, tau := larfg(s, a[(c+1)*n+c], x, n)
+		e[c] = re(beta)
+		v := vc[:s] // the reflector's vector
+		v[0] = 1
+		for r := 1; r < s; r++ {
+			v[r] = a[(c+1+r)*n+c]
+		}
+		copy(vt[j*m+j+1:], v)
+		store(c, v, tau)
+		// w = tau·(A22 - V·Wᴴ - W·Vᴴ)·v, then w -= (tau/2)(wᴴv)·v.
+		w := wt[j*m+j+1 : (j+1)*m]
+		matvec(s, s, a[(c+1)*n+c+1:], n, v, w)
+		for p := 0; p < j; p++ {
+			t1[p] = dotc(wt[p*m+j+1:(p+1)*m], v)
+			t2[p] = dotc(vt[p*m+j+1:(p+1)*m], v)
+		}
+		for p := 0; p < j; p++ {
+			axpy(w, vt[p*m+j+1:(p+1)*m], -t1[p])
+			axpy(w, wt[p*m+j+1:(p+1)*m], -t2[p])
+		}
+		var pv T
+		for r := range w {
+			w[r] *= tau
+			pv += conj(w[r]) * v[r]
+		}
+		axpy(w, v, -0.5*tau*pv)
+	}
+	// The trailing update, on the full block.
+	t := m - nb
+	c0 := (i0+nb)*n + i0 + nb
+	vv, ww := rm(vt, nb, m), rm(wt, nb, m) // nb×t: Vᵀ and Wᵀ
+	gemm(t, t, nb, -1, vv.t(), ww.c(), 1, a[c0:], n)
+	gemm(t, t, nb, -1, ww.t(), vv.c(), 1, a[c0:], n)
+}
+
+// axpy is y += alpha·x over len(x) elements.
+func axpy[T scalar](y, x []T, alpha T) {
+	y = y[:len(x)]
+	for i, v := range x {
+		y[i] += alpha * v
+	}
+}
+
+// dotc is xᴴ·y.
+func dotc[T scalar](x, y []T) T {
+	if xf, ok := any(x).([]float64); ok {
+		return any(kernels.Dot1DP(xf, any(y).([]float64)[:len(xf)])).(T)
+	}
+	var s T
+	for i, v := range x {
+		s += conj(v) * y[i]
+	}
+	return s
+}
+
+// matvecPar is the size (m·k) from which matvec spreads its rows over the
+// processors: below it, waking the workers costs more than the work.
+var matvecPar = 1 << 18
+
+// matvec computes y = A·x for the m×k row-major A (leading dimension lda),
+// by contiguous row dot products — SIMD and spread over the processors for
+// float64.
+func matvec[T scalar](m, k int, a []T, lda int, x, y []T) {
+	if af, ok := any(a).([]float64); ok {
+		if m*k < matvecPar {
+			yf, xf := any(y).([]float64), any(x).([]float64)
+			for r := 0; r < m; r++ {
+				yf[r] = kernels.Dot1DP(af[r*lda:r*lda+k], xf[:k])
+			}
+			return
+		}
+		kernels.MatVecStridedP(any(y).([]float64), af, lda, any(x).([]float64)[:k], m, k)
+		return
+	}
+	for r := 0; r < m; r++ {
+		row := a[r*lda : r*lda+k]
+		var s T
+		for c, v := range row {
+			s += v * x[c]
+		}
+		y[r] = s
+	}
 }
 
 // laev2 is the eigendecomposition of the symmetric 2×2 [a b; b c] (LAPACK
@@ -440,11 +571,36 @@ func eighOne[T scalar](n int, x []T, uplo UPLO, wantV bool) ([]float64, []T, boo
 	if !wantV {
 		return d, nil, steqr[T](n, d, e, nil, 0)
 	}
+	if n > dcLeaf {
+		zt, ok := stedc(n, d, e)
+		if !ok {
+			return nil, nil, false
+		}
+		return d, mulRealT(n, q, zt), true
+	}
 	zt := transposed(n, n, q) // rows of zt are the columns of Q
 	if !steqr(n, d, e, zt, n) {
 		return nil, nil, false
 	}
 	return d, transposed(n, n, zt), true
+}
+
+// mulRealT returns Q·Zᵀ for an n×n Q and a real n×n Z given as zt.
+func mulRealT[T scalar](n int, q []T, zt []float64) []T {
+	out := make([]T, n*n)
+	if qf, ok := any(q).([]float64); ok {
+		gemm(n, n, n, 1, rm(qf, 0, n), rm(zt, 0, n).t(), 0, any(out).([]float64), n)
+		return out
+	}
+	qr, qi := split(n, n, rm(q, 0, n))
+	re, im := make([]float64, n*n), make([]float64, n*n)
+	gemm(n, n, n, 1, rm(qr, 0, n), rm(zt, 0, n).t(), 0, re, n)
+	gemm(n, n, n, 1, rm(qi, 0, n), rm(zt, 0, n).t(), 0, im, n)
+	oz := any(out).([]complex128)
+	for i := range oz {
+		oz[i] = complex(re[i], im[i])
+	}
+	return out
 }
 
 // transposed returns the n×m transpose of the m×n row-major matrix x.

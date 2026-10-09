@@ -151,7 +151,8 @@ func (v mview[T]) at(i, j int) T {
 	return x
 }
 
-// t is the transpose, h the conjugate transpose.
+// c is the conjugate, t the transpose, h the conjugate transpose.
+func (v mview[T]) c() mview[T] { v.conjVal = !v.conjVal; return v }
 func (v mview[T]) t() mview[T] { v.rs, v.cs = v.cs, v.rs; return v }
 func (v mview[T]) h() mview[T] {
 	v.rs, v.cs = v.cs, v.rs
