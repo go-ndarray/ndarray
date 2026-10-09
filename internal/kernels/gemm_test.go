@@ -287,6 +287,24 @@ func TestMatVecP(t *testing.T) {
 	withMaxProcs(128, func() { check(1) }) // parallel + w>m clamp
 }
 
+// TestMatVecStridedP checks mat·vec on a sub-block of a wider matrix: only
+// the first k of every lda elements are read.
+func TestMatVecStridedP(t *testing.T) {
+	m, k, lda := 5, 6, 11
+	a, v := randVec(m*lda, 5), randVec(k, 6)
+	got := make([]float64, m)
+	MatVecStridedP(got, a, lda, v, m, k)
+	for i := 0; i < m; i++ {
+		want := 0.0
+		for p := 0; p < k; p++ {
+			want += a[i*lda+p] * v[p]
+		}
+		if math.Abs(got[i]-want) > 1e-9*(1+math.Abs(want)) {
+			t.Fatalf("MatVecStridedP [%d]: %v != %v", i, got[i], want)
+		}
+	}
+}
+
 // TestVecMatP checks vec·mat (1-D · 2-D) against a column-accumulation reference.
 func TestVecMatP(t *testing.T) {
 	k, n := 11, 9

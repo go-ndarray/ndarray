@@ -434,10 +434,15 @@ func dotRange(a, b []float64) float64 {
 // is pure unit-stride streaming — far cheaper than routing a single-column GEMM
 // through the packer. dst need not be pre-zeroed (each entry is written, not
 // accumulated). Rows are disjoint, so the parallel result equals the serial one.
-func MatVecP(dst, a, v []float64, m, k int) {
+func MatVecP(dst, a, v []float64, m, k int) { MatVecStridedP(dst, a, k, v, m, k) }
+
+// MatVecStridedP is MatVecP on rows lda elements apart: row i of a is
+// a[i*lda : i*lda+k], so a sub-block of a larger row-major matrix is
+// multiplied in place.
+func MatVecStridedP(dst, a []float64, lda int, v []float64, m, k int) {
 	body := func(lo, hi int) {
 		for i := lo; i < hi; i++ {
-			dst[i] = dotSIMD(a[i*k:i*k+k], v)
+			dst[i] = dotSIMD(a[i*lda:i*lda+k], v)
 		}
 	}
 	if m*k < matVecThreshold {
