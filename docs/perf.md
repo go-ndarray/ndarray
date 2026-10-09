@@ -878,15 +878,37 @@ stay dynamic, so its slower efficiency cores are handled as before.
 - **s390x (vector facility)**, since v0.8.0, when AT_HWCAP reports it:
   sum, dot, sqrt and add/sub/mul/div, eight float64 per loop in four
   two-lane registers plus a scalar tail, every instruction a Go mnemonic.
-  max/min and the GEMM micro-kernel stay scalar (the vector max with NumPy's
-  NaN rule needs the z14, beyond the z13 Go supports). The operand order of
+  Since v0.9.0 the GEMM micro-kernel is a 4×8 tile: sixteen two-lane
+  accumulators, the B row in one `VLM`, each A value replicated with `VLREPG`
+  and fused in with `VFMADB`. max/min stay scalar: the vector max with NumPy's
+  NaN rule needs the z14, beyond the z13 Go supports. The operand order of
   `VFSDB`/`VFDDB`/`VFMADB` was **measured**, not read: each run once on known
-  inputs (`VFSDB V1, V2, V3` is V3 = V2 − V1). ⚠ **Validated under emulation
-  only** (Docker's qemu-s390x locally, qemu-s390x in CI): the whole suite, the
-  fence tests, and two sabotaged kernels that both failed. **Not measured**:
-  the LinuxONE host did not answer. AT_HWCAP is read in the machine's byte
-  order, which on big-endian s390x is not the little-endian the parser first
-  assumed.
+  inputs (`VFSDB V1, V2, V3` is V3 = V2 − V1). AT_HWCAP is read in the
+  machine's byte order, which on big-endian s390x is not the little-endian the
+  parser first assumed.
+
+  v0.8.0 shipped these kernels validated under emulation only. Since then they
+  run on **real hardware**: an IBM z17 (Type 9175), through the LinuxONE
+  Community Cloud, as a z/VM 7.3.0 guest with 8 vCPUs in a shared LPAR. There
+  the whole suite passes, as do the fence tests (a kernel reading one element
+  too far faults), `TestParallelStress` (27,752 calls) and two sabotaged GEMM
+  and elementwise kernels, which fail as they should. Measured with `hostload`
+  (0% busy, 0% steal) and `benchstat`, 8 interleaved runs each, every
+  difference at p = 0.000 unless marked:
+
+  | IBM z17, time vs the scalar code | 1 core | 8 cores |
+  |---|---|---|
+  | `Sum` | −85% to −87% | −82% to −87% |
+  | `AddInto` / `MulInto` | −44% to −61% | −36% to −60% |
+  | `DivInto` | −6% to −18% | −6% to −22% |
+  | `SqrtInto` | −2% to −11% | −5% to −9% at 1–16 Ki, ~ above |
+  | `MatVec` 1024² | −44% | −40% |
+  | `Dot` 2^20 | −11% | ~ (p = 0.08) |
+  | `MatMul` 1024² (v0.9.0 GEMM) | 340 → 70 ms (−79%) | 43 → 10 ms (−76%) |
+  | GEMM geomean, 11 shapes | −74% | −66% |
+
+  `Exp`, which none of this touches, measured within ±0.3% on one core: the
+  control.
 - The 32-bit targets keep
   the validated scalar oracles, using the same four-accumulator max/min, direct
   sqrt loop, and a **scalar 4×4 GEMM micro-kernel** over the packed panels, and

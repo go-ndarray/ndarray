@@ -57,6 +57,28 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-09 (v0.9.0).**
+
+- **The Go floor is 1.27.2.** At 1.27.1, `govulncheck` listed standard-library
+  vulnerabilities fixed in 1.27.2 (GO-2026-6604, -6612, -6613, -6617, among
+  others), none of them reachable from this library. At 1.27.2 it reports none,
+  for the library or for its generator module.
+- **The loong64 miscompile is not fixed in 1.27.2.** An earlier entry said
+  golang/go#81000 was fixed in 1.27.2; it was not. The backport
+  (golang/go#81147) is on the 1.27.3 milestone. On real hardware (cfarm401,
+  Loongson 3C5000L), the upstream reproducer (`go-gfx/gfx` `./color`,
+  `TestSkimageLabToRGBOutOfGamut`) **FAILS** when built with go1.27.1 and with
+  go1.27.2 alike. The evidence that this library does not hit the pattern
+  stands as before: the suite and `FuzzOps` on that machine. Raise the floor
+  to 1.27.3 when it ships.
+- **The s390x kernels now run on real hardware**: an IBM z17, through the
+  LinuxONE Community Cloud (`/proc/sysinfo`: Type 9175, a z/VM 7.3.0 guest
+  with 8 vCPUs in a shared LPAR). The whole suite and the fence tests pass,
+  and `sumVX` reading one element past the end faults (4 KiB pages). The new
+  4×8 GEMM micro-kernel is held to the same checks: it is guarded by its
+  wrapper and fenced, and a sabotaged copy that drops tile row 3 fails
+  (`MatMul m=50 k=70 n=90 [270]: 0 != -249`).
+
 **2026-10-08 (v0.8.0).** New s390x vector-facility kernels, held to the same
 guards (wrappers check each kernel's reach; the PROT_NONE fence tests now
 include s390x). ⚠ They were validated **under emulation only** (Docker's
@@ -114,7 +136,9 @@ two defects. Both are fixed, each with a test that fails without the fix.
 - go1.27.0 and go1.27.1 miscompile one loong64 pattern
   ([golang/go#81000](https://github.com/golang/go/issues/81000): a byte-sized
   inlined result spilled with an 8-byte store, clobbering the stack slot next
-  to it), fixed in 1.27.2. On a real Loongson 3C5000L with LASX (cfarm401),
+  to it), ~~fixed in 1.27.2~~ — **wrong, corrected 2026-10-09**: the backport
+  (golang/go#81147) moved to the 1.27.3 milestone, and go1.27.2 still fails
+  the upstream reproducer on cfarm401 (see the v0.9.0 entry). On a real Loongson 3C5000L with LASX (cfarm401),
   built with go1.27.1, the whole suite passes, including the fence tests, and
   `FuzzOps` ran 52.7 million executions natively without a divergence from its
   oracle. That is evidence that this library does not hit the pattern, not

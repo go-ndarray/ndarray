@@ -36,6 +36,7 @@ func main() {
 	} {
 		f.Add(binKernel(k.name, k.vec, k.sca))
 	}
+	f.Add(gemmKernel())
 	if err := os.WriteFile("sum_s390x.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -137,4 +138,43 @@ func binKernel(name, vec, sca string) *emit.Function {
 		Raw("ADD $8, R1").Raw("ADD $8, R2").Raw("ADD $8, R3").Raw("SUB $1, R4").Raw("BR tail").
 		Raw("done:").Ret()
 	return b.Func()
+}
+
+// gemmKernel builds gemmMicro4x8VX(kc int, pa, pb, c *float64, ldc int) for
+// kc >= 1: C[r][0:8] += sum_p pa[p*4+r] * pb[p*8:p*8+8] for r < 4, the rows of C
+// ldc float64s apart. Sixteen two-lane accumulators V0..V15 (row r in
+// V4r..V4r+3); each step loads the B row in one VLM, replicates each A value
+// across a register with VLREPG, and fuses it in with VFMADB.
+func gemmKernel() *emit.Function {
+	sig := s390x.Layout([]string{"kc", "pa", "pb", "c", "ldc"},
+		[]s390x.Type{s390x.Int64, s390x.Ptr, s390x.Ptr, s390x.Ptr, s390x.Int64}, nil, nil)
+	b := s390x.NewFunc("gemmMicro4x8VX", sig, 0)
+	b.LoadArg("kc", "R5").LoadArg("pa", "R2").LoadArg("pb", "R3").
+		LoadArg("c", "R1").LoadArg("ldc", "R4")
+	for r := 0; r < 16; r++ {
+		b.Raw("VZERO V%d", r)
+	}
+	b.Raw("loop:").Raw("VLM (R3), V16, V19") // the B row
+	for r := 0; r < 4; r++ {
+		b.Raw("VLREPG %d(R2), V%d", 8*r, 20+r) // a_r in both lanes
+	}
+	for r := 0; r < 4; r++ {
+		for j := 0; j < 4; j++ {
+			b.Raw("VFMADB V%d, V%d, V%d, V%d", 20+r, 16+j, 4*r+j, 4*r+j) // acc += a_r * b
+		}
+	}
+	b.Raw("ADD $32, R2").Raw("ADD $64, R3").Raw("SUB $1, R5").
+		Raw("CMP R5, $0").Raw("BNE loop").
+		Raw("SLD $3, R4") // row stride in bytes
+	for r := 0; r < 4; r++ {
+		b.Raw("VLM (R1), V24, V27")
+		for j := 0; j < 4; j++ {
+			b.Raw("VFADB V%d, V%d, V%d", 4*r+j, 24+j, 24+j) // C row += acc_r
+		}
+		b.Raw("VSTM V24, V27, (R1)")
+		if r < 3 {
+			b.Raw("ADD R4, R1")
+		}
+	}
+	return b.Ret().Func()
 }
