@@ -115,21 +115,13 @@ func dcMerge(n, m int, d []float64, rho float64, qt1, qt2 []float64) []float64 {
 	// The secular equation, one root at a time; delta[j*k+i] = dk[i] - lambda_j.
 	lam := make([]float64, k)
 	delta := make([]float64, k*k)
+	diff := func(i, o int) float64 { return dk[i] - dk[o] }
 	for j := 0; j < k; j++ {
-		lam[j] = secular(dk, zk, rho, j, delta[j*k:(j+1)*k])
+		lam[j] = secular(dk, zk, rho, j, diff, delta[j*k:(j+1)*k])
 	}
 	// Gu–Eisenstat: the z for which the computed roots are exact, then the
 	// eigenvectors (zhat_i / (d_i - lambda_j)), normalized.
-	zhat := make([]float64, k)
-	for i := 0; i < k; i++ {
-		w := delta[i*k+i]
-		for j := 0; j < k; j++ {
-			if j != i {
-				w *= delta[j*k+i] / (dk[i] - dk[j])
-			}
-		}
-		zhat[i] = math.Copysign(math.Sqrt(math.Max(-w, 0)), zk[i])
-	}
+	zhat := zHat(dk, zk, delta, diff)
 	u := make([]float64, k*k) // row j: the coefficients of eigenvector j
 	for j := 0; j < k; j++ {
 		uj := u[j*k : (j+1)*k]
@@ -168,31 +160,34 @@ func dcMerge(n, m int, d []float64, rho float64, qt1, qt2 []float64) []float64 {
 }
 
 // secular returns the j-th smallest root lambda of the secular equation
-// 1/rho + Σ z_i²/(d_i - lambda) = 0 (d ascending and distinct, z without
-// zeros, rho > 0), and stores d_i - lambda into delta, each computed from
-// the pole nearest the root so that it is accurate to a few ulps even when
-// the root is very close to a pole (LAPACK dlaed4's requirement).
+// 1/rho + Σ z_i²/(p_i - lambda) = 0 (poles p ascending and distinct, z
+// without zeros, rho > 0), and stores p_i - lambda into delta, each
+// computed from the pole nearest the root so that it is accurate to a few
+// ulps even when the root is very close to a pole (LAPACK dlaed4's and
+// dlasd4's requirement). diff(i, o) must return p_i - p_o accurately: for
+// the squared poles of the SVD, (d_i - d_o)(d_i + d_o), not a difference of
+// rounded squares.
 //
 // The iteration is the rational two-pole model of Bunch, Nielsen and
 // Sorensen — the sum over the poles left of the root and the sum over those
 // right of it are each replaced by a constant plus one pole, matching value
 // and slope — safeguarded by a bracket that bisection falls back on.
-func secular(d, z []float64, rho float64, j int, delta []float64) float64 {
-	k := len(d)
+func secular(p, z []float64, rho float64, j int, diff func(i, o int) float64, delta []float64) float64 {
+	k := len(p)
+	dd := delta // the poles relative to the origin
 	var origin int
 	var lo, hi float64
 	if j == k-1 {
 		origin = k - 1
-		lo = 0
 		for _, v := range z {
 			hi += v * v
 		}
 		hi *= rho
 	} else {
-		gap := d[j+1] - d[j]
+		gap := diff(j+1, j)
 		f := 1 / rho
-		for i := range d {
-			f += z[i] * z[i] / ((d[i] - d[j]) - gap/2)
+		for i := range p {
+			f += z[i] * z[i] / (diff(i, j) - gap/2)
 		}
 		if f >= 0 {
 			origin, lo, hi = j, 0, gap/2
@@ -200,9 +195,8 @@ func secular(d, z []float64, rho float64, j int, delta []float64) float64 {
 			origin, lo, hi = j+1, -gap/2, 0
 		}
 	}
-	dd := delta // the poles relative to the origin
-	for i := range d {
-		dd[i] = d[i] - d[origin]
+	for i := range p {
+		dd[i] = diff(i, origin)
 	}
 	var p1, p2 float64 // the poles bounding the root
 	if j == k-1 {
@@ -253,7 +247,25 @@ func secular(d, z []float64, rho float64, j int, delta []float64) float64 {
 	for i := range dd {
 		dd[i] -= tau
 	}
-	return d[origin] + tau
+	return p[origin] + tau
+}
+
+// zHat returns Gu and Eisenstat's updating vector: the z for which the
+// computed roots are the exact eigenvalues of diag(p) + rho·z·zᵀ, with the
+// signs of z. delta[j*k+i] is p_i - lambda_j.
+func zHat(p, z, delta []float64, diff func(i, o int) float64) []float64 {
+	k := len(p)
+	zh := make([]float64, k)
+	for i := 0; i < k; i++ {
+		w := delta[i*k+i]
+		for j := 0; j < k; j++ {
+			if j != i {
+				w *= delta[j*k+i] / diff(i, j)
+			}
+		}
+		zh[i] = math.Copysign(math.Sqrt(math.Abs(w)), z[i])
+	}
+	return zh
 }
 
 // quadRoot solves c·(p1-x)(p2-x) + b1·(p2-x) + b2·(p1-x) = 0 for the root

@@ -6,27 +6,57 @@ import (
 	"github.com/go-ndarray/ndarray"
 )
 
-// gebd2 reduces the m×n matrix a (m >= n) to real upper bidiagonal form
-// B = Qᴴ·A·P by Householder reflections from the left and the right (LAPACK
-// gebd2): Q = H0·H1···H(n-1), P = G0·G1···G(n-2). It returns B's diagonal d
-// and superdiagonal e, the left reflectors (in a, below the diagonal, with
-// scalars tauq) and the right ones (in pv, geqrf's layout on an
-// (n-1)×(n-1) block, with scalars taup).
-func gebd2[T scalar](m, n int, a []T, wantP bool) (d, e []float64, tauq, pv, taup []T) {
-	d, e = make([]float64, n), make([]float64, max(n-1, 0))
-	tauq, taup = make([]T, n), make([]T, max(n-1, 0))
-	if wantP && n > 1 {
-		pv = make([]T, (n-1)*(n-1))
+// gebrdBlock is the panel width of the blocked bidiagonalization, and
+// gebrdMin the order below which it is not blocked.
+var gebrdBlock, gebrdMin = 32, 96
+
+// bidiag is a bidiagonal reduction B = Qᴴ·A·P: B's diagonal d and
+// superdiagonal e, the left reflectors (stored in the reduced matrix below
+// its diagonal, with scalars tauq) and the right ones (in pv, geqrf's
+// layout on an (n-1)×(n-1) block, with scalars taup), Q = H0·H1···H(n-1),
+// P = G0·G1···G(n-2).
+type bidiag[T scalar] struct {
+	d, e       []float64
+	tauq, taup []T
+	pv         []T
+}
+
+// gebrd reduces the m×n matrix a (m >= n) to real upper bidiagonal form by
+// Householder reflections from the left and the right (LAPACK gebrd):
+// panels of gebrdBlock rows and columns as labrd, the trailing matrix
+// updated once per panel through the GEMM, the rest as gebd2. The right
+// reflectors are kept only when wantP.
+func gebrd[T scalar](m, n int, a []T, wantP bool) bidiag[T] {
+	b := bidiag[T]{
+		d: make([]float64, n), e: make([]float64, max(n-1, 0)),
+		tauq: make([]T, n), taup: make([]T, max(n-1, 0)),
 	}
+	if wantP && n > 1 {
+		b.pv = make([]T, (n-1)*(n-1))
+	}
+	i0 := 0
+	if n >= gebrdMin {
+		nb := gebrdBlock
+		for ; i0+nb < n-nb; i0 += nb {
+			labrd(m, n, i0, nb, a, &b)
+		}
+	}
+	gebd2(m, n, i0, a, &b)
+	return b
+}
+
+// gebd2 is the unblocked bidiagonalization (LAPACK gebd2) of rows and
+// columns i0 onwards.
+func gebd2[T scalar](m, n, i0 int, a []T, b *bidiag[T]) {
 	v := make([]T, m)
 	w := make([]T, n)
-	for i := 0; i < n; i++ {
+	for i := i0; i < n; i++ {
 		var x []T
 		if i+1 < m {
 			x = a[(i+1)*n+i:]
 		}
 		beta, tq := larfg(m-i, a[i*n+i], x, n)
-		d[i], tauq[i] = re(beta), tq
+		b.d[i], b.tauq[i] = re(beta), tq
 		if i+1 < n {
 			v[0] = 1
 			for r := i + 1; r < m; r++ {
@@ -47,20 +77,138 @@ func gebd2[T scalar](m, n int, a []T, wantP bool) (d, e []float64, tauq, pv, tau
 			y = row[1:]
 		}
 		beta, tp := larfg(n-i-1, row[0], y, 1)
-		e[i], taup[i] = re(beta), tp
+		b.e[i], b.taup[i] = re(beta), tp
 		row[0] = 1
 		larfR(m-i-1, n-i-1, row, tp, a[(i+1)*n+i+1:], n)
-		if pv != nil {
-			for c := 1; c < len(row); c++ {
-				pv[(i+c)*(n-1)+i] = row[c]
-			}
-		}
+		b.storeP(n, i, row)
 		for c := range row {
 			row[c] = conj(row[c])
 		}
 		row[0] = beta
 	}
-	return d, e, tauq, pv, taup
+}
+
+// storeP records the right reflector u (u[0] = 1, at column i+1) of step i.
+func (b *bidiag[T]) storeP(n, i int, u []T) {
+	if b.pv != nil {
+		for c := 1; c < len(u); c++ {
+			b.pv[(i+c)*(n-1)+i] = u[c]
+		}
+	}
+}
+
+// labrd reduces the nb rows and columns i0..i0+nb-1 of the m×n a (LAPACK
+// labrd), accumulating X and Y so that the trailing matrix becomes
+// A - V·Yᴴ - X·Uᴴ (V and U the left and right reflectors' vectors), which
+// is then applied by two GEMMs. All four are kept transposed — one vector
+// per row — so the corrections are dot products and axpys along contiguous
+// rows; A's own products are matrix-vector products along rows, of A for X
+// and of a transposed copy of the trailing block for Y.
+func labrd[T scalar](m, n, i0, nb int, a []T, b *bidiag[T]) {
+	mr, nc := m-i0, n-i0
+	vt, xt := make([]T, nb*mr), make([]T, nb*mr)
+	yt, ut := make([]T, nb*nc), make([]T, nb*nc)
+	at := make([]T, nc*mr) // the trailing block, transposed and conjugated
+	for r := 0; r < mr; r++ {
+		row := a[(i0+r)*n+i0 : (i0+r)*n+n]
+		for c, x := range row {
+			at[c*mr+r] = conj(x)
+		}
+	}
+	acc := make([]T, max(mr, nc))
+	t1, t2 := make([]T, nb), make([]T, nb)
+	for j := 0; j < nb; j++ {
+		i := i0 + j
+		// Column i of the current matrix, rows i onwards.
+		col := acc[:mr-j]
+		clear(col)
+		for p := 0; p < j; p++ {
+			axpy(col, vt[p*mr+j:(p+1)*mr], conj(yt[p*nc+j]))
+			axpy(col, xt[p*mr+j:(p+1)*mr], conj(ut[p*nc+j]))
+		}
+		for r, x := range col {
+			a[(i+r)*n+i] -= x
+		}
+		var x []T
+		if i+1 < m {
+			x = a[(i+1)*n+i:]
+		}
+		beta, tq := larfg(mr-j, a[i*n+i], x, n)
+		b.d[i], b.tauq[i] = re(beta), tq
+		a[i*n+i] = beta
+		v := vt[j*mr : (j+1)*mr]
+		v[j] = 1
+		for r := j + 1; r < mr; r++ {
+			v[r] = a[(i0+r)*n+i]
+		}
+		// y = tauq·(Aᴴv - Y·(Vᴴv) - U·(Xᴴv)), entries j+1 onwards.
+		y := yt[j*nc+j+1 : (j+1)*nc]
+		vj := v[j:]
+		matvec(nc-j-1, mr-j, at[(j+1)*mr+j:], mr, vj, y)
+		for p := 0; p < j; p++ {
+			t1[p] = dotc(vt[p*mr+j:(p+1)*mr], vj)
+			t2[p] = dotc(xt[p*mr+j:(p+1)*mr], vj)
+		}
+		for p := 0; p < j; p++ {
+			axpy(y, yt[p*nc+j+1:(p+1)*nc], -t1[p])
+			axpy(y, ut[p*nc+j+1:(p+1)*nc], -t2[p])
+		}
+		for c := range y {
+			y[c] *= tq
+		}
+		// Row i of the matrix after the left reflector, columns i+1 onwards.
+		row := a[i*n+i+1 : i*n+n]
+		rc := acc[:nc-j-1]
+		clear(rc)
+		for p := 0; p <= j; p++ {
+			axpy(rc, yt[p*nc+j+1:(p+1)*nc], conj(vt[p*mr+j]))
+		}
+		for p := 0; p < j; p++ {
+			axpy(rc, ut[p*nc+j+1:(p+1)*nc], conj(xt[p*mr+j]))
+		}
+		for c := range row {
+			row[c] = conj(row[c] - conj(rc[c]))
+		}
+		var yy []T
+		if i+2 < n {
+			yy = row[1:]
+		}
+		beta, tp := larfg(nc-j-1, row[0], yy, 1)
+		b.e[i], b.taup[i] = re(beta), tp
+		row[0] = 1
+		u := ut[j*nc+j+1 : (j+1)*nc]
+		copy(u, row)
+		b.storeP(n, i, row)
+		for c := range row {
+			row[c] = conj(row[c])
+		}
+		row[0] = beta
+		// x = taup·(A·u - V·(Yᴴu) - X·(Uᴴu)), entries j+1 onwards.
+		xr := xt[j*mr+j+1 : (j+1)*mr]
+		matvec(mr-j-1, nc-j-1, a[(i+1)*n+i+1:], n, u, xr)
+		for p := 0; p <= j; p++ {
+			t1[p] = dotc(yt[p*nc+j+1:(p+1)*nc], u)
+		}
+		for p := 0; p < j; p++ {
+			t2[p] = dotc(ut[p*nc+j+1:(p+1)*nc], u)
+		}
+		for p := 0; p <= j; p++ {
+			axpy(xr, vt[p*mr+j+1:(p+1)*mr], -t1[p])
+		}
+		for p := 0; p < j; p++ {
+			axpy(xr, xt[p*mr+j+1:(p+1)*mr], -t2[p])
+		}
+		for r := range xr {
+			xr[r] *= tp
+		}
+	}
+	// The trailing update.
+	tm, tn := mr-nb, nc-nb
+	c0 := (i0+nb)*n + i0 + nb
+	vv, xx := rm(vt, nb, mr), rm(xt, nb, mr) // nb×tm: Vᵀ and Xᵀ
+	yy, uu := rm(yt, nb, nc), rm(ut, nb, nc) // nb×tn: Yᵀ and Uᵀ
+	gemm(tm, tn, nb, -1, vv.t(), yy.c(), 1, a[c0:], n)
+	gemm(tm, tn, nb, -1, xx.t(), uu.c(), 1, a[c0:], n)
 }
 
 // las2 returns the singular values of the 2×2 upper triangular [f g; 0 h]
@@ -471,7 +619,8 @@ func svdOne[T scalar](m, n int, x []T, wantUV, full bool) (s []float64, u, vh []
 		ku := len(u2) / n // columns of U'
 		return s, adjoint(m, m, vh2), adjoint(n, ku, u2), true
 	}
-	d, e, tauq, pv, taup := gebd2(m, n, x, wantUV)
+	bd := gebrd(m, n, x, wantUV)
+	d, e, tauq, pv, taup := bd.d, bd.e, bd.tauq, bd.pv, bd.taup
 	if !wantUV {
 		return d, nil, nil, bdsqr[T](n, d, e, nil, 0, nil, 0)
 	}
@@ -479,23 +628,41 @@ func svdOne[T scalar](m, n int, x []T, wantUV, full bool) (s []float64, u, vh []
 	if full {
 		ncu = m
 	}
-	ut := transposed(m, ncu, orgqr(m, ncu, n, x, n, tauq))
-	vt := make([]T, n*n)
+	q := orgqr(m, ncu, n, x, n, tauq)
+	ph := make([]T, n*n) // Pᴴ
 	if n > 0 {
-		vt[0] = 1
+		ph[0] = 1
 	}
 	if n > 1 {
 		p := orgqr(n-1, n-1, n-1, pv, n-1, taup)
 		for r := 0; r < n-1; r++ {
 			for c := 0; c < n-1; c++ {
-				vt[(c+1)*n+r+1] = conj(p[r*(n-1)+c]) // Pᴴ
+				ph[(c+1)*n+r+1] = conj(p[r*(n-1)+c])
 			}
 		}
 	}
-	if !bdsqr(n, d, e, vt, n, ut, m) {
+	if n > dcLeaf {
+		// Divide and conquer on the bidiagonal, then U = Q·U_B, Vᴴ = V_Bᵀ·Pᴴ.
+		ub, vtb, ok := bdsdc(n, d, e)
+		if !ok {
+			return nil, nil, nil, false
+		}
+		u := mulMixed(m, n, n, rm(q, 0, ncu), rm(ub, 0, n))
+		if ncu > n {
+			full := make([]T, m*ncu)
+			for r := 0; r < m; r++ {
+				copy(full[r*ncu:r*ncu+n], u[r*n:(r+1)*n])
+				copy(full[r*ncu+n:(r+1)*ncu], q[r*ncu+n:(r+1)*ncu])
+			}
+			u = full
+		}
+		return d, u, mulMixedLeft(n, n, n, rm(vtb, 0, n), rm(ph, 0, n)), true
+	}
+	ut := transposed(m, ncu, q)
+	if !bdsqr(n, d, e, ph, n, ut, m) {
 		return nil, nil, nil, false
 	}
-	return d, transposed(ncu, m, ut), vt, true
+	return d, transposed(ncu, m, ut), ph, true
 }
 
 // adjoint returns the n×m conjugate transpose of the m×n matrix x.
