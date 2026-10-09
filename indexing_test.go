@@ -38,11 +38,14 @@ func TestMaskSelect(t *testing.T) {
 func TestNonzero(t *testing.T) {
 	m, _ := FromData([]float64{0, 1, 0, 1, 0, 1}, 2, 3)
 	nz := m.Nonzero()
-	// np.flatnonzero -> [1, 3, 5].
-	wantData(t, nz, []int{3}, []float64{1, 3, 5})
+	// np.flatnonzero -> [1, 3, 5], dtype int64.
+	if nz.DType() != Int64 {
+		t.Fatalf("dtype = %v, want int64", nz.DType())
+	}
+	wantData(t, nz.AsType(Float64), []int{3}, []float64{1, 3, 5})
 
 	all0, _ := Zeros(3)
-	wantData(t, all0.Nonzero(), []int{0}, []float64{})
+	wantData(t, all0.Nonzero().AsType(Float64), []int{0}, []float64{})
 }
 
 func TestTake(t *testing.T) {

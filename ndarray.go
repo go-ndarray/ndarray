@@ -1,6 +1,8 @@
 // Package ndarray is a pure-Go (CGO=0) NumPy-style N-dimensional array library.
 //
-// The element type is float64. The numeric kernels live in internal/kernels
+// An array holds one of thirteen element types (DType), chosen at run time as
+// in NumPy and combined by NumPy's promotion rules; Float64 is the default
+// and the most optimised. The numeric kernels live in internal/kernels
 // behind a contiguous-slice API: go-asmgen SIMD kernels on amd64, arm64,
 // ppc64le, loong64, riscv64 and s390x, pure Go on the 32-bit targets. See docs/plan-ndarray.md for the
 // roadmap.
@@ -26,9 +28,13 @@ import (
 	"github.com/go-ndarray/ndarray/internal/kernels"
 )
 
-// Array is an N-dimensional, row-major array of float64.
+// Array is an N-dimensional, row-major array. Its element type is a runtime
+// property, DType (Float64 unless made otherwise).
 type Array struct {
-	data    []float64
+	data    []float64 // storage when dtype is Float64: the hot path, untouched by dtypes
+	ext     any       // storage for every other dtype: a []T, see storage.go
+	dtype   DType
+	weak    scalarKind // set only on the 0-d operands made from Go scalars
 	shape   []int
 	strides []int
 	offset  int
@@ -232,12 +238,22 @@ func (a *Array) flatIndex(idx []int) int {
 }
 
 // At returns the element at the given multi-dimensional index.
+// For a dtype other than Float64 the element is converted to float64; on a
+// complex array At panics (the imaginary part would be lost): use AtComplex.
 func (a *Array) At(idx ...int) float64 {
+	if a.dtype != Float64 {
+		return elemFloat(a.ext, a.flatIndex(idx))
+	}
 	return a.data[a.flatIndex(idx)]
 }
 
-// Set stores v at the given multi-dimensional index.
+// Set stores v at the given multi-dimensional index, converted to the array's
+// dtype as AsType converts.
 func (a *Array) Set(v float64, idx ...int) {
+	if a.dtype != Float64 {
+		setFloat(a.ext, a.flatIndex(idx), v)
+		return
+	}
 	a.data[a.flatIndex(idx)] = v
 }
 
@@ -279,7 +295,14 @@ func (a *Array) forEach(f func(linear, pos int)) {
 //     O(n) per-element gather into O(outer) memmoves of length inner.
 //   - Otherwise (e.g. a transposed view, where the last axis is strided): the
 //     general per-element gather.
+//
+// For a dtype other than Float64 it returns the elements converted to float64
+// (the real part of complex ones), so a float64 kernel never reads storage of
+// another type.
 func (a *Array) materialize() []float64 {
+	if a.dtype != Float64 {
+		return a.AsType(Float64).data
+	}
 	n := a.Size()
 	out := a.alloc(n, false) // every element is written below
 	if n == 0 {
@@ -332,12 +355,18 @@ func (a *Array) isContiguous() bool {
 			return false
 		}
 	}
+	if a.dtype != Float64 {
+		return a.Size() == storeLen(a.ext)
+	}
 	return a.Size() == len(a.data)
 }
 
 // Copy returns a deep, contiguous copy of the array.
 func (a *Array) Copy() *Array {
 	cp := append([]int(nil), a.shape...)
+	if a.dtype != Float64 {
+		return a.result(cloneStore(a.contiguousStore()), cp)
+	}
 	return &Array{
 		data:    a.materialize(),
 		shape:   cp,
@@ -395,12 +424,10 @@ func (a *Array) Reshape(shape ...int) (*Array, error) {
 	}
 	cp := append([]int(nil), shape...)
 	if a.isContiguous() {
-		return &Array{
-			data:    a.data,
-			shape:   cp,
-			strides: rowMajorStrides(cp),
-			ws:      a.ws,
-		}, nil
+		return a.view(cp, rowMajorStrides(cp), 0), nil
+	}
+	if a.dtype != Float64 {
+		return a.result(gatherStore(a), cp), nil
 	}
 	return &Array{
 		data:    a.materialize(),
@@ -413,6 +440,9 @@ func (a *Array) Reshape(shape ...int) (*Array, error) {
 // Ravel returns a contiguous 1-D array containing the elements in row-major
 // order.
 func (a *Array) Ravel() *Array {
+	if a.dtype != Float64 {
+		return a.result(cloneStore(a.contiguousStore()), []int{a.Size()})
+	}
 	data := a.materialize()
 	return &Array{
 		data:    data,
@@ -432,16 +462,11 @@ func (a *Array) Transpose() *Array {
 		shape[i] = a.shape[n-1-i]
 		strides[i] = a.strides[n-1-i]
 	}
-	return &Array{
-		data:    a.data,
-		shape:   shape,
-		strides: strides,
-		offset:  a.offset,
-		ws:      a.ws,
-	}
+	return a.view(shape, strides, a.offset)
 }
 
-// String renders the array's shape and its elements in row-major order.
+// String renders the array's shape and its elements in row-major order, and
+// its dtype when that is not Float64.
 func (a *Array) String() string {
 	var b strings.Builder
 	b.WriteString("Array(shape=[")
@@ -451,13 +476,17 @@ func (a *Array) String() string {
 		}
 		b.WriteString(strconv.Itoa(d))
 	}
-	b.WriteString("], data=[")
-	flat := a.materialize()
-	for i, v := range flat {
+	b.WriteString("], ")
+	if a.dtype != Float64 {
+		b.WriteString("dtype=" + a.dtype.String() + ", ")
+	}
+	b.WriteString("data=[")
+	flat := a.contiguousStore()
+	for i := range a.Size() {
 		if i > 0 {
 			b.WriteByte(' ')
 		}
-		b.WriteString(strconv.FormatFloat(v, 'g', -1, 64))
+		b.WriteString(elemString(flat, i))
 	}
 	b.WriteString("])")
 	return b.String()
@@ -675,16 +704,16 @@ func repeatOperands(a, b *Array, shape []int) (full, rep []float64, repFirst, ok
 }
 
 // Add returns the elementwise sum a+b with broadcasting.
-func (a *Array) Add(b *Array) (*Array, error) { return a.binOp(b, kernels.AddP) }
+func (a *Array) Add(b *Array) (*Array, error) { return a.arith(b, opAdd, kernels.AddP) }
 
 // Sub returns the elementwise difference a-b with broadcasting.
-func (a *Array) Sub(b *Array) (*Array, error) { return a.binOp(b, kernels.SubP) }
+func (a *Array) Sub(b *Array) (*Array, error) { return a.arith(b, opSub, kernels.SubP) }
 
 // Mul returns the elementwise product a*b with broadcasting.
-func (a *Array) Mul(b *Array) (*Array, error) { return a.binOp(b, kernels.MulP) }
+func (a *Array) Mul(b *Array) (*Array, error) { return a.arith(b, opMul, kernels.MulP) }
 
 // Div returns the elementwise quotient a/b with broadcasting.
-func (a *Array) Div(b *Array) (*Array, error) { return a.binOp(b, kernels.DivP) }
+func (a *Array) Div(b *Array) (*Array, error) { return a.arith(b, opDiv, kernels.DivP) }
 
 // binOpInto writes a OP b into the caller-provided contiguous out array, the
 // no-allocation analogue of binOp and of NumPy's `np.add(a, b, out=z)`. It is
@@ -717,20 +746,22 @@ func (a *Array) binOpInto(out, b *Array, kernel func(dst, x, y []float64)) error
 // AddInto writes a+b into out (no allocation), the parity-path analogue of
 // np.add(a, b, out=out). out must be contiguous and the broadcast result shape;
 // it may alias a or b. See binOpInto.
-func (a *Array) AddInto(out, b *Array) error { return a.binOpInto(out, b, kernels.AddP) }
+func (a *Array) AddInto(out, b *Array) error { return a.arithInto(out, b, opAdd, kernels.AddP) }
 
 // SubInto writes a-b into out (no allocation). See AddInto.
-func (a *Array) SubInto(out, b *Array) error { return a.binOpInto(out, b, kernels.SubP) }
+func (a *Array) SubInto(out, b *Array) error { return a.arithInto(out, b, opSub, kernels.SubP) }
 
 // MulInto writes a*b into out (no allocation). See AddInto.
-func (a *Array) MulInto(out, b *Array) error { return a.binOpInto(out, b, kernels.MulP) }
+func (a *Array) MulInto(out, b *Array) error { return a.arithInto(out, b, opMul, kernels.MulP) }
 
 // DivInto writes a/b into out (no allocation). See AddInto.
-func (a *Array) DivInto(out, b *Array) error { return a.binOpInto(out, b, kernels.DivP) }
+func (a *Array) DivInto(out, b *Array) error { return a.arithInto(out, b, opDiv, kernels.DivP) }
 
-// scalarArray wraps a scalar as a 0-d array so it broadcasts against anything.
+// scalarArray wraps a scalar as a weak 0-d array so it broadcasts against
+// anything and takes the other operand's dtype when that is inexact (see
+// Scalar).
 func scalarArray(v float64) *Array {
-	return &Array{data: []float64{v}, shape: []int{}, strides: []int{}}
+	return &Array{data: []float64{v}, shape: []int{}, strides: []int{}, weak: weakFloat}
 }
 
 // AddScalar returns the array with v added to every element.
@@ -754,7 +785,14 @@ func (a *Array) DivScalar(v float64) *Array { r, _ := a.Div(scalarArray(v)); ret
 // not panic: on a large array a panic may happen on a worker goroutine, which
 // ends the program as any unrecovered goroutine panic does. A panic on the
 // calling goroutine propagates once the workers have stopped writing.
+//
+// On an array of another dtype, f is applied to the elements converted to
+// float64 and the result is Float64; on a complex array Map panics.
 func (a *Array) Map(f func(float64) float64) *Array {
+	if a.dtype != Float64 {
+		a.realOnly("Map", "Real, Imag or Abs first")
+		return a.AsType(Float64).Map(f)
+	}
 	src := a.contiguousData()
 	dst := a.alloc(len(src), false)
 	kernels.MapP(dst, src, f)
@@ -773,10 +811,25 @@ func (a *Array) contiguousData() []float64 {
 }
 
 // Neg returns the elementwise negation.
-func (a *Array) Neg() *Array { return a.Map(func(x float64) float64 { return -x }) }
+//
+// Integer arrays wrap, as in NumPy; negating a Bool array panics (use
+// LogicalNot).
+func (a *Array) Neg() *Array {
+	if a.dtype != Float64 {
+		return a.intUnary(uNeg, (*Array).Neg)
+	}
+	return a.Map(func(x float64) float64 { return -x })
+}
 
 // Abs returns the elementwise absolute value.
-func (a *Array) Abs() *Array { return a.Map(kernels.Abs) }
+// For a complex array it is the modulus, as a float array of the same
+// precision; other dtypes are kept.
+func (a *Array) Abs() *Array {
+	if a.dtype != Float64 {
+		return a.intUnary(uAbs, (*Array).Abs)
+	}
+	return a.Map(kernels.Abs)
+}
 
 // --- reductions ------------------------------------------------------------
 
@@ -784,14 +837,36 @@ func (a *Array) Abs() *Array { return a.Map(kernels.Abs) }
 // computed as a tree of per-core partials, so the result can differ from a
 // strictly left-to-right sum by a few ULP (floating-point addition is not
 // associative) — the same trade-off NumPy's pairwise summation makes.
-func (a *Array) Sum() float64 { return kernels.SumP(a.contiguousData()) }
+//
+// For another dtype the sum is accumulated as NumPy accumulates it (exactly,
+// in int64 or uint64, for integers) and converted to float64; on a complex
+// array Sum panics: SumAll keeps the dtype.
+func (a *Array) Sum() float64 {
+	if a.dtype != Float64 {
+		a.realOnly("Sum", "SumAll")
+		return elemFloat(a.SumAll().ext, 0)
+	}
+	return kernels.SumP(a.contiguousData())
+}
 
 // Prod returns the product of all elements (1 for an empty array).
-func (a *Array) Prod() float64 { return kernels.Prod(a.contiguousData()) }
+// See Sum for other dtypes; ProdAll keeps the dtype.
+func (a *Array) Prod() float64 {
+	if a.dtype != Float64 {
+		a.realOnly("Prod", "ProdAll")
+		return elemFloat(a.ProdAll().ext, 0)
+	}
+	return kernels.Prod(a.contiguousData())
+}
 
 // Mean returns the arithmetic mean of all elements. It returns an error for an
 // empty array.
+// On a complex array it panics; use MeanAxis.
 func (a *Array) Mean() (float64, error) {
+	if a.dtype != Float64 {
+		a.realOnly("Mean", "MeanAxis")
+		return a.AsType(Float64).Mean()
+	}
 	n := a.Size()
 	if n == 0 {
 		return 0, fmt.Errorf("%w: mean of empty array", ErrShapeMismatch)
@@ -800,7 +875,12 @@ func (a *Array) Mean() (float64, error) {
 }
 
 // Max returns the maximum element. It returns an error for an empty array.
+// On a complex array it panics; use MaxAxis.
 func (a *Array) Max() (float64, error) {
+	if a.dtype != Float64 {
+		a.realOnly("Max", "MaxAxis")
+		return a.AsType(Float64).Max()
+	}
 	if a.Size() == 0 {
 		return 0, fmt.Errorf("%w: max of empty array", ErrShapeMismatch)
 	}
@@ -808,7 +888,12 @@ func (a *Array) Max() (float64, error) {
 }
 
 // Min returns the minimum element. It returns an error for an empty array.
+// On a complex array it panics; use MinAxis.
 func (a *Array) Min() (float64, error) {
+	if a.dtype != Float64 {
+		a.realOnly("Min", "MinAxis")
+		return a.AsType(Float64).Min()
+	}
 	if a.Size() == 0 {
 		return 0, fmt.Errorf("%w: min of empty array", ErrShapeMismatch)
 	}
@@ -894,6 +979,9 @@ func (a *Array) reduceAxis(
 // is kept with length 1 (e.g. (2,3) summed over axis 0 -> (1,3)); otherwise it
 // is removed (-> (3,)). A negative axis counts from the end.
 func (a *Array) SumAxis(axis int, keepdims bool) (*Array, error) {
+	if a.dtype != Float64 {
+		return a.reduceTyped(axis, keepdims, rSum)
+	}
 	return a.reduceAxisOr(axis, keepdims, kernels.SumAxis, 0)
 }
 
@@ -924,24 +1012,39 @@ func (a *Array) reduceAxisOr(
 // ProdAxis returns the product along the given axis. See SumAxis for the
 // axis/keepdims semantics.
 func (a *Array) ProdAxis(axis int, keepdims bool) (*Array, error) {
+	if a.dtype != Float64 {
+		return a.reduceTyped(axis, keepdims, rProd)
+	}
 	return a.reduceAxisOr(axis, keepdims, kernels.ProdAxis, 1)
 }
 
 // MaxAxis returns the maximum along the given axis. See SumAxis for the
 // axis/keepdims semantics.
 func (a *Array) MaxAxis(axis int, keepdims bool) (*Array, error) {
+	if a.dtype != Float64 {
+		return a.reduceTyped(axis, keepdims, rMax)
+	}
 	return a.reduceAxis(axis, keepdims, kernels.MaxAxis)
 }
 
 // MinAxis returns the minimum along the given axis. See SumAxis for the
 // axis/keepdims semantics.
 func (a *Array) MinAxis(axis int, keepdims bool) (*Array, error) {
+	if a.dtype != Float64 {
+		return a.reduceTyped(axis, keepdims, rMin)
+	}
 	return a.reduceAxis(axis, keepdims, kernels.MinAxis)
 }
 
 // MeanAxis returns the arithmetic mean along the given axis. See SumAxis for the
 // axis/keepdims semantics.
+//
+// The mean of an integer or Bool array is Float64; Float32 and complex arrays
+// keep their dtype.
 func (a *Array) MeanAxis(axis int, keepdims bool) (*Array, error) {
+	if a.dtype == Bool || a.dtype.IsInteger() {
+		return a.AsType(Float64).MeanAxis(axis, keepdims)
+	}
 	ax, err := a.normalizeAxis(axis)
 	if err != nil {
 		return nil, err
@@ -954,6 +1057,9 @@ func (a *Array) MeanAxis(axis int, keepdims bool) (*Array, error) {
 	}
 	r, _ := a.SumAxis(ax, keepdims) // ax is valid and non-empty: cannot fail
 	n := float64(a.shape[ax])
+	if a.dtype != Float64 {
+		return r.arith(Scalar(n), opDiv, kernels.DivP)
+	}
 	for i := range r.data {
 		r.data[i] /= n
 	}

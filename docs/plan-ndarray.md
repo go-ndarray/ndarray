@@ -151,8 +151,10 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   into the flattened array, negative indices from the end). These give NumPy
   boolean indexing today using the 0/1 masks the comparison ufuncs return; a
   first-class bool dtype (so masks are real booleans) remains Phase 2.
-- **Phase 2 — dtypes.** Generalise beyond `float64` (float32, int64/int32,
-  complex128, bool) with a dtype abstraction; typed kernels.
+- **Phase 2 — dtypes — DONE.** Thirteen dtypes (bool, signed and unsigned
+  integers, float32/64, complex64/128) as a runtime property of `Array`,
+  with NumPy 2.x promotion; see [design-dtypes.md](design-dtypes.md). Next:
+  SIMD kernels for `float32`, and the `fft` bridge.
 - **Phase 3 — broadcasting ufuncs.** A general ufunc framework over views
   (the axis-reduction primitives above are the first step); more elementwise
   and reduction ufuncs.
@@ -172,6 +174,8 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
 3. **Errors, not panics, for shape/broadcast problems**; panics reserved for
    programmer index errors (matching Go slice semantics). *Settled.*
 4. **`float64` first**, dtype abstraction deferred to Phase 2 but kept in mind
-   so the kernel interface generalises cleanly.
+   so the kernel interface generalises cleanly. *Superseded:* Phase 2 is now
+   designed in [design-dtypes.md](design-dtypes.md) — the dtype is a runtime
+   property of the one `Array` type, with NumPy 2.x promotion.
 
 BSD-3-Clause.
