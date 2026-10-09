@@ -576,31 +576,13 @@ func eighOne[T scalar](n int, x []T, uplo UPLO, wantV bool) ([]float64, []T, boo
 		if !ok {
 			return nil, nil, false
 		}
-		return d, mulRealT(n, q, zt), true
+		return d, mulMixed(n, n, n, rm(q, 0, n), rm(zt, 0, n).t()), true
 	}
 	zt := transposed(n, n, q) // rows of zt are the columns of Q
 	if !steqr(n, d, e, zt, n) {
 		return nil, nil, false
 	}
 	return d, transposed(n, n, zt), true
-}
-
-// mulRealT returns Q·Zᵀ for an n×n Q and a real n×n Z given as zt.
-func mulRealT[T scalar](n int, q []T, zt []float64) []T {
-	out := make([]T, n*n)
-	if qf, ok := any(q).([]float64); ok {
-		gemm(n, n, n, 1, rm(qf, 0, n), rm(zt, 0, n).t(), 0, any(out).([]float64), n)
-		return out
-	}
-	qr, qi := split(n, n, rm(q, 0, n))
-	re, im := make([]float64, n*n), make([]float64, n*n)
-	gemm(n, n, n, 1, rm(qr, 0, n), rm(zt, 0, n).t(), 0, re, n)
-	gemm(n, n, n, 1, rm(qi, 0, n), rm(zt, 0, n).t(), 0, im, n)
-	oz := any(out).([]complex128)
-	for i := range oz {
-		oz[i] = complex(re[i], im[i])
-	}
-	return out
 }
 
 // transposed returns the n×m transpose of the m×n row-major matrix x.

@@ -567,3 +567,29 @@ func (br blockReflector[T]) applyRight(m int, c []T, ldc int) {
 	gemm(m, k, k, 1, rm(w, 0, k), rm(br.t, 0, k), 0, wt, k)
 	gemm(m, n, k, -1, rm(wt, 0, k), rm(br.v, 0, k).h(), 1, c, ldc)
 }
+
+// mulMixed returns the m×n product A·B of an m×k A of either type and a real
+// k×n B, through the float64 GEMM (twice, for the parts of a complex A).
+func mulMixed[T scalar](m, n, k int, a mview[T], b mview[float64]) []T {
+	out := make([]T, m*n)
+	if af, ok := any(a).(mview[float64]); ok {
+		gemm(m, n, k, 1, af, b, 0, any(out).([]float64), n)
+		return out
+	}
+	ar, ai := split(m, k, a)
+	re, im := make([]float64, m*n), make([]float64, m*n)
+	gemm(m, n, k, 1, rm(ar, 0, k), b, 0, re, n)
+	gemm(m, n, k, 1, rm(ai, 0, k), b, 0, im, n)
+	oz := any(out).([]complex128)
+	for i := range oz {
+		oz[i] = complex(re[i], im[i])
+	}
+	return out
+}
+
+// mulMixedLeft returns the m×n product A·B of a real m×k A and a k×n B of
+// either type.
+func mulMixedLeft[T scalar](m, n, k int, a mview[float64], b mview[T]) []T {
+	// (A·B)ᵀ = Bᵀ·Aᵀ
+	return transposed(n, m, mulMixed(n, m, k, b.t(), a.t()))
+}
