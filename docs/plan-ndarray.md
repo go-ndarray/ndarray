@@ -127,7 +127,8 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
     reports LASX), and since v0.7.0 riscv64 has RVV kernels (sum, dot, sqrt,
     elementwise, and since v0.7.1 a 6×8 GEMM micro-kernel; used when the CPU
     reports V), and since v0.8.0 s390x has vector-facility kernels (sum, dot,
-    sqrt, elementwise, and since v0.9.0 a 4×8 GEMM micro-kernel; measured on a
+    sqrt, elementwise, since v0.9.0 a 4×8 GEMM micro-kernel and since v0.9.1
+    max/min on z14 and later; measured on a
     real IBM z17). The
     32-bit targets keep the
     validated scalar oracles plus a scalar 4×4 GEMM micro-kernel over the

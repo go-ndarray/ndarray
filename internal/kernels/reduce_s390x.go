@@ -10,9 +10,9 @@ import "os"
 //
 //go:generate sh -c "cd asmgen/s390x && go run . && mv sum_s390x.s ../../sum_s390x.s"
 //
-// max/min stay on the scalar reducers: the vector max with NumPy's NaN rule
-// (VFMAXDB, Java mode) needs the z14's vector-enhancements facility, beyond the
-// z13 Go supports.
+// max/min use the vector max with NumPy's NaN rule (VFMAXDB, Java mode) on
+// a z14 or later (vector-enhancements facility 1, AT_HWCAP VXRS_EXT), and the
+// scalar reducers on the z13 that Go also supports.
 
 // HaveReduceSIMD reports that this build ships SIMD kernels; they run when
 // useVX is true.
@@ -46,8 +46,34 @@ func sqrtSIMD(dst, src []float64) {
 	sqrtVX(&dst[0], &src[0], len(dst))
 }
 
-func maxSIMD(a []float64) float64 { return maxUnrolled(a) }
-func minSIMD(a []float64) float64 { return minUnrolled(a) }
+// hwcapVXE is HWCAP_S390_VXRS_EXT (bit 13), the vector-enhancements facility 1
+// of the z14, which brings VFMAXDB/VFMINDB.
+const hwcapVXE = 1 << 13
+
+// useVXE selects the vector max/min. A var so tests can force the scalar path.
+var useVXE = vxeFromAuxv()
+
+func vxeFromAuxv() bool {
+	auxv, err := os.ReadFile("/proc/self/auxv")
+	return err == nil && hwcapFrom(auxv)&hwcapVXE != 0
+}
+
+// maxSIMD / minSIMD are the NaN-propagating extrema of a (non-empty): the
+// VFMAXDB/VFMINDB kernel in Java mode from eight elements up on a z14 or
+// later, the four-chain scalar reducer otherwise.
+func maxSIMD(a []float64) float64 {
+	if !useVXE || len(a) < 8 {
+		return maxUnrolled(a)
+	}
+	return maxVXE(&a[0], len(a))
+}
+
+func minSIMD(a []float64) float64 {
+	if !useVXE || len(a) < 8 {
+		return minUnrolled(a)
+	}
+	return minVXE(&a[0], len(a))
+}
 
 func addBin(dst, a, b []float64) {
 	if !useVX || len(dst) == 0 {
@@ -114,3 +140,9 @@ func mulVX(dst, a, b *float64, n int)
 
 //go:noescape
 func divVX(dst, a, b *float64, n int)
+
+//go:noescape
+func maxVXE(a *float64, n int) float64
+
+//go:noescape
+func minVXE(a *float64, n int) float64

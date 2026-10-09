@@ -57,6 +57,14 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-09 (v0.9.1).** New s390x `maxVXE`/`minVXE` kernels, gated on
+AT_HWCAP VXRS_EXT (z14 and later), each behind its wrapper: from eight
+elements up, with no pointer arithmetic beyond `len(a)`. On the real z17 they
+pass `TestMaxMinSIMD`, the specials-in-every-lane test, the fence tests and the
+parallel stress test. A copy using mode 0 (IEEE maxNum, which returns the
+number when the other operand is a NaN) fails there, so the NaN rule is
+checked, not assumed.
+
 **2026-10-09 (v0.9.0).**
 
 - **The Go floor is 1.27.2.** At 1.27.1, `govulncheck` listed standard-library
