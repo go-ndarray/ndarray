@@ -100,7 +100,11 @@ is wrong on subnormals
 
 On Apple silicon the GEMM reached parity with tuned BLAS at 1024² (OpenBLAS in
 an arm64 VM, single-threaded vecLib on an M4 Max), and every product beats the
-pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). It is a
+pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). On the other
+targets, against go-ndarray's own scalar code on one core: on a RISC-V
+SpacemiT X60 the RVV kernels cut `Sum` by up to 5.8× and `MatMul` time by
+31–45%; on an IBM z17 the s390x kernels cut `MatMul` 1024² from 340 to 70 ms
+and `Max` by 92–96% ([docs/perf.md](docs/perf.md), *SIMD coverage*). It is a
 **standalone, reusable** module and the cgo-free ndarray backend behind
 [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby)'s `NDArray` class.
 
