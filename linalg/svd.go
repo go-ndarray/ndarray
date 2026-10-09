@@ -563,8 +563,10 @@ func svdT[T scalar](o operand, wantUV, full bool) (*ndarray.Array, *ndarray.Arra
 			return
 		}
 		copy(ss[i*k:], s)
-		copy(us[i*m*mu:], u)
-		copy(vs[i*nv*n:], vh)
+		if wantUV {
+			copy(us[i*m*mu:], u)
+			copy(vs[i*nv*n:], vh)
+		}
 	})
 	if fe.err != nil {
 		return nil, nil, nil, fe.err
