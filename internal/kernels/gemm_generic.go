@@ -1,4 +1,4 @@
-//go:build !arm64 && !amd64 && !ppc64le && !loong64 && !riscv64
+//go:build !arm64 && !amd64 && !ppc64le && !loong64 && !riscv64 && !s390x
 
 package kernels
 

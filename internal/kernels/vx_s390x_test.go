@@ -12,6 +12,7 @@ func TestVXDetected(t *testing.T) {
 	t.Run("scalar", func(t *testing.T) {
 		TestBinSIMD(t)
 		TestSumSIMD(t)
+		TestGemmParallelYielding(t) // gemmMicroGo against the oracle
 
 	})
 }

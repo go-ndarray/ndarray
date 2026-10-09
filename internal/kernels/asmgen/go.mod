@@ -4,6 +4,6 @@
 // go-asmgen to (re)produce the committed .s files via `go generate`.
 module github.com/go-ndarray/ndarray/internal/kernels/asmgen
 
-go 1.27.1
+go 1.27.2
 
 require github.com/go-asmgen/asmgen v0.16.0

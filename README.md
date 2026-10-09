@@ -3,8 +3,9 @@
 # ndarray — go-ndarray
 
 [![Docs](https://img.shields.io/badge/docs-mkdocs--material-013243)](https://go-ndarray.github.io/docs/)
+[![Playground](https://img.shields.io/badge/playground-try%20it%20in%20your%20browser-013243)](https://go-ndarray.github.io/playground/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.27.1%2B-00ADD8)](https://go.dev/dl/)
+[![Go](https://img.shields.io/badge/go-1.27.2%2B-00ADD8)](https://go.dev/dl/)
 [![Status](https://img.shields.io/badge/status-numpy%20parity%20(float64)-9a6700)](docs/plan-ndarray.md)
 
 **A pure-Go (CGO=0) NumPy-style N-dimensional array library.** Row-major
@@ -29,6 +30,9 @@
 - **Memory reuse** — `Workspace`, an arena for loops: bind the inputs with
   `ws.Use`, compute as usual, `ws.Reset()` at the end of each pass. Results stop
   costing the garbage collector anything (see below).
+
+**Try it without installing anything:** the [playground](https://go-ndarray.github.io/playground/)
+runs go-ndarray compiled to WebAssembly in your browser.
 
 ### Loops: `Workspace`
 
@@ -66,9 +70,8 @@ arm64, VSX on ppc64le, LASX on loong64, RVV on riscv64 and the vector facility
 on s390x, the last three when the CPU has them), max/min too on
 amd64 and arm64, and a **panel-packed, cache-blocked GEMM** with an SIMD-FMA
 micro-kernel (NEON 4×8; AVX2/FMA 6×8 chosen at run time, SSE2 fallback; VSX
-8×8; LASX 8×8; RVV 6×8), the OpenBLAS/BLIS structure. The 32-bit targets run
-the same pure-Go code those kernels are tested against. The s390x kernels are
-validated under emulation only (no s390x host was reachable to measure them). `Exp` and `Log` are ports of Arm's optimized-routines
+8×8; LASX 8×8; RVV 6×8; s390x 4×8), the OpenBLAS/BLIS structure. The 32-bit
+targets run the same pure-Go code those kernels are tested against. `Exp` and `Log` are ports of Arm's optimized-routines
 (≤ 0.51 ULP measured, against up to 0.88 and 0.72 for Go's
 `math.Exp`/`math.Log` on arm64),
 and they are correct where amd64's `math.Exp` returns +Inf
