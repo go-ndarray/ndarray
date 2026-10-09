@@ -36,6 +36,14 @@
 - **Fourier transforms** — package [`fft`](fft) is `numpy.fft` on arrays
   (`FFT`/`RFFT`/`FFT2`/`FFTN`/… with `n`/`s`, `axes` and `norm`, single
   precision kept), on [go-fft](https://github.com/go-fft/fft).
+- **Random numbers** — package [`random`](random) is `numpy.random` with
+  **NumPy's numbers for the same seed**: `SeedSequence`, PCG64 (default),
+  PCG64DXSM, MT19937, Philox, SFC64; `Generator` (`DefaultRNG`: uniform,
+  integers, ziggurat normal/exponential, gamma, beta, binomial, Poisson,
+  choice, shuffle, … 40 samplers) and the legacy `RandomState` behind
+  `random.Seed(0)` / `random.Rand(…)`. Bit-exact against NumPy 2.5.3 on
+  x86-64; see [docs/random.md](docs/random.md) for the few ULP-level
+  exceptions (C-library `log`/`exp` rounding) and NumPy's own aarch64 drift.
 - **Memory reuse** — `Workspace`, an arena for loops: bind the inputs with
   `ws.Use`, compute as usual, `ws.Reset()` at the end of each pass. Results stop
   costing the garbage collector anything (see below).
@@ -206,6 +214,12 @@ z := i8.AsType(ndarray.Complex128)                  // complex128
 
 // numpy.fft
 spec, _ := fft.RFFT(row)                            // complex128, 2 bins
+
+// numpy.random, the same numbers as NumPy for the same seed
+rng := random.DefaultRNG(42)                        // np.random.default_rng(42)
+noise, _ := rng.StandardNormal(2, 3)                // rng.standard_normal((2, 3))
+random.Seed(0)                                      // np.random.seed(0)
+u, _ := random.Rand(3)                              // [0.5488135 0.71518937 0.60276338]
 
 // linear algebra
 b, _ := ndarray.Arange(0, 6, 1)
