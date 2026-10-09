@@ -36,6 +36,10 @@
 - **Fourier transforms** — package [`fft`](fft) is `numpy.fft` on arrays
   (`FFT`/`RFFT`/`FFT2`/`FFTN`/… with `n`/`s`, `axes` and `norm`, single
   precision kept), on [go-fft](https://github.com/go-fft/fft).
+- **Notebooks and storage** — `Repr` prints like NumPy (summarised above
+  1000 elements), `Display` gives a notebook a text and an HTML table, and
+  `MarshalBinary`/`UnmarshalBinary` encode an array the same way on every
+  architecture (so gob and the go-notebook kernel keep arrays).
 - **Memory reuse** — `Workspace`, an arena for loops: bind the inputs with
   `ws.Use`, compute as usual, `ws.Reset()` at the end of each pass. Results stop
   costing the garbage collector anything (see below).
