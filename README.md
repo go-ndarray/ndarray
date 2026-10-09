@@ -2,7 +2,7 @@
 
 # ndarray — go-ndarray
 
-[![Docs](https://img.shields.io/badge/docs-mkdocs--material-013243)](https://go-ndarray.github.io/docs/)
+[![Docs](https://img.shields.io/badge/docs-hugo%20%2B%20hextra-013243)](https://go-ndarray.github.io/docs/)
 [![Playground](https://img.shields.io/badge/playground-try%20it%20in%20your%20browser-013243)](https://go-ndarray.github.io/playground/)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.27.2%2B-00ADD8)](https://go.dev/dl/)
