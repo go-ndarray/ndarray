@@ -16,3 +16,16 @@ func TestVXDetected(t *testing.T) {
 
 	})
 }
+
+// TestVXEDetected runs the max/min checks with the vector kernel forced off
+// too, and logs which path this machine takes.
+func TestVXEDetected(t *testing.T) {
+	t.Logf("useVXE = %v (AT_HWCAP)", useVXE)
+	saved := useVXE
+	useVXE = false
+	defer func() { useVXE = saved }()
+	t.Run("scalar", func(t *testing.T) {
+		TestMaxMinSIMD(t)
+		TestMaxMinSIMDSpecialsInVectorLanes(t)
+	})
+}

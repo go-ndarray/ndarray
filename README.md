@@ -68,7 +68,7 @@ loops are [go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels: sum,
 add/sub/mul/div, sqrt and the dot product (SSE2 or AVX2/FMA on amd64, NEON on
 arm64, VSX on ppc64le, LASX on loong64, RVV on riscv64 and the vector facility
 on s390x, the last three when the CPU has them), max/min too on
-amd64 and arm64, and a **panel-packed, cache-blocked GEMM** with an SIMD-FMA
+amd64, arm64 and s390x (z14 and later), and a **panel-packed, cache-blocked GEMM** with an SIMD-FMA
 micro-kernel (NEON 4×8; AVX2/FMA 6×8 chosen at run time, SSE2 fallback; VSX
 8×8; LASX 8×8; RVV 6×8; s390x 4×8), the OpenBLAS/BLIS structure. The 32-bit
 targets run the same pure-Go code those kernels are tested against. `Exp` and `Log` are ports of Arm's optimized-routines

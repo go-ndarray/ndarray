@@ -331,3 +331,73 @@ TEXT ·gemmMicro4x8VX(SB), NOSPLIT, $0-40
 	VSTM V24, V27, (R1)
 	RET
 
+TEXT ·maxVXE(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R1
+	MOVD n+8(FP), R2
+	VLM (R1), V16, V19
+	ADD $64, R1
+	SUB $8, R2
+	loop:
+	CMP R2, $8
+	BLT fold
+	VLM (R1), V0, V3
+	VFMAXDB $1, V0, V16, V16
+	VFMAXDB $1, V1, V17, V17
+	VFMAXDB $1, V2, V18, V18
+	VFMAXDB $1, V3, V19, V19
+	ADD $64, R1
+	SUB $8, R2
+	BR loop
+	fold:
+	VFMAXDB $1, V17, V16, V16
+	VFMAXDB $1, V19, V18, V18
+	VFMAXDB $1, V18, V16, V0
+	VREPG $1, V0, V1
+	WFMAXDB $1, F1, F0, F0
+	tail:
+	CMP R2, $0
+	BEQ done
+	FMOVD (R1), F1
+	WFMAXDB $1, F1, F0, F0
+	ADD $8, R1
+	SUB $1, R2
+	BR tail
+	done:
+	FMOVD F0, ret+16(FP)
+	RET
+
+TEXT ·minVXE(SB), NOSPLIT, $0-24
+	MOVD a+0(FP), R1
+	MOVD n+8(FP), R2
+	VLM (R1), V16, V19
+	ADD $64, R1
+	SUB $8, R2
+	loop:
+	CMP R2, $8
+	BLT fold
+	VLM (R1), V0, V3
+	VFMINDB $1, V0, V16, V16
+	VFMINDB $1, V1, V17, V17
+	VFMINDB $1, V2, V18, V18
+	VFMINDB $1, V3, V19, V19
+	ADD $64, R1
+	SUB $8, R2
+	BR loop
+	fold:
+	VFMINDB $1, V17, V16, V16
+	VFMINDB $1, V19, V18, V18
+	VFMINDB $1, V18, V16, V0
+	VREPG $1, V0, V1
+	WFMINDB $1, F1, F0, F0
+	tail:
+	CMP R2, $0
+	BEQ done
+	FMOVD (R1), F1
+	WFMINDB $1, F1, F0, F0
+	ADD $8, R1
+	SUB $1, R2
+	BR tail
+	done:
+	FMOVD F0, ret+16(FP)
+	RET
+
