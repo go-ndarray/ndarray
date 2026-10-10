@@ -65,3 +65,53 @@ func BenchmarkLinalg(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkStacked measures stacks of small matrices, which run one matrix
+// per goroutine (numpy's gufuncs loop over them on one core).
+func BenchmarkStacked(b *testing.B) {
+	r := rand.New(rand.NewPCG(9, 9))
+	for _, sh := range [][2]int{{10000, 4}, {1000, 32}} {
+		cnt, n := sh[0], sh[1]
+		d := make([]float64, cnt*n*n)
+		for i := range d {
+			d[i] = r.NormFloat64()
+		}
+		a, _ := ndarray.FromSlice(d, cnt, n, n)
+		s, _ := a.Add(swapLast(a))
+		for _, op := range []struct {
+			name string
+			f    func() error
+		}{
+			{"inv", func() error { _, err := Inv(a); return err }},
+			{"det", func() error { _, err := Det(a); return err }},
+			{"eigh", func() error { _, _, err := Eigh(s, Lower); return err }},
+			{"svd", func() error { _, _, _, err := SVD(a, false); return err }},
+			{"eig", func() error { _, _, err := Eig(a); return err }},
+		} {
+			b.Run(fmt.Sprintf("%s/%dx%d", op.name, cnt, n), func(b *testing.B) {
+				for b.Loop() {
+					if err := op.f(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+// swapLast transposes the last two axes of a 3-D array.
+func swapLast(a *ndarray.Array) *ndarray.Array {
+	s := a.Shape()
+	d, _ := ndarray.Data[float64](a)
+	out := make([]float64, len(d))
+	m := s[1]
+	for b := 0; b < s[0]; b++ {
+		for i := 0; i < m; i++ {
+			for j := 0; j < m; j++ {
+				out[b*m*m+j*m+i] = d[b*m*m+i*m+j]
+			}
+		}
+	}
+	t, _ := ndarray.FromSlice(out, s...)
+	return t
+}
