@@ -475,13 +475,7 @@ func lahqr(wantt bool, n, ilo, ihi int, h, wr, wi, zt []float64) bool {
 				if nr == 3 {
 					v3 := v[2]
 					t3 := t1 * v3
-					r0, r1, r2 := h[k*n:k*n+n], h[(k+1)*n:(k+1)*n+n], h[(k+2)*n:(k+2)*n+n]
-					for j := k; j <= i2; j++ {
-						sum := r0[j] + v2*r1[j] + v3*r2[j]
-						r0[j] -= sum * t1
-						r1[j] -= sum * t2
-						r2[j] -= sum * t3
-					}
+					refl3(h[k*n+k:k*n+i2+1], h[(k+1)*n+k:], h[(k+2)*n+k:], v2, v3, t1, t2, t3)
 					for j := i1; j <= min(k+3, i); j++ {
 						row := h[j*n : j*n+n]
 						sum := row[k] + v2*row[k+1] + v3*row[k+2]
@@ -490,22 +484,11 @@ func lahqr(wantt bool, n, ilo, ihi int, h, wr, wi, zt []float64) bool {
 						row[k+2] -= sum * t3
 					}
 					if zt != nil {
-						z0, z1, z2 := zt[k*n:k*n+n], zt[(k+1)*n:(k+1)*n+n], zt[(k+2)*n:(k+2)*n+n]
-						for j := range z0 {
-							sum := z0[j] + v2*z1[j] + v3*z2[j]
-							z0[j] -= sum * t1
-							z1[j] -= sum * t2
-							z2[j] -= sum * t3
-						}
+						refl3(zt[k*n:k*n+n], zt[(k+1)*n:], zt[(k+2)*n:], v2, v3, t1, t2, t3)
 					}
 					continue
 				}
-				r0, r1 := h[k*n:k*n+n], h[(k+1)*n:(k+1)*n+n]
-				for j := k; j <= i2; j++ {
-					sum := r0[j] + v2*r1[j]
-					r0[j] -= sum * t1
-					r1[j] -= sum * t2
-				}
+				refl2(h[k*n+k:k*n+i2+1], h[(k+1)*n+k:], v2, t1, t2)
 				for j := i1; j <= i; j++ {
 					row := h[j*n : j*n+n]
 					sum := row[k] + v2*row[k+1]
@@ -513,12 +496,7 @@ func lahqr(wantt bool, n, ilo, ihi int, h, wr, wi, zt []float64) bool {
 					row[k+1] -= sum * t2
 				}
 				if zt != nil {
-					z0, z1 := zt[k*n:k*n+n], zt[(k+1)*n:(k+1)*n+n]
-					for j := range z0 {
-						sum := z0[j] + v2*z1[j]
-						z0[j] -= sum * t1
-						z1[j] -= sum * t2
-					}
+					refl2(zt[k*n:k*n+n], zt[(k+1)*n:], v2, t1, t2)
 				}
 			}
 		}
@@ -550,6 +528,29 @@ func lahqr(wantt bool, n, ilo, ihi int, h, wr, wi, zt []float64) bool {
 		i = l - 1
 	}
 	return true
+}
+
+// refl3 applies the reflector I - t·[1 v2 v3]ᵀ[1 v2 v3] (t1 = t,
+// t2 = t·v2, t3 = t·v3) to the rows x, y, z: the inner loop of the
+// double-shift sweep.
+func refl3(x, y, z []float64, v2, v3, t1, t2, t3 float64) {
+	y, z = y[:len(x)], z[:len(x)]
+	for j, xv := range x {
+		sum := xv + v2*y[j] + v3*z[j]
+		x[j] = xv - sum*t1
+		y[j] -= sum * t2
+		z[j] -= sum * t3
+	}
+}
+
+// refl2 is refl3 for a 2-element reflector.
+func refl2(x, y []float64, v2, t1, t2 float64) {
+	y = y[:len(x)]
+	for j, xv := range x {
+		sum := xv + v2*y[j]
+		x[j] = xv - sum*t1
+		y[j] -= sum * t2
+	}
 }
 
 // zlahqr is the single-shift complex QR algorithm (LAPACK zlahqr) on the
