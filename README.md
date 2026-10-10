@@ -44,6 +44,10 @@
   `random.Seed(0)` / `random.Rand(…)`. Bit-exact against NumPy 2.5.3 on
   x86-64; see [docs/random.md](docs/random.md) for the few ULP-level
   exceptions (C-library `log`/`exp` rounding) and NumPy's own aarch64 drift.
+- **Notebooks and storage** — `Repr` prints like NumPy (summarised above
+  1000 elements), `Display` gives a notebook a text and an HTML table, and
+  `MarshalBinary`/`UnmarshalBinary` encode an array the same way on every
+  architecture (so gob and the go-notebook kernel keep arrays).
 - **Memory reuse** — `Workspace`, an arena for loops: bind the inputs with
   `ws.Use`, compute as usual, `ws.Reset()` at the end of each pass. Results stop
   costing the garbage collector anything (see below).
