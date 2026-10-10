@@ -57,6 +57,10 @@ var ErrShape = errors.New("linalg: invalid shape")
 // or out-of-range axes, too few arrays.
 var ErrArgs = errors.New("linalg: invalid argument")
 
+// iterFactor scales the iteration limits of the QR iterations (LAPACK's 30
+// sweeps per eigenvalue); tests lower it to exercise their failure paths.
+var iterFactor = 30
+
 // UPLO selects which triangle of a Hermitian matrix is read.
 type UPLO uint8
 

@@ -166,21 +166,14 @@ func (v mview[T]) h() mview[T] {
 var gemmMin = 1 << 13
 
 // gemm computes C = beta*C + alpha*A*B for an m×k A, a k×n B and an m×n
-// row-major C (leading dimension ldc, from c[0]).
+// row-major C (leading dimension ldc, from c[0]); beta is 0 or 1.
 func gemm[T scalar](m, n, k int, alpha T, a, b mview[T], beta T, c []T, ldc int) {
 	if m == 0 || n == 0 {
 		return
 	}
-	if beta != 1 {
+	if beta == 0 {
 		for i := 0; i < m; i++ {
-			row := c[i*ldc : i*ldc+n]
-			for j := range row {
-				if beta == 0 {
-					row[j] = 0
-				} else {
-					row[j] *= beta
-				}
-			}
+			clear(c[i*ldc : i*ldc+n])
 		}
 	}
 	if k == 0 {
@@ -396,9 +389,6 @@ func lartg(f, g float64) (c, s, r float64) {
 // elements, stride inc) is overwritten by x', and the new alpha (= beta) and
 // tau are returned.
 func larfg[T scalar](n int, alpha T, x []T, inc int) (T, T) {
-	if n <= 0 {
-		return alpha, 0
-	}
 	xnorm := nrm2(n-1, x, inc)
 	alphr, alphi := re(alpha), im(alpha)
 	if xnorm == 0 && alphi == 0 {
@@ -541,9 +531,6 @@ func blockReflectorFromV[T scalar](m, k int, v []T, tau []T) blockReflector[T] {
 // (conjT true), H = I - V·T·Vᴴ.
 func (br blockReflector[T]) applyLeft(n int, c []T, ldc int, conjT bool) {
 	m, k := br.m, br.k
-	if n == 0 || k == 0 {
-		return
-	}
 	w := make([]T, k*n) // W = Vᴴ C
 	gemm(k, n, m, 1, rm(br.v, 0, k).h(), rm(c, 0, ldc), 0, w, n)
 	tw := make([]T, k*n) // op(T) W
@@ -553,19 +540,6 @@ func (br blockReflector[T]) applyLeft(n int, c []T, ldc int, conjT bool) {
 	}
 	gemm(k, n, k, 1, tv, rm(w, 0, n), 0, tw, n)
 	gemm(m, n, k, -1, rm(br.v, 0, k), rm(tw, 0, n), 1, c, ldc)
-}
-
-// applyRight overwrites the m×n matrix C with C·H (H = I - V·T·Vᴴ, V n×k).
-func (br blockReflector[T]) applyRight(m int, c []T, ldc int) {
-	n, k := br.m, br.k
-	if m == 0 || k == 0 {
-		return
-	}
-	w := make([]T, m*k) // W = C V
-	gemm(m, k, n, 1, rm(c, 0, ldc), rm(br.v, 0, k), 0, w, k)
-	wt := make([]T, m*k) // W T
-	gemm(m, k, k, 1, rm(w, 0, k), rm(br.t, 0, k), 0, wt, k)
-	gemm(m, n, k, -1, rm(wt, 0, k), rm(br.v, 0, k).h(), 1, c, ldc)
 }
 
 // mulMixed returns the m×n product A·B of an m×k A of either type and a real

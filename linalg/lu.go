@@ -8,7 +8,7 @@ import (
 	"github.com/go-ndarray/ndarray"
 )
 
-// getrf factors the m×n row-major matrix a (leading dimension lda) in place
+// getrf factors the n×n row-major matrix a (leading dimension lda) in place
 // as P·L·U with partial pivoting (LAPACK getrf): L unit lower triangular
 // below the diagonal, U upper triangular on and above it. piv[j] is the row
 // interchanged with row j at step j. It returns the index of the first
@@ -19,13 +19,8 @@ import (
 // vanishing fraction of the work is the GEMM update of the trailing block.
 // Row interchanges swap whole rows at once, which in row-major storage is a
 // contiguous copy and is equivalent to LAPACK's deferred laswp calls.
-func getrf[T scalar](m, n int, a []T, lda int, piv []int) int {
-	k := min(m, n)
-	info := luRec(m, n, a, lda, piv, 0, k)
-	if n > m {
-		trsmLLU(m, n-m, a, lda, a[m:], lda)
-	}
-	return info
+func getrf[T scalar](n int, a []T, lda int, piv []int) int {
+	return luRec(n, n, a, lda, piv, 0, n)
 }
 
 // luRec factors columns c0..c0+w-1, rows c0..m-1, of the m×ncol matrix a.
@@ -159,7 +154,7 @@ func solveT[T scalar](oa operand, b *ndarray.Array, batch, bb []int, k int, shap
 		ai := batchIndex(batch, oa.batch, i)
 		lu := append([]T(nil), ad[ai*n*n:(ai+1)*n*n]...)
 		piv := make([]int, n)
-		if getrf(n, n, lu, n, piv) >= 0 {
+		if getrf(n, lu, n, piv) >= 0 {
 			fe.set(i, ErrSingular)
 			return
 		}
@@ -195,7 +190,7 @@ func invT[T scalar](o operand) (*ndarray.Array, error) {
 	parallelFor(o.count(), 2*n*n*n, func(i int) {
 		lu := d[i*n*n : (i+1)*n*n]
 		piv := make([]int, n)
-		if getrf(n, n, lu, n, piv) >= 0 {
+		if getrf(n, lu, n, piv) >= 0 {
 			fe.set(i, ErrSingular)
 			return
 		}
@@ -267,7 +262,7 @@ func luDets[T scalar](o operand) (signs []T, mants []float64, exps []int, logs [
 	parallelFor(cnt, n*n*n, func(i int) {
 		lu := d[i*n*n : (i+1)*n*n]
 		piv := make([]int, n)
-		getrf(n, n, lu, n, piv)
+		getrf(n, lu, n, piv)
 		sign, mant, exp, logd := T(1), 1.0, 0, 0.0
 		for j := 0; j < n; j++ {
 			if piv[j] != j {

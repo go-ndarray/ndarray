@@ -109,9 +109,8 @@ func gebal[T scalar](n int, a []T) (ilo, ihi int, perm []int, scale []float64) {
 				}
 			}
 			ra = abs(at(i, bi))
-			if c == 0 || r == 0 {
-				continue
-			}
+			// c and r are nonzero: a row or column of the block without an
+			// off-diagonal entry would have been permuted out above.
 			g := r / radix
 			f := 1.0
 			s := c + r
@@ -295,8 +294,10 @@ func lanv2(a, b, c, d float64) (aa, bb, cc, dd, rt1r, rt1i, rt2r, rt2i, cs, sn f
 		d = -bb0*sn + dd0*cs
 		temp = 0.5 * (a + d)
 		a, d = temp, temp
-		if c != 0 && b != 0 && math.Signbit(b) == math.Signbit(c) {
-			// Real eigenvalues: reduce to upper triangular form.
+		if c != 0 && (b == 0 || math.Signbit(b) == math.Signbit(c)) {
+			// Real eigenvalues: reduce to upper triangular form. (For
+			// b = 0 this is LAPACK's separate swap of b and c: sab = 0
+			// makes the rotation a quarter turn.)
 			sab := math.Sqrt(math.Abs(b))
 			sac := math.Sqrt(math.Abs(c))
 			p = math.Copysign(sab*sac, c)
@@ -307,9 +308,6 @@ func lanv2(a, b, c, d float64) (aa, bb, cc, dd, rt1r, rt1i, rt2r, rt2i, cs, sn f
 			c = 0
 			cs1, sn1 := sab*tau, sac*tau
 			cs, sn = cs*cs1-sn*sn1, cs*sn1+sn*cs1
-		} else if c != 0 && b == 0 {
-			b, c = -c, 0
-			cs, sn = -sn, cs
 		}
 	}
 	rt1r, rt2r = a, d
@@ -320,11 +318,15 @@ func lanv2(a, b, c, d float64) (aa, bb, cc, dd, rt1r, rt1i, rt2r, rt2i, cs, sn f
 	return a, b, c, d, rt1r, rt1i, rt2r, rt2i, cs, sn
 }
 
-// Shift strategy constants shared by the two QR iterations (LAPACK).
+// Shift strategy constants shared by the two QR iterations (LAPACK): after
+// kexsh iterations without a deflation, an exceptional shift from the top
+// of the active block; after 2·kexsh, one from the bottom. kexsh is a
+// variable so tests can reach them.
+var kexsh = 10
+
 const (
-	kexsh = 10
-	dat1  = 3.0 / 4
-	dat2  = -0.4375
+	dat1 = 3.0 / 4
+	dat2 = -0.4375
 )
 
 // lahqr is the double-shift QR algorithm (LAPACK dlahqr) on the real upper
@@ -341,7 +343,7 @@ func lahqr(wantt bool, n, ilo, ihi int, h, wr, wi, zt []float64) bool {
 	nh := ihi - ilo + 1
 	smlnum := safmin * (float64(nh) / ulp)
 	i1, i2 := 0, n-1
-	itmax := 30 * max(10, nh)
+	itmax := iterFactor * max(10, nh)
 	kdefl := 0
 	var v [3]float64
 	for i := ihi; i >= ilo; {
@@ -560,10 +562,6 @@ func zlahqr(wantt bool, n, ilo, ihi int, h, w, zt []complex128) bool {
 		return true
 	}
 	H := func(i, j int) complex128 { return h[i*n+j] }
-	jlo, jhi := ilo, ihi
-	if wantt {
-		jlo, jhi = 0, n-1
-	}
 	scaleRow := func(r, c0, c1 int, s complex128) { // h[r, c0..c1-1] *= s
 		for c := c0; c < c1; c++ {
 			h[r*n+c] *= s
@@ -582,21 +580,12 @@ func zlahqr(wantt bool, n, ilo, ihi int, h, w, zt []complex128) bool {
 			}
 		}
 	}
-	// Make the subdiagonal real.
-	for i := ilo + 1; i <= ihi; i++ {
-		if x := H(i, i-1); imag(x) != 0 {
-			sc := x / complex(abs1(x), 0)
-			sc = cmplx.Conj(sc) / complex(cmplx.Abs(sc), 0)
-			h[i*n+i-1] = complex(cmplx.Abs(x), 0)
-			scaleRow(i, i, jhi+1, sc)
-			scaleCol(i, jlo, min(jhi, i+1)+1, cmplx.Conj(sc))
-			scaleZ(i, cmplx.Conj(sc))
-		}
-	}
+	// The subdiagonal is real: gehrd's reflectors make it so (zlahqr's
+	// first loop, which scales it real, has nothing to do here).
 	nh := ihi - ilo + 1
 	smlnum := safmin * (float64(nh) / ulp)
 	i1, i2 := 0, n-1
-	itmax := 30 * max(10, nh)
+	itmax := iterFactor * max(10, nh)
 	kdefl := 0
 	var v [2]complex128
 	for i := ihi; i >= ilo; {

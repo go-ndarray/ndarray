@@ -331,7 +331,7 @@ func condT[T scalar](o operand, p Ord, r []float64) error {
 		}
 		lu := append([]T(nil), x...)
 		piv := make([]int, n)
-		if getrf(n, n, lu, n, piv) >= 0 {
+		if getrf(n, lu, n, piv) >= 0 {
 			r[i] = math.NaN()
 			continue
 		}

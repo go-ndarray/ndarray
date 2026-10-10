@@ -307,9 +307,9 @@ func steqr[T scalar](n int, d, e []float64, z []T, ldz int) bool {
 	const eps2 = eps * eps
 	ssfmax := math.Sqrt(1/safmin) / 3
 	ssfmin := math.Sqrt(safmin) / eps2
-	nmaxit := n * 30
+	nmaxit := n * iterFactor
 	jtot := 0
-	for l1 := 0; l1 < n; {
+	for l1 := 0; l1 < n && jtot < nmaxit; {
 		if l1 > 0 {
 			e[l1-1] = 0
 		}
@@ -343,10 +343,9 @@ func steqr[T scalar](n int, d, e []float64, z []T, ldz int) bool {
 		if math.IsNaN(anorm) {
 			return false
 		}
+		// anorm > 0: the block holds a nonzero off-diagonal entry.
 		scale := 1.0
 		switch {
-		case anorm == 0:
-			continue
 		case anorm > ssfmax:
 			scale = ssfmax / anorm
 		case anorm < ssfmin:
@@ -382,7 +381,7 @@ func steqr[T scalar](n int, d, e []float64, z []T, ldz int) bool {
 					l += 2
 					continue
 				}
-				if jtot == nmaxit {
+				if jtot >= nmaxit {
 					break
 				}
 				jtot++
@@ -432,7 +431,7 @@ func steqr[T scalar](n int, d, e []float64, z []T, ldz int) bool {
 					l -= 2
 					continue
 				}
-				if jtot == nmaxit {
+				if jtot >= nmaxit {
 					break
 				}
 				jtot++
@@ -459,13 +458,12 @@ func steqr[T scalar](n int, d, e []float64, z []T, ldz int) bool {
 			}
 		}
 		scaleTri(d, e, lsv, lendsv, 1/scale)
-		if jtot >= nmaxit {
-			for _, v := range e {
-				if v != 0 {
-					return false
-				}
-			}
-			break
+	}
+	// Every converged block zeroes its off-diagonal entries: one left
+	// means the iteration limit stopped the loop first.
+	for _, v := range e {
+		if v != 0 {
+			return false
 		}
 	}
 	// Sort the eigenvalues increasing, with their vectors (selection sort:

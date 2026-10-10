@@ -367,7 +367,7 @@ func bdsqr[T scalar](n int, d, e []float64, vt []T, ldvt int, ut []T, ldu int) b
 		}
 		sminoa /= math.Sqrt(float64(n))
 		thresh := math.Max(tol*sminoa, maxitr*(float64(n)*(float64(n)*safmin)))
-		maxit := maxitr * n * n
+		maxit := maxitr * n * n * iterFactor / 30
 		iter := 0
 		oldll, oldm := -1, -1
 		idir := 0
@@ -465,9 +465,7 @@ func bdsqr[T scalar](n int, d, e []float64, vt []T, ldvt int, ut []T, ldu int) b
 					sll = math.Abs(d[m])
 					shift, _ = las2(d[ll], e[ll], d[ll+1])
 				}
-				if sll > 0 && (shift/sll)*(shift/sll) < eps {
-					shift = 0
-				}
+				shift = negligibleShift(shift, sll)
 			}
 			iter += m - ll
 			switch {
@@ -589,6 +587,16 @@ func bdsqr[T scalar](n int, d, e []float64, vt []T, ldvt int, ut []T, ldu int) b
 		}
 	}
 	return true
+}
+
+// negligibleShift is 0 when the shift is negligible against sll, the
+// diagonal entry at the end the bulge chase starts from (dbdsqr's test),
+// and the shift otherwise.
+func negligibleShift(shift, sll float64) float64 {
+	if sll > 0 && (shift/sll)*(shift/sll) < eps {
+		return 0
+	}
+	return shift
 }
 
 // swapRows swaps rows i and k of the row-major x (no-op for a nil x).
