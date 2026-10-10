@@ -32,7 +32,14 @@
 - **Indexing** — basic-indexing `Slice` views plus **boolean/fancy indexing**:
   `MaskSelect` (`a[mask]`), `Nonzero` (`flatnonzero`), and `Take`.
 - **Manipulation** — `Concatenate`/`Stack`/`VStack`/`HStack`.
-- **Linear algebra** — `MatMul`/`Dot`/`Inner`/`Outer`.
+- **Linear algebra** — `MatMul`/`Dot`/`Inner`/`Outer`; package
+  [`linalg`](linalg) is `numpy.linalg` in pure Go: `Solve`, `Inv`, `Det`,
+  `Slogdet`, `Cholesky`, `QR` (all four modes), `SVD`/`SVDVals`,
+  `Eigh`/`Eigvalsh`, `Eig`/`Eigvals`, `Lstsq`, `Pinv`, `MatrixRank`, `Norm`,
+  `Cond`, `MatrixPower`, `MultiDot` — stacked `(..., M, N)` inputs (run in
+  parallel), every dtype, LAPACK's algorithms (divide and conquer for the
+  SVD and Hermitian eigenproblems), checked against numpy 2.5.3 on 1,040
+  cases. See [docs/linalg.md](docs/linalg.md) for accuracy and speed.
 - **Fourier transforms** — package [`fft`](fft) is `numpy.fft` on arrays
   (`FFT`/`RFFT`/`FFT2`/`FFTN`/… with `n`/`s`, `axes` and `norm`, single
   precision kept), on [go-fft](https://github.com/go-fft/fft).
@@ -229,6 +236,8 @@ u, _ := random.Rand(3)                              // [0.5488135 0.71518937 0.6
 b, _ := ndarray.Arange(0, 6, 1)
 b, _ = b.Reshape(3, 2)
 prod, _ := m.MatMul(b)              // (2,3)·(3,2) -> (2,2)
+inv, _ := linalg.Inv(prod)          // np.linalg.inv
+left, sv, vh, _ := linalg.SVD(m, false) // np.linalg.svd(m, full_matrices=False)
 ```
 
 ## License
