@@ -51,11 +51,29 @@ bounds checks do not cover, so they are held to the following:
   test from NumPy's definitions (Python's `slice.indices`, the broadcasting
   rule, ...). The library must reject exactly the calls the oracle rejects and
   never panic.
+- **Decoding takes bytes from anywhere.** `UnmarshalBinary` refuses, with an
+  error wrapping `ErrFormat`, any input whose shape the bytes that follow do
+  not account for exactly, before it allocates; an array it accepts holds no
+  more than it was given. `FuzzUnmarshalBinary` (`marshal_fuzz_test.go`)
+  requires that, that it never panics, and that re-encoding is a fixed point.
 
 The minimum Go version (`go` in `go.mod`) is kept on a release that fixes the
 standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
+
+**2026-10-11 (after v0.11.0, tests only).** v0.10.0 added `UnmarshalBinary`,
+whose input may come from a file, a notebook or the network; no entry covered
+it. It checks the magic and the dtype, bounds the rank at 64 and each
+dimension at `maxSize`, validates the shape, and compares the data length with
+the element count by dividing, not multiplying, so a `complex128` shape cannot
+overflow the comparison. Only then does it allocate, so the allocation is the
+size of the input. `FuzzUnmarshalBinary` holds it to that, never panicking
+and re-encoding to a fixed point. It ran 11 million inputs on an M-series Mac
+with no failure. A copy that accepted fewer bytes than the shape needs failed
+it in 0.09 s (6 bytes decoded as 48 bools), so the fuzzer can see the defect
+it guards against. `govulncheck ./...` at go1.27.2 with go-fft v0.23.0 reports
+none.
 
 **2026-10-09 (v0.9.1).** New s390x `maxVXE`/`minVXE` kernels, gated on
 AT_HWCAP VXRS_EXT (z14 and later), each behind its wrapper: from eight
