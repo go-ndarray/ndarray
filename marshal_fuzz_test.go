@@ -20,7 +20,7 @@ import (
 // FuzzUnmarshalBinary` explores.
 func FuzzUnmarshalBinary(f *testing.F) {
 	for _, dt := range allDTypes() {
-		for _, shape := range [][]int{{}, {0}, {3}, {2, 3}, {0, 1 << 40}} {
+		for _, shape := range [][]int{{}, {0}, {3}, {2, 3}, {0, maxSize}} {
 			a, err := ZerosOf(dt, shape...)
 			if err != nil {
 				f.Fatal(err)
