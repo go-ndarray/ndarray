@@ -102,13 +102,17 @@ func TestRepr(t *testing.T) {
 	}{
 		{must(FromSlice([]int64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, 3, 4)),
 			"array([[ 0,  1,  2,  3],\n       [ 4,  5,  6,  7],\n       [ 8,  9, 10, 11]])"},
-		{must(FromSlice([]float32{1.5, 2, 3}, 3)), "array([1.5,  2.,  3.], dtype=float32)"},
+		// NumPy pads every fraction to the longest one, with spaces.
+		{must(FromSlice([]float32{1.5, 2, 3}, 3)), "array([1.5, 2. , 3. ], dtype=float32)"},
 		{must(FromSlice([]complex128{1 + 2i, complex(0, -1)}, 2)), "array([1.+2.j, 0.-1.j])"},
 		{must(FromSlice([]complex64{complex(0, float32(negZero()))}, 1)), "array([0.-0.j], dtype=complex64)"},
 		{must(FromSlice([]bool{true, false}, 2)), "array([ True, False])"},
 		{must(FromSlice([]uint8{7}, []int{}...)), "array(7, dtype=uint8)"},
-		{must(FromSlice([]float64{1e20, 0.5}, 2)), "array([1e+20,   0.5])"},
-		{big, "array([   0.,    1.,    2., ...,"},
+		// |max| >= 1e8: scientific for every element, as in NumPy.
+		{must(FromSlice([]float64{1e20, 0.5}, 2)), "array([1.e+20, 5.e-01])"},
+		// The printed values 0..2 and 1997..1999 have a max/min ratio over
+		// 1000, so NumPy prints them in scientific notation too.
+		{big, "array([0.000e+00, 1.000e+00, 2.000e+00, ..., 1.997e+03, 1.998e+03,\n       1.999e+03], shape=(2000,))"},
 		{must(big.Reshape(40, 50)), "       ...,\n"},
 		{must(big.Reshape(40, 50)), "shape=(40, 50))"},
 		{big, "shape=(2000,))"},
@@ -140,7 +144,7 @@ func TestDisplay(t *testing.T) {
 		t.Errorf("1-D html:\n%s", h)
 	}
 	big := must(must(Arange(0, 4000, 1)).Reshape(40, 100))
-	if h := string(big.Display()["text/html"]); !strings.Contains(h, "<th>⋯</th>") || !strings.Contains(h, "<td>⋯</td>") || !strings.Contains(h, "<td>3999.</td>") {
+	if h := string(big.Display()["text/html"]); !strings.Contains(h, "<th>⋯</th>") || !strings.Contains(h, "<td>⋯</td>") || !strings.Contains(h, "<td>3.999e+03</td>") {
 		t.Errorf("summarised html")
 	}
 	if _, ok := must(Zeros(2, 2, 2)).Display()["text/html"]; ok {

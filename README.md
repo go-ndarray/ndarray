@@ -51,8 +51,13 @@
   `random.Seed(0)` / `random.Rand(…)`. Bit-exact against NumPy 2.5.3 on
   x86-64; see [docs/random.md](docs/random.md) for the few ULP-level
   exceptions (C-library `log`/`exp` rounding) and NumPy's own aarch64 drift.
-- **Notebooks and storage** — `Repr` prints like NumPy (summarised above
-  1000 elements), `Display` gives a notebook a text and an HTML table, and
+- **Notebooks and storage** — `Repr` prints what NumPy 2.5.3's `repr` prints
+  with its default options, character for character: the same digits (8 at
+  most, the shortest that read back), padding, scientific switch (at 1e8, 1e6
+  for float32), line breaks at 75 columns, summary above 1000 elements and
+  `shape=`/`dtype=` suffixes. It is a port of `arrayprint.py`, checked against
+  the expected strings of NumPy's own `test_arrayprint.py`. `Display` gives a
+  notebook a text and an HTML table, and
   `MarshalBinary`/`UnmarshalBinary` encode an array the same way on every
   architecture (so gob and the go-notebook kernel keep arrays).
 - **Memory reuse** — `Workspace`, an arena for loops: bind the inputs with
