@@ -50,7 +50,11 @@ bounds checks do not cover, so they are held to the following:
   and compares every result element by element with an oracle written in the
   test from NumPy's definitions (Python's `slice.indices`, the broadcasting
   rule, ...). The library must reject exactly the calls the oracle rejects and
-  never panic.
+  never panic. `FuzzMixedDTypes` (`dtype_fuzz_test.go`) does the same for the
+  binary operations on operands of two arbitrary dtypes: NumPy's own
+  promotion table gives the result dtype, and each element is recomputed by
+  casting both operands to it and using Go's arithmetic of that type, which
+  wraps integers as NumPy does.
 - **Decoding takes bytes from anywhere.** `UnmarshalBinary` refuses, with an
   error wrapping `ErrFormat`, any input whose shape the bytes that follow do
   not account for exactly, before it allocates; an array it accepts holds no
@@ -61,6 +65,21 @@ The minimum Go version (`go` in `go.mod`) is kept on a release that fixes the
 standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
+
+**2026-10-17 (after v0.12.0, tests only).** v0.10.0 added thirteen dtypes,
+and `FuzzOps` builds only float64 arrays; `values.json` checks every
+operation on operands of one dtype, so the values of a mixed-dtype operation
+(`int8 + uint64`, `bool * float32`, ...) were checked by nothing.
+`FuzzMixedDTypes` fuzzes Add, Sub, Mul, Maximum, Minimum and Equal over every
+dtype pair, shapes broadcastable or not, and transposed views, with edge
+values (integer extremes, -0, NaN, the infinities, complex combinations). It
+requires no panic, an error exactly where the oracle refuses (shapes that do
+not broadcast, and `bool - bool`, which NumPy refuses), NumPy's dtype, and
+every element. 35 million inputs, no failure. A conversion made to turn
+`true` into 2 for int16 failed it in under a second (`bool + int16`), so it
+sees the defect it guards against. Complex Maximum and Minimum are checked for
+dtype and shape only: NumPy orders complex numbers lexicographically with its
+own NaN rules.
 
 **2026-10-11 (after v0.11.0, tests only).** v0.10.0 added `UnmarshalBinary`,
 whose input may come from a file, a notebook or the network; no entry covered
