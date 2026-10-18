@@ -910,9 +910,24 @@ tests passed on the POWER9, and a sabotaged kernel (one `xvsubsp`) failed them.
 |---|---:|---|
 | POWER9 (cfarm29) | −36% / −48% | float64, int32 ~ |
 
-Left: s390x runs the scalar block loop. Go's assembler lacks `vfasb`
-(vector-enhancements facility 1, z14), which [CL 846286](https://go.dev/cl/846286)
-adds, and go-asmgen's registry has no s390x entries yet to pin its encoding.
+**s390x (2026-10-18).** Go's assembler lacks `vfasb` (vector-enhancements
+facility 1, z14), which [CL 846286](https://go.dev/cl/846286) adds. go-asmgen
+v0.19.0 emits it as `WORD`+`BYTE`+`BYTE`, the 6 bytes pinned against GNU as
+(go-asmgen/asmgen#29). The eight accumulators sit in two vector registers;
+`VL`/`VST` keep memory order on this big-endian machine. The kernel runs
+behind the `useVXE` gate of max/min, so a z13 takes the scalar loop. The
+kernel tests passed on the z machine, and a sabotaged kernel (one `vfssb`)
+failed them. Same A/B protocol:
+
+| float32 `Sum`, 2¹⁴ / 2²⁰ | change | controls |
+|---|---:|---|
+| IBM Z, LinuxONE (vxe, vxe2) | −73% / −78% | int32 ~; float64 ~ / +2.0% |
+
+The float64 control at 2²⁰ moved +2.0% with its kernel byte-identical: the
+change moved `sumVX` by 32 bytes (0x18f920 → 0x18f940). It is attributed to
+layout, not proven.
+
+Every 64-bit target now adds the float32 block with SIMD.
 
 ## SIMD coverage
 

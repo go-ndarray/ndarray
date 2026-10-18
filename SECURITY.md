@@ -77,6 +77,14 @@ hardware for each kernel: Zen 3, Neoverse N1, SpacemiT X60, Loongson
 go-asmgen pins against GNU as and llvm-mc. A sabotaged one (`xvsubsp`) failed
 the bit-identity test on the POWER9.
 
+**2026-10-18 (v0.17.0).** The s390x block kernel (`blocks8VXE`) follows the
+same guards: `AddBlocks8F32`'s length check, the wrapper's touch of the last
+element, and the `useVXE` gate, so a CPU without vector-enhancements facility
+1 never reaches `vfasb`. On an IBM Z (LinuxONE) the PROT_NONE fence test and
+the whole suite pass, and a sabotaged kernel (`vfssb`) failed the bit-identity
+test. Its `vfasb` is `WORD`+`BYTE`+`BYTE`, pinned in go-asmgen against GNU as
+and llvm-mc and executed bit-exact on that machine.
+
 **2026-10-17 (after v0.12.0, tests only).** v0.10.0 added thirteen dtypes,
 and `FuzzOps` builds only float64 arrays; `values.json` checks every
 operation on operands of one dtype, so the values of a mixed-dtype operation
