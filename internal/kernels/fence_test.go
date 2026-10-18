@@ -60,6 +60,26 @@ func fences(t *testing.T, n int) [][]float64 {
 	return [][]float64{f.head(n), f.tail(n)}
 }
 
+// fences32 is fences for float32 operands: the same mappings, viewed as
+// float32, with n elements flush against each guard.
+func fences32(t *testing.T, n int) [][]float32 {
+	f := newFenced(t, (n+1)/2)
+	d := unsafe.Slice((*float32)(unsafe.Pointer(&f.data[0])), 2*len(f.data))
+	return [][]float32{d[:n:n], d[len(d)-n:]}
+}
+
+// TestBlocks8StaysInsideItsOperands fences both the blocks the kernel reads
+// and the eight accumulators it reads and writes back.
+func TestBlocks8StaysInsideItsOperands(t *testing.T) {
+	for blocks := 1; blocks <= 20; blocks++ {
+		for _, a := range fences32(t, 8*blocks) {
+			for _, r := range fences32(t, 8) {
+				AddBlocks8F32((*[8]float32)(r), a)
+			}
+		}
+	}
+}
+
 func TestKernelsStayInsideTheirSlices(t *testing.T) {
 	for n := 1; n <= 70; n++ {
 		for _, a := range fences(t, n) {

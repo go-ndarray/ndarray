@@ -50,6 +50,7 @@ func main() {
 	f.Add(extremumKernel("maxNEON", "VFMAX", "FMAXD"))
 	f.Add(extremumKernel("minNEON", "VFMIN", "FMIND"))
 	f.Add(gemmKernel())
+	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_arm64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -148,6 +149,31 @@ func binKernel(name, vop, sop string) *emit.Function {
 		Raw("FMOVD.P F0, 8(R0)").
 		Raw("SUB $1, R3").Raw("B tail").
 		Raw("done:").Ret()
+	return b.Func()
+}
+
+// blocks8Kernel builds blocks8NEON(r, a *float32, blocks int): for each of
+// the blocks of eight float32 at a, in order, r[j] += a[8i+j]. The eight
+// accumulators live in V0 (r[0:4]) and V1 (r[4:8]); VFADD on .S4 is one IEEE
+// float32 addition per lane, so the result is the scalar loop's, bit for bit
+// (NumPy's pairwise-sum block, whose order it keeps). blocks >= 1.
+func blocks8Kernel() *emit.Function {
+	sig := arm64.Layout(
+		[]string{"r", "a", "blocks"},
+		[]arm64.Type{arm64.Ptr, arm64.Ptr, arm64.Int64},
+		nil, nil,
+	)
+	b := arm64.NewFunc("blocks8NEON", sig, 0)
+	b.LoadArg("r", "R0").LoadArg("a", "R1").LoadArg("blocks", "R2").
+		Raw("VLD1 (R0), [V0.S4, V1.S4]").
+		Raw("b8loop:").
+		Raw("VLD1.P 32(R1), [V2.S4, V3.S4]").
+		Raw("VFADD V2.S4, V0.S4, V0.S4").
+		Raw("VFADD V3.S4, V1.S4, V1.S4").
+		Raw("SUB $1, R2").
+		Raw("CBNZ R2, b8loop").
+		Raw("VST1 [V0.S4, V1.S4], (R0)").
+		Ret()
 	return b.Func()
 }
 

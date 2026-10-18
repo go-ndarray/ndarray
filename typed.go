@@ -3,6 +3,8 @@ package ndarray
 import (
 	"math"
 	"math/cmplx"
+
+	"github.com/go-ndarray/ndarray/internal/kernels"
 )
 
 // Inner loops for the dtypes other than Float64. Each takes contiguous storage
@@ -464,30 +466,25 @@ const pwBlock = 128
 // pairwiseSum is NumPy's FLOAT_pairwise_sum
 // (numpy/_core/src/umath/loops_utils.h.src, v2.5.3): rounding error O(lg n)
 // instead of O(n), in the same order of additions.
-func pairwiseSum[F float32](a []F) F {
+//
+// The eight accumulators are fed by kernels.AddBlocks8F32, a vector kernel on
+// amd64 and arm64 that adds the same lanes in the same order, so the sums are
+// the scalar loop's bit for bit.
+func pairwiseSum(a []float32) float32 {
 	n := len(a)
 	switch {
 	case n < 8:
 		// From -0, so that a sum of only -0 stays -0.
-		res := F(math.Copysign(0, -1))
+		res := float32(math.Copysign(0, -1))
 		for _, v := range a {
 			res += v
 		}
 		return res
 	case n <= pwBlock:
-		var r [8]F
+		var r [8]float32
 		copy(r[:], a[:8])
-		i := 8
-		for ; i < n-n%8; i += 8 {
-			r[0] += a[i]
-			r[1] += a[i+1]
-			r[2] += a[i+2]
-			r[3] += a[i+3]
-			r[4] += a[i+4]
-			r[5] += a[i+5]
-			r[6] += a[i+6]
-			r[7] += a[i+7]
-		}
+		i := n - n%8
+		kernels.AddBlocks8F32(&r, a[8:i])
 		res := ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
 		for ; i < n; i++ {
 			res += a[i]
