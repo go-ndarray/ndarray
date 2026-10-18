@@ -153,16 +153,22 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   first-class bool dtype (so masks are real booleans) remains Phase 2.
 - **Phase 2 — dtypes — DONE.** Thirteen dtypes (bool, signed and unsigned
   integers, float32/64, complex64/128) as a runtime property of `Array`,
-  with NumPy 2.x promotion; see [design-dtypes.md](design-dtypes.md). Next:
-  SIMD kernels for `float32`, and the `fft` bridge.
-- **Phase 3 — broadcasting ufuncs.** A general ufunc framework over views
-  (the axis-reduction primitives above are the first step); more elementwise
-  and reduction ufuncs.
-- **Phase 4 — linear algebra.** `MatMul`/`Dot`, transpose-aware GEMM,
-  decompositions; SIMD/blocked kernels.
-- **Phase 5 — Ruby binding.** Expose the array type to Ruby through
-  [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby) as a cgo-free
-  alternative to `Numo::NArray`.
+  with NumPy 2.x promotion; see [design-dtypes.md](design-dtypes.md). The
+  `fft` bridge shipped in v0.10.0 (package `fft`, over go-fft). Still open:
+  SIMD kernels for `float32` (float32 runs the pure-Go code today).
+- **Phase 3 — broadcasting ufuncs — MOSTLY DONE.** Broadcasting arithmetic,
+  comparisons returning Bool masks, `Maximum`/`Minimum`, `Logical*`, `Power`,
+  `Where` and the per-axis reductions, in every dtype. Not done: a public
+  framework for user-defined ufuncs (`np.frompyfunc`, `np.vectorize`).
+- **Phase 4 — linear algebra — DONE (v0.11.0).** `MatMul`/`Dot` on a
+  panel-packed GEMM with SIMD micro-kernels on six architectures, and package
+  `linalg` (`numpy.linalg`: solve, inverse, determinants, Cholesky, QR, SVD,
+  eigenproblems, least squares, norms); see [linalg.md](linalg.md) for what
+  is left there.
+- **Phase 5 — Ruby binding — DONE.**
+  [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby) binds the array
+  as `NDArray` (since its v0.5.0, the API the go-ndarray playground runs in the
+  browser), a cgo-free alternative to `Numo::NArray`.
 
 ## 5. Decisions
 

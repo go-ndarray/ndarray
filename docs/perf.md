@@ -797,6 +797,42 @@ the morning. Only ratios taken in the same run are comparable. Not measured on
 Apple M-series, whose machine was shared with other jobs at the time. The bands
 stay dynamic, so its slower efficiency cores are handled as before.
 
+## Sums of the other dtypes (2026-10-18)
+
+Measured first, because nothing had: `BenchmarkDTypeSum` and
+`BenchmarkDTypeAdd` (`benchmarks/dtype_bench_test.go`) run the same operation
+on float64, float32, int64 and int32. On POWER9 (cfarm29, one thread pinned to
+the idlest CPU by `hostload -pick 1`, the host 3% busy before and after), a
+float32 `Sum` of 2²⁰ elements took **6.85 ms against 0.23 ms for float64**,
+6.8 ns an element, while `Add` was only 1.5× slower than float64. A missing
+SIMD kernel explains a factor of 4 to 8, not 30.
+
+The cause was the reduction loop. Every non-float64 reduction walked the
+`[outer][axisLen][inner]` layout with the reduced axis outside and the kept
+elements inside, so a whole-array sum (`inner` = 1) took a slice and ran a
+one-iteration loop per element. A contiguous run is now folded directly, as
+NumPy's add and multiply reductions do: the first element, then the rest
+added to it, **pairwise for float32 and the complex dtypes** (NumPy's
+`FLOAT/CFLOAT_pairwise_sum`, `loops_utils.h.src` at v2.5.3: eight
+accumulators, blocks of 128, halved above), in order for the integers (exact
+in any order) and for products (NumPy multiplies in order).
+
+| POWER9, 1 thread, n = 2²⁰ | before | after | |
+|---|---:|---:|---:|
+| float32 `Sum` | 6.850 ms | 1.637 ms | −76% |
+| int64 `Sum` | 5.195 ms | 1.870 ms | −64% |
+| int32 `Sum` | 6.170 ms | 2.868 ms | −54% |
+| float64 `Sum` (its own kernels; the control) | 225.7 µs | 225.7 µs | ~ |
+
+Six runs each, old and new binaries alternating, `benchstat` p = 0.002. The
+float32 sum is also more accurate: on 2¹⁶ values of mixed sign and magnitude
+its error against the exact sum (`math/big`) fell from 75 to 0.87, and 2²⁴
+followed by 1000 ones no longer saturates at 2²⁴ (`sum_pairwise_test.go`).
+
+Left: float32 has no SIMD kernel yet (still 7× float64 for `Sum`), and the
+integer sums convert the whole array to int64 before adding (NumPy's
+accumulator type), an extra pass and allocation.
+
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`
