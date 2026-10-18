@@ -208,24 +208,31 @@ func gemmKernel() *emit.Function {
 	return b.Func()
 }
 
-// blocks8Kernel builds blocks8LASX(r, a *float32, blocks int): for each of
+// blocks8Kernel builds blocks8LSX(r, a *float32, blocks int): for each of
 // the blocks of eight float32 at a, in order, r[j] += a[8i+j] (NumPy's
-// pairwise-sum block). The eight accumulators fill one 256-bit register, X0;
-// XVADDF (xvfadd.s) is one IEEE float32 addition per lane, so the result is
-// the scalar loop's bit for bit. blocks >= 1.
+// pairwise-sum block). The eight accumulators are split over two 128-bit LSX
+// registers, V0 and V1, and VADDF (vfadd.s) is one IEEE float32 addition per
+// lane, so the result is the scalar loop's bit for bit. blocks >= 1.
+//
+// Not one 256-bit LASX register: that version kept every block's addition
+// waiting on the previous one, a single dependency chain, and on a Loongson
+// 3C5000L it was 26-47% SLOWER than the scalar loop's eight chains. Two
+// registers, two chains (as SSE2 on amd64): 24% faster.
 func blocks8Kernel() *emit.Function {
 	sig := loong64.Layout([]string{"r", "a", "blocks"},
 		[]loong64.Type{loong64.Ptr, loong64.Ptr, loong64.Int64}, nil, nil)
-	b := loong64.NewFunc("blocks8LASX", sig, 0)
+	b := loong64.NewFunc("blocks8LSX", sig, 0)
 	b.LoadArg("r", "R4").LoadArg("a", "R5").LoadArg("blocks", "R6")
-	b.Raw("XVMOVQ 0(R4), X0")
+	b.Raw("VMOVQ 0(R4), V0").Raw("VMOVQ 16(R4), V1")
 	b.Label("b8loop").
-		Raw("XVMOVQ 0(R5), X1").
-		Raw("XVADDF X1, X0, X0").
+		Raw("VMOVQ 0(R5), V2").
+		Raw("VMOVQ 16(R5), V3").
+		Raw("VADDF V2, V0, V0").
+		Raw("VADDF V3, V1, V1").
 		Raw("ADDV $32, R5").
 		Raw("ADDV $-1, R6").
 		Raw("BNE R6, b8loop")
-	b.Raw("XVMOVQ X0, 0(R4)")
+	b.Raw("VMOVQ V0, 0(R4)").Raw("VMOVQ V1, 16(R4)")
 	b.Ret()
 	return b.Func()
 }
