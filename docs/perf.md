@@ -897,10 +897,22 @@ accumulators, and was **26–47% slower** than the scalar loop. Every block's
 addition waited on the previous one, a single dependency chain, where the
 scalar loop has eight. Two registers give two chains, as SSE2 does on amd64.
 
-Left: ppc64le and s390x run the scalar block loop. Go's assembler lacks
-`xvaddsp` (ppc64) and `vfasb` (s390x). go-asmgen/asmgen#27 adds the VSX
-single-precision family to go-asmgen's registry, with references from GNU as
-and llvm-mc, and needs a cmd/asm patch of its own.
+**ppc64le (2026-10-18).** Go's assembler has no `xvaddsp`, so go-asmgen
+emits it as a `WORD`. The encoding is pinned against GNU as 2.44 and llvm-mc
+on a POWER9 (go-asmgen/asmgen#27). The cmd/asm spelling is
+[CL 846285](https://go.dev/cl/846285), and go-asmgen's registry check
+assembles every entry with that CL applied. The eight accumulators sit in two
+VSX registers, loaded and stored with `LXVW4X`/`STXVW4X`, so every word keeps
+its lane. VSX is the ppc64le baseline, so there is no feature check. The kernel
+tests passed on the POWER9, and a sabotaged kernel (one `xvsubsp`) failed them.
+
+| float32 `Sum`, 2¹⁴ / 2²⁰ | change | controls |
+|---|---:|---|
+| POWER9 (cfarm29) | −36% / −48% | float64, int32 ~ |
+
+Left: s390x runs the scalar block loop. Go's assembler lacks `vfasb`
+(vector-enhancements facility 1, z14), which [CL 846286](https://go.dev/cl/846286)
+adds, and go-asmgen's registry has no s390x entries yet to pin its encoding.
 
 ## SIMD coverage
 

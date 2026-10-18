@@ -1,4 +1,4 @@
-//go:build !amd64 && !arm64 && !loong64 && !riscv64
+//go:build !amd64 && !arm64 && !loong64 && !ppc64le && !riscv64
 
 package kernels
 

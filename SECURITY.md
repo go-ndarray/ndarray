@@ -66,6 +66,17 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-18 (v0.16.0).** The float32 pairwise-sum block kernels (SSE2, NEON,
+RVV, LSX since v0.14.0/v0.15.0, VSX now) take raw pointers and a block count.
+`AddBlocks8F32` refuses a length that is not a positive multiple of 8, and
+each wrapper touches the last element before the call, so a kernel never sees
+a count its operand cannot hold. `TestBlocks8StaysInsideItsOperands` puts the
+accumulators and the input against PROT_NONE pages, and it passes on real
+hardware for each kernel: Zen 3, Neoverse N1, SpacemiT X60, Loongson
+3C5000L and POWER9. The ppc64le kernel's `xvaddsp` is a `WORD` whose encoding
+go-asmgen pins against GNU as and llvm-mc. A sabotaged one (`xvsubsp`) failed
+the bit-identity test on the POWER9.
+
 **2026-10-17 (after v0.12.0, tests only).** v0.10.0 added thirteen dtypes,
 and `FuzzOps` builds only float64 arrays; `values.json` checks every
 operation on operands of one dtype, so the values of a mixed-dtype operation
