@@ -1,0 +1,82 @@
+name: bench
+
+# An A/B benchmark on the hosted runners, for a change that needs measuring on
+# an architecture nobody has a quiet machine of: amd64 and arm64.
+#
+# It builds the benchmarks of `base` and of the dispatched ref, runs them
+# alternately (base, head, base, head, ...) in fresh processes on one thread,
+# so the runner's own drift falls on both sides alike, and puts benchstat's
+# comparison in the job summary. Hosted runners are shared VMs: read a
+# difference of a few percent as noise, and keep the control benchmarks (an
+# operation the change does not touch) in the pattern to see how much.
+#
+# workflow_dispatch only, so it creates no pending checks on pull requests:
+#   gh workflow run bench.yml --ref <branch> -f base=main -f bench='DTypeSum'
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "the ref to compare against"
+        default: "main"
+      bench:
+        description: "go test -bench pattern (package ./benchmarks)"
+        default: "DType"
+      count:
+        description: "runs of each side, alternated"
+        default: "6"
+
+permissions:
+  contents: read
+
+jobs:
+  ab:
+    name: A/B on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build both sides
+        env:
+          BASE: ${{ inputs.base }}
+        run: |
+          go test -c -o "$RUNNER_TEMP/head.test" ./benchmarks
+          git worktree add "$RUNNER_TEMP/base" "$BASE"
+          (cd "$RUNNER_TEMP/base" && go test -c -o "$RUNNER_TEMP/base.test" ./benchmarks)
+      - name: Run alternately
+        env:
+          BENCH: ${{ inputs.bench }}
+          COUNT: ${{ inputs.count }}
+        run: |
+          cd "$RUNNER_TEMP"
+          for _ in $(seq "$COUNT"); do
+            for side in base head; do
+              GOMAXPROCS=1 "./$side.test" -test.run '^$' -test.bench "$BENCH" -test.benchtime 200ms >> "$side.txt"
+            done
+          done
+      - name: Compare
+        run: |
+          cd "$RUNNER_TEMP"
+          go run golang.org/x/perf/cmd/benchstat@latest base.txt head.txt > benchstat.txt
+          {
+            echo "### ${{ matrix.runner }}: ${{ inputs.base }} vs ${{ github.ref_name }}"
+            echo '```'
+            cat benchstat.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat benchstat.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bench-${{ matrix.runner }}
+          path: |
+            ${{ runner.temp }}/base.txt
+            ${{ runner.temp }}/head.txt
+            ${{ runner.temp }}/benchstat.txt
