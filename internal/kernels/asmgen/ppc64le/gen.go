@@ -38,6 +38,7 @@ func main() {
 		name, vec, sca string
 	}{{"addVSX", "add", "FADD"}, {"subVSX", "sub", "FSUB"}, {"mulVSX", "mul", "FMUL"}, {"divVSX", "div", "FDIV"}} {
 		f.Add(binKernel(k.name, k.vec, k.sca))
+		f.Add(bin32Kernel(k.name[:3]+"32VSX", k.vec, k.sca+"S"))
 	}
 	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
@@ -191,6 +192,45 @@ func binKernel(name, op, sca string) *emit.Function {
 		Raw("FMOVD 0(R5), F1").Raw("FMOVD 0(R6), F2").Raw("%s F2, F1", sca).Raw("FMOVD F1, 0(R3)").
 		Raw("ADD $8, R3").Raw("ADD $8, R5").Raw("ADD $8, R6").Raw("ADD $-1, R4").Raw("BR %stail", l)
 	b.Label(l + "done").Ret()
+	return b.Func()
+}
+
+// bin32Kernel builds name(dst, a, b *float32, n int): dst[i] = a[i] OP b[i],
+// 16 floats per iteration with the VSX single-precision op, a scalar tail with
+// sca. LXVW4X/STXVW4X put each word at the same lane in every operand and back
+// at its own index. Each lane is one IEEE float32 operation, bit-identical to
+// the scalar oracle.
+func bin32Kernel(name, op, sca string) *emit.Function {
+	sig := ppc64.Layout([]string{"dst", "a", "b", "n"},
+		[]ppc64.Type{ppc64.Ptr, ppc64.Ptr, ppc64.Ptr, ppc64.Int64}, nil, nil)
+	b := ppc64.NewFunc(name, sig, 0)
+	b.LoadArg("dst", "R3").LoadArg("a", "R5").LoadArg("b", "R6").LoadArg("n", "R4")
+	offsets(b, false)
+	b.Label("floop").Raw("CMP R4, $16").Raw("BLT ftail")
+	for k := 0; k < 4; k++ {
+		b.Raw("LXVW4X (R5)(%s), VS%d", vidx(k), 32+k)
+		b.Raw("LXVW4X (R6)(%s), VS%d", vidx(k), 36+k)
+	}
+	for k := 0; k < 4; k++ {
+		switch op {
+		case "add":
+			b.XVADDSP(40+k, 32+k, 36+k)
+		case "sub":
+			b.XVSUBSP(40+k, 32+k, 36+k)
+		case "mul":
+			b.XVMULSP(40+k, 32+k, 36+k)
+		case "div":
+			b.XVDIVSP(40+k, 32+k, 36+k)
+		}
+	}
+	for k := 0; k < 4; k++ {
+		b.Raw("STXVW4X VS%d, (R3)(%s)", 40+k, vidx(k))
+	}
+	b.Raw("ADD $64, R3").Raw("ADD $64, R5").Raw("ADD $64, R6").Raw("ADD $-16, R4").Raw("BR floop")
+	b.Label("ftail").Raw("CMP R4, $0").Raw("BEQ fdone").
+		Raw("FMOVS 0(R5), F1").Raw("FMOVS 0(R6), F2").Raw("%s F2, F1", sca).Raw("FMOVS F1, 0(R3)").
+		Raw("ADD $4, R3").Raw("ADD $4, R5").Raw("ADD $4, R6").Raw("ADD $-1, R4").Raw("BR ftail")
+	b.Label("fdone").Ret()
 	return b.Func()
 }
 

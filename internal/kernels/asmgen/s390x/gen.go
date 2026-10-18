@@ -35,6 +35,7 @@ func main() {
 		{"mulVX", "VFMDB", "FMUL"}, {"divVX", "VFDDB", "FDIV"},
 	} {
 		f.Add(binKernel(k.name, k.vec, k.sca))
+		f.Add(bin32Kernel(k.name[:3]+"32VXE", k.name[:3], k.sca+"S"))
 	}
 	f.Add(gemmKernel())
 	f.Add(extremumKernel("maxVXE", "VFMAXDB", "WFMAXDB"))
@@ -139,6 +140,43 @@ func binKernel(name, vec, sca string) *emit.Function {
 		Raw(sca + " F1, F0").
 		Raw("FMOVD F0, (R1)").
 		Raw("ADD $8, R1").Raw("ADD $8, R2").Raw("ADD $8, R3").Raw("SUB $1, R4").Raw("BR tail").
+		Raw("done:").Ret()
+	return b.Func()
+}
+
+// bin32Kernel builds NAME(dst, a, b *float32, n int): dst = a OP b, 16 floats
+// per iteration over four vector registers with the vector-enhancements
+// facility 1 single-precision op (z14; go-asmgen emits it as WORD+BYTE+BYTE,
+// the cmd/asm spelling is CL 846286), then a scalar tail with sca ("sca F1,
+// F0": F0 = F0 OP F1). Each lane is one IEEE float32 operation, so the result
+// is the scalar loop's bit for bit.
+func bin32Kernel(name, op, sca string) *emit.Function {
+	sig := s390x.Layout([]string{"dst", "a", "b", "n"},
+		[]s390x.Type{s390x.Ptr, s390x.Ptr, s390x.Ptr, s390x.Int64}, nil, nil)
+	b := s390x.NewFunc(name, sig, 0)
+	b.LoadArg("dst", "R1").LoadArg("a", "R2").LoadArg("b", "R3").LoadArg("n", "R4")
+	b.Raw("loop:").Raw("CMP R4, $16").Raw("BLT tail").
+		Raw("VLM (R2), V0, V3"). // a
+		Raw("VLM (R3), V4, V7")  // b
+	for r := 0; r < 4; r++ { // V_r = a OP b
+		switch op {
+		case "add":
+			b.VFASB(r, r, 4+r)
+		case "sub":
+			b.VFSSB(r, r, 4+r)
+		case "mul":
+			b.VFMSB(r, r, 4+r)
+		case "div":
+			b.VFDSB(r, r, 4+r)
+		}
+	}
+	b.Raw("VSTM V0, V3, (R1)").
+		Raw("ADD $64, R1").Raw("ADD $64, R2").Raw("ADD $64, R3").Raw("SUB $16, R4").Raw("BR loop").
+		Raw("tail:").Raw("CMP R4, $0").Raw("BEQ done").
+		Raw("FMOVS (R2), F0").Raw("FMOVS (R3), F1").
+		Raw(sca + " F1, F0").
+		Raw("FMOVS F0, (R1)").
+		Raw("ADD $4, R1").Raw("ADD $4, R2").Raw("ADD $4, R3").Raw("SUB $1, R4").Raw("BR tail").
 		Raw("done:").Ret()
 	return b.Func()
 }

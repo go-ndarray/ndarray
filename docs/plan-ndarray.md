@@ -154,8 +154,10 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
 - **Phase 2 — dtypes — DONE.** Thirteen dtypes (bool, signed and unsigned
   integers, float32/64, complex64/128) as a runtime property of `Array`,
   with NumPy 2.x promotion; see [design-dtypes.md](design-dtypes.md). The
-  `fft` bridge shipped in v0.10.0 (package `fft`, over go-fft). Still open:
-  SIMD kernels for `float32` (float32 runs the pure-Go code today).
+  `fft` bridge shipped in v0.10.0 (package `fft`, over go-fft). float32 has
+  SIMD kernels on all six 64-bit targets for `Sum` (v0.14.0–v0.17.0) and for
+  `Add`/`Sub`/`Mul`/`Div` (v0.18.0). Still pure Go for float32: `Sqrt`,
+  `Max`/`Min`, `Dot`/`MatMul` and the transcendental ufuncs.
 - **Phase 3 — broadcasting ufuncs — MOSTLY DONE.** Broadcasting arithmetic,
   comparisons returning Bool masks, `Maximum`/`Minimum`, `Logical*`, `Power`,
   `Where` and the per-axis reductions, in every dtype. Not done: a public

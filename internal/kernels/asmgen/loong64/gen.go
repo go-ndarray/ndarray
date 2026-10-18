@@ -37,6 +37,8 @@ func main() {
 		{"mulLASX", "XVMULD", "MULD"}, {"divLASX", "XVDIVD", "DIVD"},
 	} {
 		f.Add(binKernel(k.name, k.vec, k.sca))
+		// "XVADDD" -> "VADDF", "ADDD" -> "ADDF": the LSX single-precision op.
+		f.Add(bin32Kernel(k.name[:3]+"32LSX", k.vec[1:len(k.vec)-1]+"F", k.sca[:len(k.sca)-1]+"F"))
 	}
 	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
@@ -165,6 +167,35 @@ func binKernel(name, vec, sca string) *emit.Function {
 		Raw("MOVD 0(R6), F1").Raw("MOVD 0(R7), F2").Raw("%s F2, F1", sca).Raw("MOVD F1, 0(R4)").
 		Raw("ADDV $8, R4").Raw("ADDV $8, R6").Raw("ADDV $8, R7").Raw("ADDV $-1, R5").Raw("JMP %stail", l)
 	b.Label(l + "done").Ret()
+	return b.Func()
+}
+
+// bin32Kernel builds name(dst, a, b *float32, n int): dst[i] = a[i] OP b[i],
+// 16 floats per iteration over four 128-bit LSX registers (four independent
+// chains, as the block kernel's lesson on one LASX register taught), a scalar
+// tail with sca. Each lane is one IEEE float32 operation, bit-identical to the
+// scalar oracle.
+func bin32Kernel(name, vec, sca string) *emit.Function {
+	sig := loong64.Layout([]string{"dst", "a", "b", "n"},
+		[]loong64.Type{loong64.Ptr, loong64.Ptr, loong64.Ptr, loong64.Int64}, nil, nil)
+	b := loong64.NewFunc(name, sig, 0)
+	b.LoadArg("dst", "R4").LoadArg("a", "R6").LoadArg("b", "R7").LoadArg("n", "R5")
+	b.Label("floop").Raw("MOVV $16, R12").Raw("BLT R5, R12, ftail")
+	for k := 0; k < 4; k++ {
+		b.Raw("VMOVQ %d(R6), V%d", 16*k, k)
+		b.Raw("VMOVQ %d(R7), V%d", 16*k, 4+k)
+	}
+	for k := 0; k < 4; k++ {
+		b.Raw("%s V%d, V%d, V%d", vec, 4+k, k, 8+k) // V(8+k) = V(k) OP V(4+k)
+	}
+	for k := 0; k < 4; k++ {
+		b.Raw("VMOVQ V%d, %d(R4)", 8+k, 16*k)
+	}
+	b.Raw("ADDV $64, R4").Raw("ADDV $64, R6").Raw("ADDV $64, R7").Raw("ADDV $-16, R5").Raw("JMP floop")
+	b.Label("ftail").Raw("BEQ R5, fdone").
+		Raw("MOVF 0(R6), F1").Raw("MOVF 0(R7), F2").Raw("%s F2, F1", sca).Raw("MOVF F1, 0(R4)").
+		Raw("ADDV $4, R4").Raw("ADDV $4, R6").Raw("ADDV $4, R7").Raw("ADDV $-1, R5").Raw("JMP ftail")
+	b.Label("fdone").Ret()
 	return b.Func()
 }
 

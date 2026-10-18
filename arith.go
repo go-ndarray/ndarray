@@ -59,12 +59,9 @@ func (a *Array) arith(b *Array, op binCode, k func(dst, x, y []float64)) (*Array
 	if a.dtype == Float64 && b.dtype == Float64 {
 		return a.binOp(b, k)
 	}
-	dt := promote(a, b)
-	switch {
-	case op == opDiv && (dt == Bool || dt.IsInteger()):
-		dt = Float64 // true division
-	case op == opSub && dt == Bool:
-		return nil, fmt.Errorf("%w: subtracting bool arrays; use LogicalXor", ErrDType)
+	dt, err := arithDType(a, b, op)
+	if err != nil {
+		return nil, err
 	}
 	if dt == Float64 {
 		return a.toFloat64().binOp(b.toFloat64(), k)
@@ -78,11 +75,40 @@ func (a *Array) arith(b *Array, op binCode, k func(dst, x, y []float64)) (*Array
 	return a.result(d, append([]int(nil), shape...)), nil
 }
 
+// arithDType is the result dtype of a OP b: NumPy's promotion, with true
+// division of integers and bools in Float64, and no bool subtraction.
+func arithDType(a, b *Array, op binCode) (DType, error) {
+	dt := promote(a, b)
+	switch {
+	case op == opDiv && (dt == Bool || dt.IsInteger()):
+		dt = Float64 // true division
+	case op == opSub && dt == Bool:
+		return dt, fmt.Errorf("%w: subtracting bool arrays; use LogicalXor", ErrDType)
+	}
+	return dt, nil
+}
+
 // arithInto is arith writing into out, which must be contiguous and have the
-// broadcast shape; the result is converted to out's dtype.
+// broadcast shape; the result is converted to out's dtype. When out already
+// has the result dtype the operation writes into it directly, with no
+// intermediate array.
 func (a *Array) arithInto(out, b *Array, op binCode, k func(dst, x, y []float64)) error {
 	if a.dtype == Float64 && b.dtype == Float64 && out.dtype == Float64 {
 		return a.binOpInto(out, b, k)
+	}
+	if dt, err := arithDType(a, b, op); err == nil && dt != Float64 && dt == out.dtype {
+		shape, err := broadcastShape(a.shape, b.shape)
+		if err != nil {
+			return err
+		}
+		if !out.isContiguous() {
+			return fmt.Errorf("%w: out must be contiguous", ErrBroadcast)
+		}
+		if !sameShape(out.shape, shape) {
+			return fmt.Errorf("%w: out shape %v != result shape %v", ErrBroadcast, out.shape, shape)
+		}
+		arithStore(op, out.store(), a.operandStore(dt, shape), b.operandStore(dt, shape))
+		return nil
 	}
 	r, err := a.arith(b, op, k)
 	if err != nil {

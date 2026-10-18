@@ -1263,7 +1263,7 @@ func arithStore(op binCode, d, x, y any) {
 	case []uint64:
 		binInt(op, d, x.([]uint64), y.([]uint64))
 	case []float32:
-		binFloat(op, d, x.([]float32), y.([]float32))
+		binFloat32(op, d, x.([]float32), y.([]float32))
 	case []complex64:
 		binComplex(op, d, x.([]complex64), y.([]complex64))
 	case []complex128:

@@ -266,7 +266,7 @@ func main() {
 	p("func arithStore(op binCode, d, x, y any) {")
 	p("switch d := d.(type) {")
 	each("iu", "case []$T: binInt(op, d, x.([]$T), y.([]$T))")
-	each("f-float64", "case []$T: binFloat(op, d, x.([]$T), y.([]$T))")
+	each("f-float64", "case []$T: binFloat32(op, d, x.([]$T), y.([]$T))")
 	each("c", "case []$T: binComplex(op, d, x.([]$T), y.([]$T))")
 	each("b", "case []$T: binBool(op, d, x.([]$T), y.([]$T))")
 	p("}")

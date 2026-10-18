@@ -50,6 +50,10 @@ func main() {
 	f.Add(gemmSSE2HalfKernel())
 	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
 	f.Add(blocks8Kernel())
+	f.Add(bin32Kernel("add32SSE2", "ADDPS", "ADDSS"))
+	f.Add(bin32Kernel("sub32SSE2", "SUBPS", "SUBSS"))
+	f.Add(bin32Kernel("mul32SSE2", "MULPS", "MULSS"))
+	f.Add(bin32Kernel("div32SSE2", "DIVPS", "DIVSS"))
 
 	if err := os.WriteFile("sum_amd64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -321,6 +325,42 @@ func binKernel(name, vec, sca string) *emit.Function {
 	b.Raw("DECQ CX")
 	b.Raw("JMP btail")
 	b.Raw("bdone:")
+	b.Ret()
+	return b.Func()
+}
+
+// bin32Kernel builds NAME(dst, a, b *float32, n int): dst[i] = a[i] OP b[i],
+// 16 floats per iteration over four XMM registers with the packed op, then a
+// scalar tail with sca. Each lane is one IEEE float32 operation, so the result
+// is the scalar loop's bit for bit.
+func bin32Kernel(name, vec, sca string) *emit.Function {
+	sig := amd64.Layout(
+		[]string{"dst", "a", "b", "n"},
+		[]amd64.Type{amd64.Ptr, amd64.Ptr, amd64.Ptr, amd64.Int64},
+		nil, nil,
+	)
+	b := amd64.NewFunc(name, sig, 0)
+	b.LoadArg("dst", "DI").LoadArg("a", "SI").LoadArg("b", "DX").LoadArg("n", "CX")
+	b.Raw("fblock:").Raw("CMPQ CX, $16").Raw("JL ftail")
+	for r := 0; r < 4; r++ {
+		b.Raw("MOVUPS %d(SI), X%d", 16*r, r)
+	}
+	for r := 0; r < 4; r++ {
+		b.Raw("MOVUPS %d(DX), X%d", 16*r, 4+r)
+	}
+	for r := 0; r < 4; r++ {
+		b.Raw("%s X%d, X%d", vec, 4+r, r) // X(r) = a OP b
+	}
+	for r := 0; r < 4; r++ {
+		b.Raw("MOVUPS X%d, %d(DI)", r, 16*r)
+	}
+	b.Raw("ADDQ $64, SI").Raw("ADDQ $64, DX").Raw("ADDQ $64, DI").Raw("SUBQ $16, CX").Raw("JMP fblock").
+		Raw("ftail:").Raw("TESTQ CX, CX").Raw("JZ fdone").
+		Raw("MOVSS (SI), X0").Raw("MOVSS (DX), X1").
+		Raw("%s X1, X0", sca).
+		Raw("MOVSS X0, (DI)").
+		Raw("ADDQ $4, SI").Raw("ADDQ $4, DX").Raw("ADDQ $4, DI").Raw("DECQ CX").Raw("JMP ftail").
+		Raw("fdone:")
 	b.Ret()
 	return b.Func()
 }

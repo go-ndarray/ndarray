@@ -234,6 +234,118 @@ TEXT ·divNEON(SB), NOSPLIT, $0-32
 	done:
 	RET
 
+TEXT ·add32NEON(SB), NOSPLIT, $0-32
+	MOVD dst+0(FP), R0
+	MOVD a+8(FP), R1
+	MOVD b+16(FP), R2
+	MOVD n+24(FP), R3
+	block:
+	CMP $16, R3
+	BLT tail
+	VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]
+	VLD1.P 64(R2), [V4.S4, V5.S4, V6.S4, V7.S4]
+	VFADD V4.S4, V0.S4, V0.S4
+	VFADD V5.S4, V1.S4, V1.S4
+	VFADD V6.S4, V2.S4, V2.S4
+	VFADD V7.S4, V3.S4, V3.S4
+	VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)
+	SUB $16, R3
+	B block
+	tail:
+	CBZ R3, done
+	FMOVS.P 4(R1), F0
+	FMOVS.P 4(R2), F1
+	FADDS F1, F0, F0
+	FMOVS.P F0, 4(R0)
+	SUB $1, R3
+	B tail
+	done:
+	RET
+
+TEXT ·sub32NEON(SB), NOSPLIT, $0-32
+	MOVD dst+0(FP), R0
+	MOVD a+8(FP), R1
+	MOVD b+16(FP), R2
+	MOVD n+24(FP), R3
+	block:
+	CMP $16, R3
+	BLT tail
+	VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]
+	VLD1.P 64(R2), [V4.S4, V5.S4, V6.S4, V7.S4]
+	VFSUB V4.S4, V0.S4, V0.S4
+	VFSUB V5.S4, V1.S4, V1.S4
+	VFSUB V6.S4, V2.S4, V2.S4
+	VFSUB V7.S4, V3.S4, V3.S4
+	VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)
+	SUB $16, R3
+	B block
+	tail:
+	CBZ R3, done
+	FMOVS.P 4(R1), F0
+	FMOVS.P 4(R2), F1
+	FSUBS F1, F0, F0
+	FMOVS.P F0, 4(R0)
+	SUB $1, R3
+	B tail
+	done:
+	RET
+
+TEXT ·mul32NEON(SB), NOSPLIT, $0-32
+	MOVD dst+0(FP), R0
+	MOVD a+8(FP), R1
+	MOVD b+16(FP), R2
+	MOVD n+24(FP), R3
+	block:
+	CMP $16, R3
+	BLT tail
+	VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]
+	VLD1.P 64(R2), [V4.S4, V5.S4, V6.S4, V7.S4]
+	VFMUL V4.S4, V0.S4, V0.S4
+	VFMUL V5.S4, V1.S4, V1.S4
+	VFMUL V6.S4, V2.S4, V2.S4
+	VFMUL V7.S4, V3.S4, V3.S4
+	VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)
+	SUB $16, R3
+	B block
+	tail:
+	CBZ R3, done
+	FMOVS.P 4(R1), F0
+	FMOVS.P 4(R2), F1
+	FMULS F1, F0, F0
+	FMOVS.P F0, 4(R0)
+	SUB $1, R3
+	B tail
+	done:
+	RET
+
+TEXT ·div32NEON(SB), NOSPLIT, $0-32
+	MOVD dst+0(FP), R0
+	MOVD a+8(FP), R1
+	MOVD b+16(FP), R2
+	MOVD n+24(FP), R3
+	block:
+	CMP $16, R3
+	BLT tail
+	VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]
+	VLD1.P 64(R2), [V4.S4, V5.S4, V6.S4, V7.S4]
+	VFDIV V4.S4, V0.S4, V0.S4
+	VFDIV V5.S4, V1.S4, V1.S4
+	VFDIV V6.S4, V2.S4, V2.S4
+	VFDIV V7.S4, V3.S4, V3.S4
+	VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)
+	SUB $16, R3
+	B block
+	tail:
+	CBZ R3, done
+	FMOVS.P 4(R1), F0
+	FMOVS.P 4(R2), F1
+	FDIVS F1, F0, F0
+	FMOVS.P F0, 4(R0)
+	SUB $1, R3
+	B tail
+	done:
+	RET
+
 TEXT ·maxNEON(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD n+8(FP), R1
