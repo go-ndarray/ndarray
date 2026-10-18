@@ -829,9 +829,15 @@ float32 sum is also more accurate: on 2¹⁶ values of mixed sign and magnitude
 its error against the exact sum (`math/big`) fell from 75 to 0.87, and 2²⁴
 followed by 1000 ones no longer saturates at 2²⁴ (`sum_pairwise_test.go`).
 
-Left: float32 has no SIMD kernel yet (still 7× float64 for `Sum`), and the
-integer sums convert the whole array to int64 before adding (NumPy's
-accumulator type), an extra pass and allocation.
+The narrow integer sums still converted the whole array to int64 (NumPy's
+accumulator) before adding: an extra pass and 8 bytes an element. Since
+v0.14.0 a sum or product of bools or integers narrower than 64 bits along a
+contiguous axis widens each element as it is read (`foldWidened`, same
+arithmetic, wrap-around included): **int32 `Sum` of 2²⁰ elements 2.872 →
+1.548 ms (−46%)**, 2¹⁴ −51%, with float64, float32 and int64 unchanged as
+controls (POWER9, same protocol, p = 0.002).
+
+Left: float32 has no SIMD kernel yet (still 7× float64 for `Sum`).
 
 ## SIMD coverage
 

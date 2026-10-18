@@ -401,6 +401,62 @@ func foldRun[T numT](op reduceCode, s []T) T {
 	return acc
 }
 
+// foldWidened sums or multiplies each contiguous run of src (bools or
+// integers narrower than 64 bits) into dst, NumPy's accumulator for them:
+// []int64 for bools and signed integers, []uint64 for unsigned. Each element
+// is widened as it is read; the arithmetic, wrap-around included, is that of
+// converting first and folding after.
+func foldWidened(op reduceCode, dst, src any, outer, axisLen int) {
+	switch s := src.(type) {
+	case []bool:
+		d := dst.([]int64)
+		for o := range outer {
+			var acc int64 = 1 // a product of bools is 1 unless one is false
+			if op == rSum {
+				acc = 0
+			}
+			for _, v := range s[o*axisLen : (o+1)*axisLen] {
+				switch {
+				case op == rSum && v:
+					acc++
+				case op == rProd && !v:
+					acc = 0
+				}
+			}
+			d[o] = acc
+		}
+	case []int8:
+		widenRuns(op, dst.([]int64), s, outer, axisLen)
+	case []int16:
+		widenRuns(op, dst.([]int64), s, outer, axisLen)
+	case []int32:
+		widenRuns(op, dst.([]int64), s, outer, axisLen)
+	case []uint8:
+		widenRuns(op, dst.([]uint64), s, outer, axisLen)
+	case []uint16:
+		widenRuns(op, dst.([]uint64), s, outer, axisLen)
+	case []uint32:
+		widenRuns(op, dst.([]uint64), s, outer, axisLen)
+	}
+}
+
+func widenRuns[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](op reduceCode, dst []D, src []S, outer, axisLen int) {
+	for o := range outer {
+		run := src[o*axisLen : (o+1)*axisLen]
+		acc := D(run[0])
+		if op == rSum {
+			for _, v := range run[1:] {
+				acc += D(v)
+			}
+		} else {
+			for _, v := range run[1:] {
+				acc *= D(v)
+			}
+		}
+		dst[o] = acc
+	}
+}
+
 // pwBlock is NumPy's PW_BLOCKSIZE: runs up to this length are summed with
 // eight accumulators, longer ones are halved.
 const pwBlock = 128

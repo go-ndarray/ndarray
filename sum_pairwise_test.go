@@ -86,6 +86,104 @@ func TestProdAlongANonContiguousAxis(t *testing.T) {
 	}
 }
 
+// TestWidenedSums: sums and products of bools and narrow integers along a
+// contiguous axis fold each element into the 64-bit accumulator as it is
+// read. The expectation widens each element first and folds with Go's
+// arithmetic of the accumulator, wrap-around included; a transposed operand
+// takes the gather path.
+func TestWidenedSums(t *testing.T) {
+	const rows, cols = 3, 37
+	check := func(name string, a *Array, wantSum, wantProd func(row []int) any) {
+		t.Helper()
+		for _, x := range []*Array{a, must(a.Transpose().Copy().Reshape(cols, rows)).Transpose()} {
+			s, p := must(x.SumAxis(1, false)), must(x.ProdAxis(1, false))
+			for r := range rows {
+				idx := []int{r}
+				if gs, ws := s.itemAny(idx), wantSum([]int{r}); gs != ws {
+					t.Errorf("%s sum row %d = %v, want %v", name, r, gs, ws)
+				}
+				if gp, wp := p.itemAny(idx), wantProd([]int{r}); gp != wp {
+					t.Errorf("%s prod row %d = %v, want %v", name, r, gp, wp)
+				}
+			}
+		}
+	}
+	i32 := make([]int32, rows*cols)
+	u16 := make([]uint16, rows*cols)
+	b := make([]bool, rows*cols)
+	for i := range i32 {
+		i32[i] = int32(math.MaxInt32 - i*7919) // sums past 2^32, products that wrap
+		u16[i] = uint16(65535 - i*31)
+		b[i] = i%11 != 0
+	}
+	b[cols+5] = true // row 1 all true except its i%11 == 0 slots
+	check("int32", must(FromSlice(i32, rows, cols)), func(r []int) any {
+		var acc int64
+		for _, v := range i32[r[0]*cols : (r[0]+1)*cols] {
+			acc += int64(v)
+		}
+		return acc
+	}, func(r []int) any {
+		var acc int64 = 1
+		for _, v := range i32[r[0]*cols : (r[0]+1)*cols] {
+			acc *= int64(v)
+		}
+		return acc
+	})
+	check("uint16", must(FromSlice(u16, rows, cols)), func(r []int) any {
+		var acc uint64
+		for _, v := range u16[r[0]*cols : (r[0]+1)*cols] {
+			acc += uint64(v)
+		}
+		return acc
+	}, func(r []int) any {
+		var acc uint64 = 1
+		for _, v := range u16[r[0]*cols : (r[0]+1)*cols] {
+			acc *= uint64(v)
+		}
+		return acc
+	})
+	check("bool", must(FromSlice(b, rows, cols)), func(r []int) any {
+		var acc int64
+		for _, v := range b[r[0]*cols : (r[0]+1)*cols] {
+			if v {
+				acc++
+			}
+		}
+		return acc
+	}, func(r []int) any {
+		var acc int64 = 1
+		for _, v := range b[r[0]*cols : (r[0]+1)*cols] {
+			if !v {
+				acc = 0
+			}
+		}
+		return acc
+	})
+	for _, dt := range []DType{Int8, Int16, Uint8, Uint32} {
+		x := must(Arange(1, 10, 1)).AsType(dt)
+		if got := x.SumAll().itemAny([]int{}); got != map[bool]any{true: int64(45), false: uint64(45)}[dt.IsSigned()] {
+			t.Errorf("%v: SumAll = %v, want 45 in the accumulator type", dt, got)
+		}
+		if got := x.ProdAll().itemAny([]int{}); got != map[bool]any{true: int64(362880), false: uint64(362880)}[dt.IsSigned()] {
+			t.Errorf("%v: ProdAll = %v, want 362880", dt, got)
+		}
+	}
+}
+
+// itemAny returns element idx of a in its Go type, for comparisons.
+func (a *Array) itemAny(idx []int) any {
+	s := a.contiguousStore()
+	f := flatIndex(idx, a.shape)
+	switch st := s.(type) {
+	case []int64:
+		return st[f]
+	case []uint64:
+		return st[f]
+	}
+	return nil
+}
+
 // TestPairwiseSumBranches covers each length class of NumPy's scheme and
 // checks it against the exact sum of small integers (exact in float32), and
 // that a sum of only -0 stays -0.

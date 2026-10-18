@@ -330,6 +330,15 @@ func (a *Array) reduceTyped(axis int, keepdims bool, op reduceCode) (*Array, err
 		return a.result(dst, shape), nil
 	}
 	if outer*inner > 0 {
+		if inner == 1 && dt != a.dtype {
+			// A sum or product of bools or narrow integers along a
+			// contiguous axis: fold the elements into the wide accumulator
+			// as they are read, rather than converting the whole array to
+			// it first (an extra pass and an allocation of 8 bytes an
+			// element).
+			foldWidened(op, dst, a.contiguousStore(), outer, axisLen)
+			return a.result(dst, shape), nil
+		}
 		src := a.operandStore(dt, a.shape)
 		if op == rSum || op == rProd {
 			accumulateStore(op, dst, src, outer, axisLen, inner)
