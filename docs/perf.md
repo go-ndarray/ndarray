@@ -837,7 +837,47 @@ arithmetic, wrap-around included): **int32 `Sum` of 2²⁰ elements 2.872 →
 1.548 ms (−46%)**, 2¹⁴ −51%, with float64, float32 and int64 unchanged as
 controls (POWER9, same protocol, p = 0.002).
 
-Left: float32 has no SIMD kernel yet (still 7× float64 for `Sum`).
+### float32 sums on SSE2 and NEON (2026-10-18)
+
+NumPy keeps eight accumulators in its pairwise sum so that the inner loop can
+be vectorised "without changing summation ordering". `kernels.AddBlocks8F32`
+is that loop: blocks of eight float32 added lane by lane, one IEEE addition
+per lane per block, in order. It is SSE2 on amd64 (`ADDPS` on two XMM
+registers) and NEON on arm64 (`VFADD` on two `.S4` registers), and the scalar
+loop elsewhere, so float32 sums are unchanged bit for bit. The kernel is
+tested bit for bit against the scalar loop (NaN, the infinities, −0,
+subnormals, overflow), and fenced with `PROT_NONE` pages on both operands. A
+kernel adding from the wrong register fails the first test, and one reading
+a block too many faults in the fence.
+
+No quiet amd64 or arm64 machine was at hand: the cfarm hosts refuse their
+host keys since the CA revocation, and the development Mac ran at a load of
+97. So these were measured with the `bench` workflow on the hosted runners:
+base and head alternated ten times in fresh processes on one thread,
+`benchstat`, p ≤ 0.002.
+
+| vs v0.13.x | amd64 (EPYC 9V45) | arm64 (hosted) |
+|---|---:|---:|
+| float32 `Sum`, 2¹⁴ | −50% | −33% |
+| float32 `Sum`, 2²⁰ | −49% | −43% |
+| int32 `Sum`, 2¹⁴ | −12% | −12% |
+| int32 `Sum`, 2²⁰ | −15% | −13% |
+| float64, int64 `Sum` (controls) | ~ | ~ |
+
+The integer rows come from a defect the first run exposed. With the kernel
+added, int32 `Sum` was **48–56% slower on amd64** although its code had not
+changed: the disassembly of both binaries showed the same loop, byte for
+byte, moved 224 bytes and now straddling a 64-byte line. The loop also
+reloaded the operation from the stack every element. The widening folds now
+use one loop per operation and four accumulators (exact: integer addition
+and multiplication wrap modulo 2⁶⁴, so the order changes nothing). They also
+consume the slice instead of indexing `i+1…i+3`, which had left four bounds
+checks per iteration in the amd64 code; now there are none.
+
+Left: ppc64le, s390x, loong64 and riscv64 run the scalar block loop. ppc64le
+needs `xvaddsp`, which Go's assembler lacks: go-asmgen/asmgen#27 adds the
+VSX single-precision family to its registry, with references from GNU as
+and llvm-mc.
 
 ## SIMD coverage
 
