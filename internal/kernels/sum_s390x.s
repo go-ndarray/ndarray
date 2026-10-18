@@ -401,3 +401,21 @@ TEXT ·minVXE(SB), NOSPLIT, $0-24
 	FMOVD F0, ret+16(FP)
 	RET
 
+TEXT ·blocks8VXE(SB), NOSPLIT, $0-24
+	MOVD r+0(FP), R1
+	MOVD a+8(FP), R2
+	MOVD blocks+16(FP), R3
+	VL 0(R1), V0
+	VL 16(R1), V1
+	b8loop:
+	VL 0(R2), V2
+	VL 16(R2), V3
+	WORD $0xe7002000; BYTE $0x20; BYTE $0xe3 // VFASB V0, V2, V0
+	WORD $0xe7113000; BYTE $0x20; BYTE $0xe3 // VFASB V1, V3, V1
+	ADD $32, R2
+	SUB $1, R3
+	CMPBNE R3, $0, b8loop
+	VST V0, 0(R1)
+	VST V1, 16(R1)
+	RET
+

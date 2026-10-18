@@ -39,6 +39,7 @@ func main() {
 	f.Add(gemmKernel())
 	f.Add(extremumKernel("maxVXE", "VFMAXDB", "WFMAXDB"))
 	f.Add(extremumKernel("minVXE", "VFMINDB", "WFMINDB"))
+	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_s390x.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -213,6 +214,30 @@ func extremumKernel(name, vec, sca string) *emit.Function {
 		Raw("ADD $8, R1").Raw("SUB $1, R2").Raw("BR tail").
 		Raw("done:").
 		StoreRet("F0", "ret").
+		Ret()
+	return b.Func()
+}
+
+// blocks8Kernel builds blocks8VXE(r, a *float32, blocks int): for each of the
+// blocks of eight float32 at a, in order, r[j] += a[8i+j] (NumPy's pairwise-sum
+// block). The eight accumulators are split over two vector registers, V0 and
+// V1 (two dependency chains, as on the other targets), and VFASB is one IEEE
+// float32 addition per lane, so the result is the scalar loop's bit for bit.
+// VL/VST keep memory order on this big-endian machine, so every float keeps
+// its lane. VFASB is the vector-enhancements facility 1 (z14); Go's assembler
+// lacks it, and go-asmgen emits it as WORD+BYTE+BYTE pinned against GNU as
+// (the cmd/asm spelling is CL 846286). blocks >= 1.
+func blocks8Kernel() *emit.Function {
+	sig := s390x.Layout([]string{"r", "a", "blocks"},
+		[]s390x.Type{s390x.Ptr, s390x.Ptr, s390x.Int64}, nil, nil)
+	b := s390x.NewFunc("blocks8VXE", sig, 0)
+	b.LoadArg("r", "R1").LoadArg("a", "R2").LoadArg("blocks", "R3").
+		Raw("VL 0(R1), V0").Raw("VL 16(R1), V1").
+		Raw("b8loop:").
+		Raw("VL 0(R2), V2").Raw("VL 16(R2), V3")
+	b.VFASB(0, 0, 2).VFASB(1, 1, 3)
+	b.Raw("ADD $32, R2").Raw("SUB $1, R3").Raw("CMPBNE R3, $0, b8loop").
+		Raw("VST V0, 0(R1)").Raw("VST V1, 16(R1)").
 		Ret()
 	return b.Func()
 }
