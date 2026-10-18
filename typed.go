@@ -345,6 +345,16 @@ const (
 
 // reduceNum sums or multiplies along the axis.
 func reduceNum[T numT](op reduceCode, dst, src []T, outer, axisLen, inner int) {
+	if inner == 1 {
+		// The reduced axis is contiguous (the last axis, or the whole
+		// array): fold each run directly. The loop below would take a
+		// slice and run a one-iteration loop per element there, 6.8 ns an
+		// element for a float32 sum on POWER9.
+		for o := 0; o < outer; o++ {
+			dst[o] = foldRun(op, src[o*axisLen:(o+1)*axisLen])
+		}
+		return
+	}
 	for o := 0; o < outer; o++ {
 		row := dst[o*inner : (o+1)*inner]
 		copy(row, src[o*axisLen*inner:(o*axisLen+1)*inner])
@@ -361,6 +371,112 @@ func reduceNum[T numT](op reduceCode, dst, src []T, outer, axisLen, inner int) {
 			}
 		}
 	}
+}
+
+// foldRun reduces one contiguous run (len(s) > 0) as NumPy's add and
+// multiply reductions do: the result starts as the first element and the
+// rest is added to it, pairwise for a floating sum (pairwiseSum), in order
+// otherwise. Integer sums are exact in any order, and NumPy multiplies in
+// order.
+func foldRun[T numT](op reduceCode, s []T) T {
+	acc := s[0]
+	rest := s[1:]
+	if op == rSum {
+		switch r := any(rest).(type) {
+		case []float32: // Float64 sums never come here: they have kernels
+			return any(any(acc).(float32) + pairwiseSum(r)).(T)
+		case []complex64:
+			return any(any(acc).(complex64) + pairwiseSumComplex(r)).(T)
+		case []complex128:
+			return any(any(acc).(complex128) + pairwiseSumComplex(r)).(T)
+		}
+		for _, v := range rest {
+			acc += v
+		}
+		return acc
+	}
+	for _, v := range rest {
+		acc *= v
+	}
+	return acc
+}
+
+// pwBlock is NumPy's PW_BLOCKSIZE: runs up to this length are summed with
+// eight accumulators, longer ones are halved.
+const pwBlock = 128
+
+// pairwiseSum is NumPy's FLOAT_pairwise_sum
+// (numpy/_core/src/umath/loops_utils.h.src, v2.5.3): rounding error O(lg n)
+// instead of O(n), in the same order of additions.
+func pairwiseSum[F float32](a []F) F {
+	n := len(a)
+	switch {
+	case n < 8:
+		// From -0, so that a sum of only -0 stays -0.
+		res := F(math.Copysign(0, -1))
+		for _, v := range a {
+			res += v
+		}
+		return res
+	case n <= pwBlock:
+		var r [8]F
+		copy(r[:], a[:8])
+		i := 8
+		for ; i < n-n%8; i += 8 {
+			r[0] += a[i]
+			r[1] += a[i+1]
+			r[2] += a[i+2]
+			r[3] += a[i+3]
+			r[4] += a[i+4]
+			r[5] += a[i+5]
+			r[6] += a[i+6]
+			r[7] += a[i+7]
+		}
+		res := ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
+		for ; i < n; i++ {
+			res += a[i]
+		}
+		return res
+	}
+	n2 := n / 2
+	n2 -= n2 % 8
+	return pairwiseSum(a[:n2]) + pairwiseSum(a[n2:])
+}
+
+// pairwiseSumComplex is NumPy's CFLOAT/CDOUBLE_pairwise_sum: the same scheme
+// over the interleaved real and imaginary parts, counted in floats (two per
+// element), so four accumulators per part and blocks of 64 elements.
+func pairwiseSumComplex[C complex64 | complex128](a []C) C {
+	n := 2 * len(a) // NumPy's n counts floats
+	switch {
+	case n < 8:
+		re, im := math.Copysign(0, -1), math.Copysign(0, -1)
+		var acc C = C(complex(re, im))
+		for _, v := range a {
+			acc += v
+		}
+		return acc
+	case n <= pwBlock:
+		// r[0], r[2], r[4], r[6] hold real parts and r[1], r[3], r[5], r[7]
+		// imaginary parts, of elements 0..3 of each block of four.
+		var r [4]C
+		copy(r[:], a[:4])
+		i := 4
+		for ; i < len(a)-len(a)%4; i += 4 {
+			r[0] += a[i]
+			r[1] += a[i+1]
+			r[2] += a[i+2]
+			r[3] += a[i+3]
+		}
+		res := (r[0] + r[1]) + (r[2] + r[3])
+		for ; i < len(a); i++ {
+			res += a[i]
+		}
+		return res
+	}
+	n2 := n / 2
+	n2 -= n2 % 8
+	return pairwiseSumComplex(a[:n2/2]) + pairwiseSumComplex(a[n2/2:])
 }
 
 // reduceOrdered takes the maximum or minimum along the axis; for floats a NaN
