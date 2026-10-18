@@ -120,6 +120,7 @@ func TestArgumentErrors(t *testing.T) {
 	add("choice nonzero")(g.ChoiceN(3, ChoiceOptions{NoReplace: true, P: []float64{1, 0, 0}}, 2))
 	add("normal size")(g.Normal(0, 1, -1))
 	add("random32 size")(g.RandomOf(ndarray.Float32, -1))
+	add("standard_normal32 size")(g.StandardNormalOf(ndarray.Float32, -1))
 	add("poisson size")(g.Poisson(1, -1))
 	add("standard_normal size")(g.StandardNormal(-1))
 	add("integers closed zero")(g.IntegersOf(ndarray.Int8, 0, -1, true))
