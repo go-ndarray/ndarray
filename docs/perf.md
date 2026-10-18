@@ -850,11 +850,16 @@ subnormals, overflow), and fenced with `PROT_NONE` pages on both operands. A
 kernel adding from the wrong register fails the first test, and one reading
 a block too many faults in the fence.
 
-No quiet amd64 or arm64 machine was at hand: the cfarm hosts refuse their
-host keys since the CA revocation, and the development Mac ran at a load of
-97. So these were measured with the `bench` workflow on the hosted runners:
-base and head alternated ten times in fresh processes on one thread,
-`benchstat`, p ≤ 0.002.
+Measured twice. First with the `bench` workflow on the hosted runners
+(base and head alternated ten times in fresh processes on one thread,
+`benchstat`, p ≤ 0.002), because the development Mac ran at a load of 97 and
+most cfarm hosts refuse their keys since the host CA was revoked. Then on
+real, idle hardware reached through a known_hosts file whose keys were
+confirmed over a second network path: cfarm424 (Neoverse N1, 0.0% busy) and
+cfarm420 (Zen 3, EPYC 7773X, 1.7% busy), same protocol, pinned to the idlest
+CPU. On those, float32 `Sum` was −39% / −32% (N1) and −43% / −41% (Zen 3) at
+2¹⁴ / 2²⁰. int32 was −15% / −11% on the N1, and on the Zen 3 within the
+noise (±10% at that host's variance). The controls were unchanged.
 
 | vs v0.13.x | amd64 (EPYC 9V45) | arm64 (hosted) |
 |---|---:|---:|
