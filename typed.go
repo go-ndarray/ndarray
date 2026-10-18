@@ -460,32 +460,37 @@ func widenRuns[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint6
 // single loop reloaded it from the stack every iteration), and four
 // independent chains, so the loop is no longer one dependent add an element:
 // it had run 50% slower on a Zen 3 just by being moved across a 64-byte line.
+//
+// The loops consume the slice (s = s[4:] under len(s) >= 4) rather than index
+// it at i+1..i+3: with indices, the compiler proved none of them in range and
+// emitted four bounds checks an iteration (amd64 disassembly); this way it
+// proves all four from the loop condition and emits none.
 func sumWiden[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](s []S) D {
 	var a0, a1, a2, a3 D
-	i := 0
-	for ; i+4 <= len(s); i += 4 {
-		a0 += D(s[i])
-		a1 += D(s[i+1])
-		a2 += D(s[i+2])
-		a3 += D(s[i+3])
+	for len(s) >= 4 {
+		a0 += D(s[0])
+		a1 += D(s[1])
+		a2 += D(s[2])
+		a3 += D(s[3])
+		s = s[4:]
 	}
-	for ; i < len(s); i++ {
-		a0 += D(s[i])
+	for _, v := range s {
+		a0 += D(v)
 	}
 	return (a0 + a1) + (a2 + a3)
 }
 
 func prodWiden[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](s []S) D {
 	var a0, a1, a2, a3 D = 1, 1, 1, 1
-	i := 0
-	for ; i+4 <= len(s); i += 4 {
-		a0 *= D(s[i])
-		a1 *= D(s[i+1])
-		a2 *= D(s[i+2])
-		a3 *= D(s[i+3])
+	for len(s) >= 4 {
+		a0 *= D(s[0])
+		a1 *= D(s[1])
+		a2 *= D(s[2])
+		a3 *= D(s[3])
+		s = s[4:]
 	}
-	for ; i < len(s); i++ {
-		a0 *= D(s[i])
+	for _, v := range s {
+		a0 *= D(v)
 	}
 	return (a0 * a1) * (a2 * a3)
 }
