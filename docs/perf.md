@@ -879,10 +879,28 @@ and multiplication wrap modulo 2⁶⁴, so the order changes nothing). They also
 consume the slice instead of indexing `i+1…i+3`, which had left four bounds
 checks per iteration in the amd64 code; now there are none.
 
-Left: ppc64le, s390x, loong64 and riscv64 run the scalar block loop. ppc64le
-needs `xvaddsp`, which Go's assembler lacks: go-asmgen/asmgen#27 adds the
-VSX single-precision family to its registry, with references from GNU as
-and llvm-mc.
+**riscv64 and loong64 (2026-10-18).** RVV: `VSETIVLI $8, E32, M2` gives
+vl = 8 on every VLEN ≥ 128, and `VFADDVV` adds a block to the two-register
+group. LSX: the eight accumulators sit in two 128-bit registers, and
+`VFADD.S` (`VADDF`) adds a block. Each runs behind the feature bit its float64
+kernels use. Both were run on the real hardware: the kernel tests passed
+there, and a sabotaged kernel failed them, so the kernel path is the one
+taken. Same A/B protocol, idle hosts:
+
+| float32 `Sum`, 2¹⁴ / 2²⁰ | change | controls |
+|---|---:|---|
+| SpacemiT X60 (cfarm95, RVV, VLEN 256) | −30% / −41% | float64, int32 ~ |
+| Loongson 3C5000L (cfarm401, LSX) | −24% / −24% | float64, int32 ~ |
+
+The first loong64 kernel used one 256-bit LASX register for all eight
+accumulators, and was **26–47% slower** than the scalar loop. Every block's
+addition waited on the previous one, a single dependency chain, where the
+scalar loop has eight. Two registers give two chains, as SSE2 does on amd64.
+
+Left: ppc64le and s390x run the scalar block loop. Go's assembler lacks
+`xvaddsp` (ppc64) and `vfasb` (s390x). go-asmgen/asmgen#27 adds the VSX
+single-precision family to go-asmgen's registry, with references from GNU as
+and llvm-mc, and needs a cmd/asm patch of its own.
 
 ## SIMD coverage
 

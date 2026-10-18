@@ -36,6 +36,7 @@ func main() {
 		f.Add(binKernel(k.name, k.op))
 	}
 	f.Add(gemmKernel())
+	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_riscv64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -166,5 +167,28 @@ func gemmKernel() *emit.Function {
 			b.Raw("ADD X14, X13, X13")
 		}
 	}
+	return b.Ret().Func()
+}
+
+// blocks8Kernel builds blocks8RVV(r, a *float32, blocks int): for each of the
+// blocks of eight float32 at a, in order, r[j] += a[8i+j] (NumPy's
+// pairwise-sum block). VSETIVLI $8 with E32 and M2 gives vl = 8 on every
+// VLEN >= 128, the V extension's minimum; the eight accumulators live in the
+// register group V2-V3 and VFADDVV is one IEEE float32 addition per lane, so
+// the result is the scalar loop's bit for bit. blocks >= 1.
+func blocks8Kernel() *emit.Function {
+	sig := riscv64.Layout([]string{"r", "a", "blocks"},
+		[]riscv64.Type{riscv64.Ptr, riscv64.Ptr, riscv64.Int64}, nil, nil)
+	b := riscv64.NewFunc("blocks8RVV", sig, 0)
+	b.LoadArg("r", "X10").LoadArg("a", "X11").LoadArg("blocks", "X12")
+	b.Raw("VSETIVLI $8, E32, M2, TA, MA, X15").
+		Raw("VLE32V (X10), V2").
+		Raw("b8loop:").
+		Raw("VLE32V (X11), V4").
+		Raw("VFADDVV V4, V2, V2"). // V2 = V2 + V4
+		Raw("ADD $32, X11").
+		Raw("ADD $-1, X12").
+		Raw("BNEZ X12, b8loop").
+		Raw("VSE32V V2, (X10)")
 	return b.Ret().Func()
 }

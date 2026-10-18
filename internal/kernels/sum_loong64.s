@@ -426,3 +426,21 @@ gstore:
 	XVMOVQ X17, 32(R8)
 	RET
 
+TEXT ·blocks8LSX(SB), NOSPLIT, $0-24
+	MOVV r+0(FP), R4
+	MOVV a+8(FP), R5
+	MOVV blocks+16(FP), R6
+	VMOVQ 0(R4), V0
+	VMOVQ 16(R4), V1
+b8loop:
+	VMOVQ 0(R5), V2
+	VMOVQ 16(R5), V3
+	VADDF V2, V0, V0
+	VADDF V3, V1, V1
+	ADDV $32, R5
+	ADDV $-1, R6
+	BNE R6, b8loop
+	VMOVQ V0, 0(R4)
+	VMOVQ V1, 16(R4)
+	RET
+
