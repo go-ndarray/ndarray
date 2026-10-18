@@ -40,6 +40,7 @@ func main() {
 		f.Add(binKernel(k.name, k.vec, k.sca))
 	}
 	f.Add(gemmKernel())
+	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_ppc64le.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -279,6 +280,30 @@ func gemmKernel() *emit.Function {
 			}
 		}
 	}
+	b.Ret()
+	return b.Func()
+}
+
+// blocks8Kernel builds blocks8VSX(r, a *float32, blocks int): for each of the
+// blocks of eight float32 at a, in order, r[j] += a[8i+j] (NumPy's pairwise-sum
+// block). The eight accumulators are split over two VSX registers, VS0 and VS1
+// (two dependency chains, as SSE2 on amd64 and LSX on loong64), and XVADDSP is
+// one IEEE float32 addition per lane, so the result is the scalar loop's bit
+// for bit. LXVW4X/STXVW4X put each word at the same lane in the accumulators
+// and the input, and back at its own index on the store. blocks >= 1.
+func blocks8Kernel() *emit.Function {
+	sig := ppc64.Layout([]string{"r", "a", "blocks"},
+		[]ppc64.Type{ppc64.Ptr, ppc64.Ptr, ppc64.Int64}, nil, nil)
+	b := ppc64.NewFunc("blocks8VSX", sig, 0)
+	b.LoadArg("r", "R3").LoadArg("a", "R4").LoadArg("blocks", "R5")
+	b.Raw("MOVD $16, R14")
+	b.Raw("LXVW4X (R3)(R0), VS0").Raw("LXVW4X (R3)(R14), VS1")
+	b.Label("b8loop").
+		Raw("LXVW4X (R4)(R0), VS32").
+		Raw("LXVW4X (R4)(R14), VS33")
+	b.XVADDSP(0, 0, 32).XVADDSP(1, 1, 33)
+	b.Raw("ADD $32, R4").Raw("ADD $-1, R5").Raw("CMP R5, $0").Raw("BNE b8loop")
+	b.Raw("STXVW4X VS0, (R3)(R0)").Raw("STXVW4X VS1, (R3)(R14)")
 	b.Ret()
 	return b.Func()
 }
