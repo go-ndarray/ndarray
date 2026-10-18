@@ -445,18 +445,49 @@ func foldWidened(op reduceCode, dst, src any, outer, axisLen int) {
 func widenRuns[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](op reduceCode, dst []D, src []S, outer, axisLen int) {
 	for o := range outer {
 		run := src[o*axisLen : (o+1)*axisLen]
-		acc := D(run[0])
 		if op == rSum {
-			for _, v := range run[1:] {
-				acc += D(v)
-			}
+			dst[o] = sumWiden[S, D](run)
 		} else {
-			for _, v := range run[1:] {
-				acc *= D(v)
-			}
+			dst[o] = prodWiden[S, D](run)
 		}
-		dst[o] = acc
 	}
+}
+
+// sumWiden and prodWiden fold a run with four accumulators. Integer addition
+// and multiplication wrap modulo 2^64, so they are associative and the order
+// changes nothing: the result is the in-order fold's, exactly. One loop per
+// operation, so the operation is not re-read per element (on amd64 the
+// single loop reloaded it from the stack every iteration), and four
+// independent chains, so the loop is no longer one dependent add an element:
+// it had run 50% slower on a Zen 3 just by being moved across a 64-byte line.
+func sumWiden[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](s []S) D {
+	var a0, a1, a2, a3 D
+	i := 0
+	for ; i+4 <= len(s); i += 4 {
+		a0 += D(s[i])
+		a1 += D(s[i+1])
+		a2 += D(s[i+2])
+		a3 += D(s[i+3])
+	}
+	for ; i < len(s); i++ {
+		a0 += D(s[i])
+	}
+	return (a0 + a1) + (a2 + a3)
+}
+
+func prodWiden[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](s []S) D {
+	var a0, a1, a2, a3 D = 1, 1, 1, 1
+	i := 0
+	for ; i+4 <= len(s); i += 4 {
+		a0 *= D(s[i])
+		a1 *= D(s[i+1])
+		a2 *= D(s[i+2])
+		a3 *= D(s[i+3])
+	}
+	for ; i < len(s); i++ {
+		a0 *= D(s[i])
+	}
+	return (a0 * a1) * (a2 * a3)
 }
 
 // pwBlock is NumPy's PW_BLOCKSIZE: runs up to this length are summed with
