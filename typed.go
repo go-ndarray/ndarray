@@ -3,6 +3,8 @@ package ndarray
 import (
 	"math"
 	"math/cmplx"
+
+	"github.com/go-ndarray/ndarray/internal/kernels"
 )
 
 // Inner loops for the dtypes other than Float64. Each takes contiguous storage
@@ -443,18 +445,54 @@ func foldWidened(op reduceCode, dst, src any, outer, axisLen int) {
 func widenRuns[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](op reduceCode, dst []D, src []S, outer, axisLen int) {
 	for o := range outer {
 		run := src[o*axisLen : (o+1)*axisLen]
-		acc := D(run[0])
 		if op == rSum {
-			for _, v := range run[1:] {
-				acc += D(v)
-			}
+			dst[o] = sumWiden[S, D](run)
 		} else {
-			for _, v := range run[1:] {
-				acc *= D(v)
-			}
+			dst[o] = prodWiden[S, D](run)
 		}
-		dst[o] = acc
 	}
+}
+
+// sumWiden and prodWiden fold a run with four accumulators. Integer addition
+// and multiplication wrap modulo 2^64, so they are associative and the order
+// changes nothing: the result is the in-order fold's, exactly. One loop per
+// operation, so the operation is not re-read per element (on amd64 the
+// single loop reloaded it from the stack every iteration), and four
+// independent chains, so the loop is no longer one dependent add an element:
+// it had run 50% slower on a Zen 3 just by being moved across a 64-byte line.
+//
+// The loops consume the slice (s = s[4:] under len(s) >= 4) rather than index
+// it at i+1..i+3: with indices, the compiler proved none of them in range and
+// emitted four bounds checks an iteration (amd64 disassembly); this way it
+// proves all four from the loop condition and emits none.
+func sumWiden[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](s []S) D {
+	var a0, a1, a2, a3 D
+	for len(s) >= 4 {
+		a0 += D(s[0])
+		a1 += D(s[1])
+		a2 += D(s[2])
+		a3 += D(s[3])
+		s = s[4:]
+	}
+	for _, v := range s {
+		a0 += D(v)
+	}
+	return (a0 + a1) + (a2 + a3)
+}
+
+func prodWiden[S int8 | int16 | int32 | uint8 | uint16 | uint32, D int64 | uint64](s []S) D {
+	var a0, a1, a2, a3 D = 1, 1, 1, 1
+	for len(s) >= 4 {
+		a0 *= D(s[0])
+		a1 *= D(s[1])
+		a2 *= D(s[2])
+		a3 *= D(s[3])
+		s = s[4:]
+	}
+	for _, v := range s {
+		a0 *= D(v)
+	}
+	return (a0 * a1) * (a2 * a3)
 }
 
 // pwBlock is NumPy's PW_BLOCKSIZE: runs up to this length are summed with
@@ -464,30 +502,25 @@ const pwBlock = 128
 // pairwiseSum is NumPy's FLOAT_pairwise_sum
 // (numpy/_core/src/umath/loops_utils.h.src, v2.5.3): rounding error O(lg n)
 // instead of O(n), in the same order of additions.
-func pairwiseSum[F float32](a []F) F {
+//
+// The eight accumulators are fed by kernels.AddBlocks8F32, a vector kernel on
+// amd64 and arm64 that adds the same lanes in the same order, so the sums are
+// the scalar loop's bit for bit.
+func pairwiseSum(a []float32) float32 {
 	n := len(a)
 	switch {
 	case n < 8:
 		// From -0, so that a sum of only -0 stays -0.
-		res := F(math.Copysign(0, -1))
+		res := float32(math.Copysign(0, -1))
 		for _, v := range a {
 			res += v
 		}
 		return res
 	case n <= pwBlock:
-		var r [8]F
+		var r [8]float32
 		copy(r[:], a[:8])
-		i := 8
-		for ; i < n-n%8; i += 8 {
-			r[0] += a[i]
-			r[1] += a[i+1]
-			r[2] += a[i+2]
-			r[3] += a[i+3]
-			r[4] += a[i+4]
-			r[5] += a[i+5]
-			r[6] += a[i+6]
-			r[7] += a[i+7]
-		}
+		i := n - n%8
+		kernels.AddBlocks8F32(&r, a[8:i])
 		res := ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
 		for ; i < n; i++ {
 			res += a[i]

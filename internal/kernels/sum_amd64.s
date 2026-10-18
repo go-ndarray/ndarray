@@ -704,3 +704,21 @@ TEXT ·hasFMA(SB), NOSPLIT, $0-1
 hasFMA_unsupported:
 	RET
 
+TEXT ·blocks8SSE2(SB), NOSPLIT, $0-24
+	MOVQ r+0(FP), DI
+	MOVQ a+8(FP), SI
+	MOVQ blocks+16(FP), CX
+	MOVUPS (DI), X0
+	MOVUPS 16(DI), X1
+	b8loop:
+	MOVUPS (SI), X2
+	MOVUPS 16(SI), X3
+	ADDPS X2, X0
+	ADDPS X3, X1
+	ADDQ $32, SI
+	DECQ CX
+	JNZ b8loop
+	MOVUPS X0, (DI)
+	MOVUPS X1, 16(DI)
+	RET
+

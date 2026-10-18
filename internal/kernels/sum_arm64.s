@@ -383,3 +383,17 @@ TEXT ·gemmMicro4x8(SB), NOSPLIT, $0-40
 	VST1 [V16.D2, V17.D2, V18.D2, V19.D2], (R5)
 	RET
 
+TEXT ·blocks8NEON(SB), NOSPLIT, $0-24
+	MOVD r+0(FP), R0
+	MOVD a+8(FP), R1
+	MOVD blocks+16(FP), R2
+	VLD1 (R0), [V0.S4, V1.S4]
+	b8loop:
+	VLD1.P 32(R1), [V2.S4, V3.S4]
+	VFADD V2.S4, V0.S4, V0.S4
+	VFADD V3.S4, V1.S4, V1.S4
+	SUB $1, R2
+	CBNZ R2, b8loop
+	VST1 [V0.S4, V1.S4], (R0)
+	RET
+

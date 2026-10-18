@@ -49,6 +49,7 @@ func main() {
 	f.Add(dotFMAKernel())
 	f.Add(gemmSSE2HalfKernel())
 	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
+	f.Add(blocks8Kernel())
 
 	if err := os.WriteFile("sum_amd64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -103,6 +104,37 @@ func sumKernel() *emit.Function {
 		Raw("JMP tail").
 		Raw("done:").
 		StoreRet("X0", "ret").
+		Ret()
+	return b.Func()
+}
+
+// blocks8Kernel builds blocks8SSE2(r, a *float32, blocks int): for each of
+// the blocks of eight float32 at a, in order, r[j] += a[8i+j]. The eight
+// accumulators live in X0 (r[0:4]) and X1 (r[4:8]); ADDPS is one IEEE
+// float32 addition per lane, so the result is the scalar loop's, bit for bit
+// (NumPy's pairwise-sum block, whose order it keeps). blocks >= 1.
+func blocks8Kernel() *emit.Function {
+	sig := amd64.Layout(
+		[]string{"r", "a", "blocks"},
+		[]amd64.Type{amd64.Ptr, amd64.Ptr, amd64.Int64},
+		nil, nil,
+	)
+	b := amd64.NewFunc("blocks8SSE2", sig, 0)
+	b.LoadArg("r", "DI").
+		LoadArg("a", "SI").
+		LoadArg("blocks", "CX").
+		Raw("MOVUPS (DI), X0").
+		Raw("MOVUPS 16(DI), X1").
+		Raw("b8loop:").
+		Raw("MOVUPS (SI), X2").
+		Raw("MOVUPS 16(SI), X3").
+		Raw("ADDPS X2, X0").
+		Raw("ADDPS X3, X1").
+		Raw("ADDQ $32, SI").
+		Raw("DECQ CX").
+		Raw("JNZ b8loop").
+		Raw("MOVUPS X0, (DI)").
+		Raw("MOVUPS X1, 16(DI)").
 		Ret()
 	return b.Func()
 }
