@@ -39,6 +39,7 @@ func main() {
 		f.Add(binKernel(k.name, k.vec, k.sca))
 	}
 	f.Add(gemmKernel())
+	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_loong64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -203,6 +204,28 @@ func gemmKernel() *emit.Function {
 			b.Raw("ADDV R9, R8")
 		}
 	}
+	b.Ret()
+	return b.Func()
+}
+
+// blocks8Kernel builds blocks8LASX(r, a *float32, blocks int): for each of
+// the blocks of eight float32 at a, in order, r[j] += a[8i+j] (NumPy's
+// pairwise-sum block). The eight accumulators fill one 256-bit register, X0;
+// XVADDF (xvfadd.s) is one IEEE float32 addition per lane, so the result is
+// the scalar loop's bit for bit. blocks >= 1.
+func blocks8Kernel() *emit.Function {
+	sig := loong64.Layout([]string{"r", "a", "blocks"},
+		[]loong64.Type{loong64.Ptr, loong64.Ptr, loong64.Int64}, nil, nil)
+	b := loong64.NewFunc("blocks8LASX", sig, 0)
+	b.LoadArg("r", "R4").LoadArg("a", "R5").LoadArg("blocks", "R6")
+	b.Raw("XVMOVQ 0(R4), X0")
+	b.Label("b8loop").
+		Raw("XVMOVQ 0(R5), X1").
+		Raw("XVADDF X1, X0, X0").
+		Raw("ADDV $32, R5").
+		Raw("ADDV $-1, R6").
+		Raw("BNE R6, b8loop")
+	b.Raw("XVMOVQ X0, 0(R4)")
 	b.Ret()
 	return b.Func()
 }
