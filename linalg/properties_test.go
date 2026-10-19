@@ -408,6 +408,21 @@ func TestEigBranches(t *testing.T) {
 			}
 			return 0
 		}),
+		// Two consecutive small subdiagonals in the middle of an upper
+		// Hessenberg matrix: each is far above the deflation threshold, their
+		// product far below ZLAHQR's "two small subdiagonals" test, so a QR
+		// sweep starts at m = 3 with rows below it and rescales h(m+2, m+1)
+		// to keep the subdiagonal real. Reached by rounding alone on arm64
+		// only, before this case existed.
+		"small-subdiagonal-pair": mk(8, func(i, j int) complex128 {
+			switch {
+			case i > j+1:
+				return 0
+			case (i == 3 && j == 2) || (i == 4 && j == 3):
+				return 1e-9
+			}
+			return complex(float64(1+(i*5+j*3)%7), float64((i+2*j)%3))
+		}),
 		// Badly scaled: balancing scales by large powers of two.
 		"scaled": mk(4, func(i, j int) complex128 {
 			return complex(math.Pow(1e30, float64(i-j))*float64(1+(i*3+j)%5), 0)
