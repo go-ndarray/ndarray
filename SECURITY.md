@@ -66,6 +66,23 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-18 (v0.18.0).** The float32 elementwise kernels (`kernels.Bin32`,
+on all six 64-bit targets) take raw pointers and a count. `Bin32` reslices `a`
+and `b` to `len(dst)` before the call, so a short operand panics in Go rather
+than being read past its end, and an empty `dst` never reaches a kernel.
+`TestBin32StaysInsideItsOperands` puts `dst`, `a` and `b` against PROT_NONE
+pages at every length from 1 to 40, and passes on real hardware for each
+kernel: Zen 3, Apple M, POWER9, IBM Z, SpacemiT X60 and Loongson 3C5000L.
+A sabotaged kernel failed the bit-identity test. The `*Into` direct path
+keeps the contiguity and shape checks of the copying one, and computes in
+place, as the float64 path does. A partial overlap between `out` and an
+operand cannot reach it. `out` must be contiguous, which a view with an
+offset (`x[1:]`, even `x[:39]`) is not, so it is refused. An operand sharing
+`out`'s storage with `out`'s shape is then `out` itself, the exact alias,
+which a lane-wise kernel handles. Any other view of it is gathered into a
+copy first. A probe of `x[1:] = x[:-1] + 1` and `x[:39] = x[1:40] + 1` got
+the contiguity error in both directions, for float64 and float32.
+
 **2026-10-18 (v0.16.0).** The float32 pairwise-sum block kernels (SSE2, NEON,
 RVV, LSX since v0.14.0/v0.15.0, VSX now) take raw pointers and a block count.
 `AddBlocks8F32` refuses a length that is not a positive multiple of 8, and

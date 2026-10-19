@@ -67,10 +67,10 @@ jobs:
           COVERPKG=$(go list ./... | paste -sd, -)
           go test -race -coverpkg="$COVERPKG" -coverprofile=cover.out ./...
           go tool cover -func=cover.out | tail -n 40
-          cov=$(go tool cover -func=cover.out | tail -1 | awk '{print $3}' | tr -d '%')
-          echo "coverage: ${cov}%"
-          awk -v t="$cov" 'BEGIN { exit !(t+0 >= 100.0) }' || {
-            echo "::error::coverage ${cov}% < 100%"; exit 1; }
+          # Count the uncovered blocks: `go tool cover -func` rounds to one
+          # decimal, and a gate on its total passed at 99.98% with two
+          # statements never run.
+          go run github.com/go-fleettools/fleettools/cmd/covblocks@v0.27.0 cover.out
 
   # Native per-arch execution. amd64/arm64 have GitHub-hosted runners, so the
   # generated assembly runs natively. Each regenerates the committed .s via

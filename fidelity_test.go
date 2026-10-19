@@ -3,6 +3,7 @@ package ndarray
 import (
 	"errors"
 	"math"
+	"math/cmplx"
 	"testing"
 )
 
@@ -114,5 +115,10 @@ func TestLog2Accuracy(t *testing.T) {
 		if got[i] != want[i] && !(math.IsNaN(got[i]) && math.IsNaN(want[i])) {
 			t.Errorf("Log2(%v) = %v, want %v", x.At(i), got[i], want[i])
 		}
+	}
+	// Complex: log(z)/ln 2, as numpy.log2 (log2(-1) = iπ/ln 2).
+	z := data[complex128](t, mustArr(t, ok(FromSlice([]complex128{8, -1}, 2))).Log2())
+	if cmplx.Abs(z[0]-3) > 1e-15 || cmplx.Abs(z[1]-complex(0, math.Pi/math.Ln2)) > 1e-15 {
+		t.Errorf("complex Log2 = %v", z)
 	}
 }

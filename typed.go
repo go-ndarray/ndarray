@@ -40,6 +40,7 @@ const (
 // binNum applies an arithmetic operation. opDiv is only used for inexact
 // types: integer division is true division, done in a float type.
 func binNum[T numT](op binCode, d, x, y []T) {
+	x, y = x[:len(d)], y[:len(d)] // so the loops below need no bounds checks
 	switch op {
 	case opAdd:
 		for i := range d {
@@ -62,6 +63,7 @@ func binNum[T numT](op binCode, d, x, y []T) {
 
 // binInt applies an arithmetic or max/min operation to integers.
 func binInt[T intT](op binCode, d, x, y []T) {
+	x, y = x[:len(d)], y[:len(d)]
 	switch op {
 	case opMax:
 		for i := range d {
@@ -76,9 +78,13 @@ func binInt[T intT](op binCode, d, x, y []T) {
 	}
 }
 
-// binFloat applies an arithmetic or max/min operation to floats. Max and min
-// propagate NaN, as NumPy's maximum and minimum do (and Go's builtins).
-func binFloat[T floatT](op binCode, d, x, y []T) {
+// binFloat32 applies an arithmetic or max/min operation to float32 (Float64
+// has its own path). Max and min propagate NaN, as NumPy's maximum and minimum
+// do (and Go's builtins). The arithmetic runs on kernels.Bin32, whose codes
+// are opAdd..opDiv: one IEEE operation per lane, the scalar loop's result bit
+// for bit.
+func binFloat32(op binCode, d, x, y []float32) {
+	x, y = x[:len(d)], y[:len(d)]
 	switch op {
 	case opMax:
 		for i := range d {
@@ -89,7 +95,7 @@ func binFloat[T floatT](op binCode, d, x, y []T) {
 			d[i] = min(x[i], y[i])
 		}
 	default:
-		binNum(op, d, x, y)
+		kernels.Bin32(int(op), d, x, y)
 	}
 }
 
@@ -97,6 +103,7 @@ func binFloat[T floatT](op binCode, d, x, y []T) {
 // Max and min order lexicographically, real part first, and propagate NaN, as
 // NumPy does.
 func binComplex[T complexT](op binCode, d, x, y []T) {
+	x, y = x[:len(d)], y[:len(d)]
 	switch op {
 	case opMax:
 		for i := range d {
@@ -136,6 +143,7 @@ func lessComplex(x, y complex128) bool {
 // multiply and minimum are "and". Subtraction is an error before this is
 // reached, and division converts to a float type first.
 func binBool(op binCode, d, x, y []bool) {
+	x, y = x[:len(d)], y[:len(d)]
 	switch op {
 	case opAdd, opMax:
 		for i := range d {
@@ -150,6 +158,7 @@ func binBool(op binCode, d, x, y []bool) {
 
 // cmpOrdered compares real values.
 func cmpOrdered[T realT](op cmpCode, d []bool, x, y []T) {
+	x, y = x[:len(d)], y[:len(d)]
 	switch op {
 	case opEq:
 		for i := range d {
@@ -181,6 +190,7 @@ func cmpOrdered[T realT](op cmpCode, d []bool, x, y []T) {
 // cmpComplex compares complex values: equality componentwise, order
 // lexicographic as NumPy defines it (false when either side has a NaN).
 func cmpComplex[T complexT](op cmpCode, d []bool, x, y []T) {
+	x, y = x[:len(d)], y[:len(d)]
 	for i := range d {
 		a, b := complex128(x[i]), complex128(y[i])
 		nan := cmplx.IsNaN(a) || cmplx.IsNaN(b)
@@ -203,6 +213,7 @@ func cmpComplex[T complexT](op cmpCode, d []bool, x, y []T) {
 
 // cmpBool compares booleans, with false < true.
 func cmpBool(op cmpCode, d []bool, x, y []bool) {
+	x, y = x[:len(d)], y[:len(d)]
 	for i := range d {
 		a, b := x[i], y[i]
 		switch op {
@@ -271,6 +282,7 @@ var complexFuncs = [...]func(complex128) complex128{
 // negation, abs, square) this is exactly the float32 result: float64 carries
 // more than twice float32's precision, so the second rounding cannot change it.
 func unaryFloat32(f func(float64) float64, d, x []float32) {
+	x = x[:len(d)]
 	for i := range d {
 		d[i] = float32(f(float64(x[i])))
 	}
@@ -279,6 +291,7 @@ func unaryFloat32(f func(float64) float64, d, x []float32) {
 // unaryComplex applies f to complex elements, computing complex64 in
 // complex128.
 func unaryComplex[T complexT](f func(complex128) complex128, d, x []T) {
+	x = x[:len(d)]
 	for i := range d {
 		d[i] = T(f(complex128(x[i])))
 	}

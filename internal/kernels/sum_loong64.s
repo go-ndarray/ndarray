@@ -184,6 +184,49 @@ addtail:
 adddone:
 	RET
 
+TEXT ·add32LSX(SB), NOSPLIT, $0-32
+	MOVV dst+0(FP), R4
+	MOVV a+8(FP), R6
+	MOVV b+16(FP), R7
+	MOVV n+24(FP), R5
+floop:
+	MOVV $16, R12
+	BLT R5, R12, ftail
+	VMOVQ 0(R6), V0
+	VMOVQ 0(R7), V4
+	VMOVQ 16(R6), V1
+	VMOVQ 16(R7), V5
+	VMOVQ 32(R6), V2
+	VMOVQ 32(R7), V6
+	VMOVQ 48(R6), V3
+	VMOVQ 48(R7), V7
+	VADDF V4, V0, V8
+	VADDF V5, V1, V9
+	VADDF V6, V2, V10
+	VADDF V7, V3, V11
+	VMOVQ V8, 0(R4)
+	VMOVQ V9, 16(R4)
+	VMOVQ V10, 32(R4)
+	VMOVQ V11, 48(R4)
+	ADDV $64, R4
+	ADDV $64, R6
+	ADDV $64, R7
+	ADDV $-16, R5
+	JMP floop
+ftail:
+	BEQ R5, fdone
+	MOVF 0(R6), F1
+	MOVF 0(R7), F2
+	ADDF F2, F1
+	MOVF F1, 0(R4)
+	ADDV $4, R4
+	ADDV $4, R6
+	ADDV $4, R7
+	ADDV $-1, R5
+	JMP ftail
+fdone:
+	RET
+
 TEXT ·subLASX(SB), NOSPLIT, $0-32
 	MOVV dst+0(FP), R4
 	MOVV a+8(FP), R6
@@ -225,6 +268,49 @@ subtail:
 	ADDV $-1, R5
 	JMP subtail
 subdone:
+	RET
+
+TEXT ·sub32LSX(SB), NOSPLIT, $0-32
+	MOVV dst+0(FP), R4
+	MOVV a+8(FP), R6
+	MOVV b+16(FP), R7
+	MOVV n+24(FP), R5
+floop:
+	MOVV $16, R12
+	BLT R5, R12, ftail
+	VMOVQ 0(R6), V0
+	VMOVQ 0(R7), V4
+	VMOVQ 16(R6), V1
+	VMOVQ 16(R7), V5
+	VMOVQ 32(R6), V2
+	VMOVQ 32(R7), V6
+	VMOVQ 48(R6), V3
+	VMOVQ 48(R7), V7
+	VSUBF V4, V0, V8
+	VSUBF V5, V1, V9
+	VSUBF V6, V2, V10
+	VSUBF V7, V3, V11
+	VMOVQ V8, 0(R4)
+	VMOVQ V9, 16(R4)
+	VMOVQ V10, 32(R4)
+	VMOVQ V11, 48(R4)
+	ADDV $64, R4
+	ADDV $64, R6
+	ADDV $64, R7
+	ADDV $-16, R5
+	JMP floop
+ftail:
+	BEQ R5, fdone
+	MOVF 0(R6), F1
+	MOVF 0(R7), F2
+	SUBF F2, F1
+	MOVF F1, 0(R4)
+	ADDV $4, R4
+	ADDV $4, R6
+	ADDV $4, R7
+	ADDV $-1, R5
+	JMP ftail
+fdone:
 	RET
 
 TEXT ·mulLASX(SB), NOSPLIT, $0-32
@@ -270,6 +356,49 @@ multail:
 muldone:
 	RET
 
+TEXT ·mul32LSX(SB), NOSPLIT, $0-32
+	MOVV dst+0(FP), R4
+	MOVV a+8(FP), R6
+	MOVV b+16(FP), R7
+	MOVV n+24(FP), R5
+floop:
+	MOVV $16, R12
+	BLT R5, R12, ftail
+	VMOVQ 0(R6), V0
+	VMOVQ 0(R7), V4
+	VMOVQ 16(R6), V1
+	VMOVQ 16(R7), V5
+	VMOVQ 32(R6), V2
+	VMOVQ 32(R7), V6
+	VMOVQ 48(R6), V3
+	VMOVQ 48(R7), V7
+	VMULF V4, V0, V8
+	VMULF V5, V1, V9
+	VMULF V6, V2, V10
+	VMULF V7, V3, V11
+	VMOVQ V8, 0(R4)
+	VMOVQ V9, 16(R4)
+	VMOVQ V10, 32(R4)
+	VMOVQ V11, 48(R4)
+	ADDV $64, R4
+	ADDV $64, R6
+	ADDV $64, R7
+	ADDV $-16, R5
+	JMP floop
+ftail:
+	BEQ R5, fdone
+	MOVF 0(R6), F1
+	MOVF 0(R7), F2
+	MULF F2, F1
+	MOVF F1, 0(R4)
+	ADDV $4, R4
+	ADDV $4, R6
+	ADDV $4, R7
+	ADDV $-1, R5
+	JMP ftail
+fdone:
+	RET
+
 TEXT ·divLASX(SB), NOSPLIT, $0-32
 	MOVV dst+0(FP), R4
 	MOVV a+8(FP), R6
@@ -311,6 +440,49 @@ divtail:
 	ADDV $-1, R5
 	JMP divtail
 divdone:
+	RET
+
+TEXT ·div32LSX(SB), NOSPLIT, $0-32
+	MOVV dst+0(FP), R4
+	MOVV a+8(FP), R6
+	MOVV b+16(FP), R7
+	MOVV n+24(FP), R5
+floop:
+	MOVV $16, R12
+	BLT R5, R12, ftail
+	VMOVQ 0(R6), V0
+	VMOVQ 0(R7), V4
+	VMOVQ 16(R6), V1
+	VMOVQ 16(R7), V5
+	VMOVQ 32(R6), V2
+	VMOVQ 32(R7), V6
+	VMOVQ 48(R6), V3
+	VMOVQ 48(R7), V7
+	VDIVF V4, V0, V8
+	VDIVF V5, V1, V9
+	VDIVF V6, V2, V10
+	VDIVF V7, V3, V11
+	VMOVQ V8, 0(R4)
+	VMOVQ V9, 16(R4)
+	VMOVQ V10, 32(R4)
+	VMOVQ V11, 48(R4)
+	ADDV $64, R4
+	ADDV $64, R6
+	ADDV $64, R7
+	ADDV $-16, R5
+	JMP floop
+ftail:
+	BEQ R5, fdone
+	MOVF 0(R6), F1
+	MOVF 0(R7), F2
+	DIVF F2, F1
+	MOVF F1, 0(R4)
+	ADDV $4, R4
+	ADDV $4, R6
+	ADDV $4, R7
+	ADDV $-1, R5
+	JMP ftail
+fdone:
 	RET
 
 TEXT ·gemmMicro8x8LASX(SB), NOSPLIT, $0-40

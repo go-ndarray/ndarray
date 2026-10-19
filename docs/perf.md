@@ -929,6 +929,62 @@ layout, not proven.
 
 Every 64-bit target now adds the float32 block with SIMD.
 
+### float32 elementwise arithmetic (2026-10-18)
+
+Measured against NumPy 2.5.3 on one POWER9 core, float32 `Add` was
+**7.1× slower** at 2¹⁴ (33.8 µs against 4.74 µs) and 5.0× slower at 2²⁰. A
+profile put 57% of the time in the generic loop `binNum[float32]`: a scalar
+add per element, with two bounds checks, because nothing told the compiler
+that `x` and `y` were as long as `d`.
+
+Two changes:
+
+- **Bounds checks.** The elementwise loops reslice their operands to
+  `len(d)` once, so the compiler drops the per-element checks (verified with
+  `-d=ssa/check_bce`). On the POWER9, float32 and int32 `Add` gain 7–12%.
+- **Kernels.** `kernels.Bin32` adds, subtracts, multiplies or divides 16
+  floats per iteration on every 64-bit target:
+
+  | target | instructions |
+  |---|---|
+  | amd64 | SSE2 `ADDPS`… |
+  | arm64 | NEON `.S4` |
+  | ppc64le | VSX `xvaddsp`… |
+  | s390x | z14 `vfasb`… |
+  | loong64 | LSX `vfadd.s`… |
+  | riscv64 | RVV E32, strip-mined |
+
+  Each lane is one IEEE operation, so the result is the scalar loop's bit
+  for bit. The kernel tests (special values, every length to 70, in place)
+  and the PROT_NONE fence pass on Zen 3, Apple M, POWER9, IBM Z, SpacemiT X60
+  and Loongson 3C5000L. A sabotaged kernel (one `vfsub` in `add32NEON`)
+  failed them.
+
+`AddInto` and the other `*Into` methods also wrote a typed result into a new
+array and then copied it into `out`. When `out` has the result dtype they now
+write into it directly.
+
+POWER9, one core, against NumPy 2.5.3:
+
+| float32 | before | after | NumPy |
+|---|---:|---:|---:|
+| `Add`, 2¹⁴ | 33.8 µs | 15.2 µs | 4.74 µs (`a+b`) |
+| `Add`, 2²⁰ | 1.70 ms | 0.537 ms | 0.342 ms |
+| `AddInto`, 2¹⁴ | — | **4.35 µs** | 4.23 µs (`out=`) |
+| `AddInto`, 2²⁰ | — | **294 µs** | 366 µs |
+
+float64 `AddInto` against `np.add(out=)`: 5.70 against 7.75 µs (2¹⁴), and
+724 against 768 µs (2²⁰).
+
+**Open defect: the allocating operations.** `Add` is still 1.5–3.2× slower
+than NumPy's `a+b`, for float64 as well (21.9 against 8.48 µs at 2¹⁴). The
+kernel is no longer the difference, as `AddInto` shows; the allocation is.
+NumPy's allocator hands back the buffer the previous result just freed,
+still in cache. Go allocates fresh memory, zeroes it, and pays for the GC
+cycles that follow; on the POWER9 the profile of float64 `Add` is half GC.
+Until that is addressed, a hot loop should use the `*Into` methods with a
+reused `out`.
+
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`

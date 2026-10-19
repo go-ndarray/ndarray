@@ -47,6 +47,10 @@ func main() {
 	f.Add(binKernel("subNEON", "VFSUB", "FSUBD"))
 	f.Add(binKernel("mulNEON", "VFMUL", "FMULD"))
 	f.Add(binKernel("divNEON", "VFDIV", "FDIVD"))
+	f.Add(bin32Kernel("add32NEON", "VFADD", "FADDS"))
+	f.Add(bin32Kernel("sub32NEON", "VFSUB", "FSUBS"))
+	f.Add(bin32Kernel("mul32NEON", "VFMUL", "FMULS"))
+	f.Add(bin32Kernel("div32NEON", "VFDIV", "FDIVS"))
 	f.Add(extremumKernel("maxNEON", "VFMAX", "FMAXD"))
 	f.Add(extremumKernel("minNEON", "VFMIN", "FMIND"))
 	f.Add(gemmKernel())
@@ -147,6 +151,30 @@ func binKernel(name, vop, sop string) *emit.Function {
 		Raw("FMOVD.P 8(R1), F0").Raw("FMOVD.P 8(R2), F1").
 		Raw(sop + " F1, F0, F0").
 		Raw("FMOVD.P F0, 8(R0)").
+		Raw("SUB $1, R3").Raw("B tail").
+		Raw("done:").Ret()
+	return b.Func()
+}
+
+// bin32Kernel builds NAME(dst, a, b *float32, n int): dst[i] = a[i] OP b[i],
+// 16 floats per iteration on the .S4 arrangement (VOP Vm, Vn, Vd: Vd = Vn OP
+// Vm), then a scalar tail with sop. Each lane is one IEEE float32 operation,
+// so the result is the scalar loop's bit for bit.
+func bin32Kernel(name, vop, sop string) *emit.Function {
+	b := arm64.NewFunc(name, binSig(), 0)
+	b.LoadArg("dst", "R0").LoadArg("a", "R1").LoadArg("b", "R2").LoadArg("n", "R3")
+	b.Raw("block:").Raw("CMP $16, R3").Raw("BLT tail").
+		Raw("VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]"). // a
+		Raw("VLD1.P 64(R2), [V4.S4, V5.S4, V6.S4, V7.S4]")  // b
+	for r := 0; r < 4; r++ {
+		b.Raw(fmt.Sprintf("%s V%d.S4, V%d.S4, V%d.S4", vop, 4+r, r, r)) // a OP b
+	}
+	b.Raw("VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)").
+		Raw("SUB $16, R3").Raw("B block").
+		Raw("tail:").Raw("CBZ R3, done").
+		Raw("FMOVS.P 4(R1), F0").Raw("FMOVS.P 4(R2), F1").
+		Raw(sop + " F1, F0, F0").
+		Raw("FMOVS.P F0, 4(R0)").
 		Raw("SUB $1, R3").Raw("B tail").
 		Raw("done:").Ret()
 	return b.Func()

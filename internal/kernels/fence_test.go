@@ -80,6 +80,22 @@ func TestBlocks8StaysInsideItsOperands(t *testing.T) {
 	}
 }
 
+// TestBin32StaysInsideItsOperands fences dst, a and b of the float32
+// elementwise kernels at every length around the block and the tail.
+func TestBin32StaysInsideItsOperands(t *testing.T) {
+	for n := 1; n <= 40; n++ {
+		for _, a := range fences32(t, n) {
+			for _, b := range fences32(t, n) {
+				for _, dst := range fences32(t, n) {
+					for op := Add32; op <= Div32; op++ {
+						Bin32(op, dst, a, b)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestKernelsStayInsideTheirSlices(t *testing.T) {
 	for n := 1; n <= 70; n++ {
 		for _, a := range fences(t, n) {

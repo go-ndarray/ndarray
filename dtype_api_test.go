@@ -267,6 +267,24 @@ func TestTypedArithmeticEdges(t *testing.T) {
 	if err := i.SqrtInto(must(Zeros(2))); !errors.Is(err, ErrDType) {
 		t.Errorf("SqrtInto int err = %v", err)
 	}
+	// Into an out of the result dtype: written in place, same checks.
+	s := must(FromSlice([]float32{1.5, -2}, 2))
+	out32 := must(ZerosOf(Float32, 2))
+	if err := s.AddInto(out32, s); err != nil || !reflect.DeepEqual(data[float32](t, out32), []float32{3, -4}) {
+		t.Errorf("float32 AddInto = %v, %v", out32, err)
+	}
+	if err := s.DivInto(s, out32); err != nil || !reflect.DeepEqual(data[float32](t, s), []float32{0.5, 0.5}) {
+		t.Errorf("float32 DivInto in place = %v, %v", s, err)
+	}
+	if err := s.AddInto(out32, must(ZerosOf(Float32, 3))); !errors.Is(err, ErrBroadcast) {
+		t.Errorf("float32 AddInto broadcast err = %v", err)
+	}
+	if err := s.AddInto(must(ZerosOf(Float32, 3)), s); !errors.Is(err, ErrBroadcast) {
+		t.Errorf("float32 AddInto shape err = %v", err)
+	}
+	if err := s.AddInto(must(must(ZerosOf(Float32, 4)).Slice(Step(2))), s); !errors.Is(err, ErrBroadcast) {
+		t.Errorf("float32 AddInto strided err = %v", err)
+	}
 	// Float64 result from an int: the float path runs.
 	f := must(FromData([]float64{0.5, 0.25}, 2))
 	if got := must(i.Mul(f)).materialize(); !reflect.DeepEqual(got, []float64{0.5, 0.5}) {
