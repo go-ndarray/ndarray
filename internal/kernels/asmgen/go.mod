@@ -6,4 +6,4 @@ module github.com/go-ndarray/ndarray/internal/kernels/asmgen
 
 go 1.27.2
 
-require github.com/go-asmgen/asmgen v0.19.0
+require github.com/go-asmgen/asmgen v0.20.0
