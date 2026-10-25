@@ -15,8 +15,8 @@
   complex64/complex128, chosen at run time with **NumPy 2 promotion** (`AsType`,
   `ZerosOf`, `FromSlice`, typed access with `Data[T]`/`Item[T]`, weak Go
   scalars with `Scalar`). Float64 is the default and the most SIMD-accelerated
-  one. Float32 has SIMD `Sum` and `Add`/`Sub`/`Mul`/`Div` on every 64-bit
-  target, bit-identical to its scalar loops
+  one. Float32 has SIMD `Sum`, `Add`/`Sub`/`Mul`/`Div` and `Sqrt` on every
+  64-bit target, bit-identical to its scalar loops
   ([docs/design-dtypes.md](docs/design-dtypes.md)).
 - **Creation** — `New`/`Zeros`/`Ones`/`Full`/`FromData`/`Arange`/`Linspace`/
   `Eye`/`Identity`.
@@ -152,8 +152,8 @@ and `Max` by 92–96% ([docs/perf.md](docs/perf.md), *SIMD coverage*). It is a
 > pair Go supports; v0.1.0 and v0.2.0 were also run on real amd64, arm64,
 > ppc64le, riscv64 and loong64 hardware, v0.3.0 on real amd64, arm64, ppc64le
 > and loong64. See **[docs/plan-ndarray.md](docs/plan-ndarray.md)**
-> for the roadmap (float32 SIMD for sqrt, max/min and the products; linear
-> algebra decompositions).
+> for the roadmap (float32 SIMD for max/min and the products; linear algebra
+> decompositions).
 
 ## Why this module?
 

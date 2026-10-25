@@ -65,6 +65,39 @@ func TestBin32InPlace(t *testing.T) {
 	}
 }
 
+// TestSqrt32MatchesScalar checks the vector square root against
+// float32(math.Sqrt(float64(x))), bit for bit, including negatives (NaN),
+// -0, infinities and subnormals, at every length around the block, and in
+// place.
+func TestSqrt32MatchesScalar(t *testing.T) {
+	for n := 0; n <= 70; n++ {
+		src := operands32(n, 3)
+		got, want := make([]float32, n), make([]float32, n)
+		Sqrt32(got, src)
+		sqrt32Go(want, src)
+		for i := range got {
+			if !sameBits32(got[i], want[i]) {
+				t.Fatalf("n=%d [%d]: sqrt(%v) = %v, scalar %v", n, i, src[i], got[i], want[i])
+			}
+		}
+		Sqrt32(src, src)
+		for i := range src {
+			if !sameBits32(src[i], want[i]) {
+				t.Fatalf("n=%d [%d]: in place %v, scalar %v", n, i, src[i], want[i])
+			}
+		}
+	}
+}
+
+func TestSqrt32RefusesAShortSource(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Error("a short src was accepted")
+		}
+	}()
+	Sqrt32(make([]float32, 4), make([]float32, 3))
+}
+
 func TestBin32RefusesBadInput(t *testing.T) {
 	for _, f := range []func(){
 		func() { Bin32(Add32, make([]float32, 4), make([]float32, 3), make([]float32, 4)) },

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/cmplx"
 	"reflect"
+
+	"github.com/go-ndarray/ndarray/internal/kernels"
 )
 
 // The operations on dtypes other than Float64. Each public method keeps its
@@ -224,7 +226,11 @@ func (a *Array) mathUnary(code unaryCode, f64 func(*Array) *Array) *Array {
 	d := makeStore(dt, a.Size())
 	switch s := src.(type) {
 	case []float32:
-		unaryFloat32(realFuncs[code], d.([]float32), s)
+		if code == uSqrt {
+			kernels.Sqrt32(d.([]float32), s) // the same correctly rounded result
+		} else {
+			unaryFloat32(realFuncs[code], d.([]float32), s)
+		}
 	case []complex64:
 		unaryComplex(a.complexFunc(code), d.([]complex64), s)
 	case []complex128:

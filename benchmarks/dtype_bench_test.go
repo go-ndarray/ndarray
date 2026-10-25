@@ -42,6 +42,53 @@ func BenchmarkDTypeAdd(b *testing.B) {
 	}
 }
 
+func BenchmarkDTypeSqrt(b *testing.B) {
+	for _, dt := range []nd.DType{nd.Float64, nd.Float32} {
+		for _, n := range []int{1 << 14, 1 << 20} {
+			x := vec(n).AsType(dt)
+			b.Run(fmt.Sprintf("%v/n=%d", dt, n), func(b *testing.B) {
+				b.SetBytes(int64(n * dt.Size()))
+				for i := 0; i < b.N; i++ {
+					_ = x.Sqrt()
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkDTypeMax(b *testing.B) {
+	for _, dt := range []nd.DType{nd.Float64, nd.Float32} {
+		for _, n := range []int{1 << 14, 1 << 20} {
+			x := vec(n).AsType(dt)
+			b.Run(fmt.Sprintf("%v/n=%d", dt, n), func(b *testing.B) {
+				b.SetBytes(int64(n * dt.Size()))
+				for i := 0; i < b.N; i++ {
+					_, _ = x.Max()
+				}
+			})
+		}
+	}
+}
+
+// BenchmarkDTypeMatMul is a square product, 2·n³ flops per op.
+func BenchmarkDTypeMatMul(b *testing.B) {
+	for _, dt := range []nd.DType{nd.Float64, nd.Float32} {
+		for _, n := range []int{64, 256} {
+			x, err := vec(n * n).AsType(dt).Reshape(n, n)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Run(fmt.Sprintf("%v/n=%d", dt, n), func(b *testing.B) {
+				for i := 0; i < b.N; i++ {
+					if _, err := x.MatMul(x); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
 // BenchmarkDTypeAddInto is Add without the allocation, the analogue of
 // np.add(x, y, out=out): it measures the kernel, where BenchmarkDTypeAdd also
 // measures allocating and clearing the result.

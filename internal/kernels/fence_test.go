@@ -90,6 +90,7 @@ func TestBin32StaysInsideItsOperands(t *testing.T) {
 					for op := Add32; op <= Div32; op++ {
 						Bin32(op, dst, a, b)
 					}
+					Sqrt32(dst, a)
 				}
 			}
 		}

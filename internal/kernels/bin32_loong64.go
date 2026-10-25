@@ -12,6 +12,19 @@ func bin32(op int, dst, a, b []float32) {
 	run32([...]bin32Func{add32LSX, sub32LSX, mul32LSX, div32LSX}[op], dst, a, b)
 }
 
+// sqrt32 runs vfsqrt.s (sum_loong64.s) behind the same LASX gate; the scalar
+// loop otherwise. dst and src have the same length, at least 1.
+func sqrt32(dst, src []float32) {
+	if !useLASX {
+		sqrt32Go(dst, src)
+		return
+	}
+	sqrt32LSX(&dst[0], &src[0], len(dst))
+}
+
+//go:noescape
+func sqrt32LSX(dst, src *float32, n int)
+
 //go:noescape
 func add32LSX(dst, a, b *float32, n int)
 

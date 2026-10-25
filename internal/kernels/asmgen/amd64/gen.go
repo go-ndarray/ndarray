@@ -54,6 +54,7 @@ func main() {
 	f.Add(bin32Kernel("sub32SSE2", "SUBPS", "SUBSS"))
 	f.Add(bin32Kernel("mul32SSE2", "MULPS", "MULSS"))
 	f.Add(bin32Kernel("div32SSE2", "DIVPS", "DIVSS"))
+	f.Add(sqrt32Kernel())
 
 	if err := os.WriteFile("sum_amd64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -325,6 +326,37 @@ func binKernel(name, vec, sca string) *emit.Function {
 	b.Raw("DECQ CX")
 	b.Raw("JMP btail")
 	b.Raw("bdone:")
+	b.Ret()
+	return b.Func()
+}
+
+// sqrt32Kernel builds sqrt32SSE2(dst, src *float32, n int): SQRTPS over 16
+// floats per iteration, SQRTSS for the tail. Both are the correctly rounded
+// IEEE float32 square root, which is float32(math.Sqrt(float64(x))) bit for
+// bit (float64 carries more than twice float32's precision).
+func sqrt32Kernel() *emit.Function {
+	sig := amd64.Layout(
+		[]string{"dst", "src", "n"},
+		[]amd64.Type{amd64.Ptr, amd64.Ptr, amd64.Int64},
+		nil, nil,
+	)
+	b := amd64.NewFunc("sqrt32SSE2", sig, 0)
+	b.LoadArg("dst", "DI").LoadArg("src", "SI").LoadArg("n", "CX")
+	b.Raw("qblock:").Raw("CMPQ CX, $16").Raw("JL qtail")
+	for r := 0; r < 4; r++ {
+		b.Raw("MOVUPS %d(SI), X%d", 16*r, r)
+	}
+	for r := 0; r < 4; r++ {
+		b.Raw("SQRTPS X%d, X%d", r, r)
+	}
+	for r := 0; r < 4; r++ {
+		b.Raw("MOVUPS X%d, %d(DI)", r, 16*r)
+	}
+	b.Raw("ADDQ $64, SI").Raw("ADDQ $64, DI").Raw("SUBQ $16, CX").Raw("JMP qblock").
+		Raw("qtail:").Raw("TESTQ CX, CX").Raw("JZ qdone").
+		Raw("MOVSS (SI), X0").Raw("SQRTSS X0, X0").Raw("MOVSS X0, (DI)").
+		Raw("ADDQ $4, SI").Raw("ADDQ $4, DI").Raw("DECQ CX").Raw("JMP qtail").
+		Raw("qdone:")
 	b.Ret()
 	return b.Func()
 }
