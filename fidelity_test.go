@@ -122,3 +122,34 @@ func TestLog2Accuracy(t *testing.T) {
 		t.Errorf("complex Log2 = %v", z)
 	}
 }
+
+// TestExtremaOfSignedZeros: Max is +0 and Min is -0 over a mix of signed
+// zeros, whatever their order, as Go's max/min and math.Max/Min order them.
+// Until v0.19.1 amd64 returned the sign of whichever zero its kernel met last
+// (MAXPD/MINPD return their source operand on a zero tie). The tests had meant
+// to cover this but wrote -0.0, which Go's constant arithmetic makes +0.
+func TestExtremaOfSignedZeros(t *testing.T) {
+	nz := math.Copysign(0, -1)
+	for _, n := range []int{2, 3, 9, 16, 17, 40} {
+		for first := 0; first < 2; first++ {
+			d := make([]float64, n)
+			for i := range d {
+				if (i+first)%2 == 0 {
+					d[i] = nz
+				}
+			}
+			a := mustArr(t, ok(FromData(d, n)))
+			mx, _ := a.Max()
+			mn, _ := a.Min()
+			if math.Signbit(mx) || !math.Signbit(mn) {
+				t.Errorf("n=%d first=%d: Max=%v Min=%v, want 0 and -0", n, first, mx, mn)
+			}
+			rows := mustArr(t, ok(a.Reshape(1, n)))
+			rmx := mustArr(t, ok(rows.MaxAxis(1, false))).materialize()[0]
+			rmn := mustArr(t, ok(rows.MinAxis(1, false))).materialize()[0]
+			if math.Signbit(rmx) || !math.Signbit(rmn) {
+				t.Errorf("n=%d first=%d: MaxAxis=%v MinAxis=%v, want 0 and -0", n, first, rmx, rmn)
+			}
+		}
+	}
+}

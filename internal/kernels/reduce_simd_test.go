@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+// negZero is -0. The literal -0.0 is NOT: Go's constant arithmetic has no
+// negative zero, so -0.0 is +0, and the signed-zero cases these tests meant to
+// cover were never run until 2026-10-25.
+var negZero = math.Copysign(0, -1)
+
+// TestNegZeroIsNegative guards the helper against that mistake.
+func TestNegZeroIsNegative(t *testing.T) {
+	if !math.Signbit(negZero) {
+		t.Fatal("negZero is +0")
+	}
+}
+
 // TestSumSIMD asserts the SIMD sum kernel agrees with the scalar oracle to a
 // tight relative tolerance across many random lengths (covering the vector body,
 // the lane fold, and the scalar tail of every residue mod 8). The two use a
@@ -88,8 +100,8 @@ func TestBinSIMD(t *testing.T) {
 	}
 	// Edge inputs: signed zeros, infinities, NaN, extremes — paired so each op
 	// hits e.g. Inf-Inf=NaN, 0*Inf=NaN, x/0=Inf, 0/0=NaN, -0 handling, etc.
-	ea := []float64{-0.0, 0.0, 1, -1, math.Inf(1), math.Inf(-1), math.NaN(), 1e308, -1e308, math.MaxFloat64, math.SmallestNonzeroFloat64, 0.0}
-	eb := []float64{0.0, -0.0, math.Inf(1), math.Inf(-1), math.Inf(1), 1, 2, 1e308, 1e308, 2, 2, 0.0}
+	ea := []float64{negZero, 0.0, 1, -1, math.Inf(1), math.Inf(-1), math.NaN(), 1e308, -1e308, math.MaxFloat64, math.SmallestNonzeroFloat64, 0.0}
+	eb := []float64{0.0, negZero, math.Inf(1), math.Inf(-1), math.Inf(1), 1, 2, 1e308, 1e308, 2, 2, 0.0}
 	for _, op := range ops {
 		got := make([]float64, len(ea))
 		want := make([]float64, len(ea))
@@ -139,7 +151,7 @@ func TestSqrtSIMD(t *testing.T) {
 	}
 	// Edge cases: negatives, zeros, infinities, NaN must match the oracle bitwise.
 	edge := []float64{
-		-1, -0.0, 0.0, 1, 4, 2, 1e308,
+		-1, negZero, 0.0, 1, 4, 2, 1e308,
 		math.Inf(1), math.Inf(-1), math.NaN(), -math.MaxFloat64, math.SmallestNonzeroFloat64,
 	}
 	got := make([]float64, len(edge))
@@ -188,7 +200,7 @@ func TestMaxMinSIMD(t *testing.T) {
 		}
 	}
 	// Infinities and signed zeros bit-match the oracle.
-	special := []float64{math.Inf(-1), -0.0, 0.0, math.Inf(1), 5, -5}
+	special := []float64{math.Inf(-1), negZero, 0.0, math.Inf(1), 5, -5}
 	if g, w := maxSIMD(special), Max(special); !bitEq(g, w) {
 		t.Fatalf("special: maxSIMD=%v, Max=%v", g, w)
 	}
@@ -263,8 +275,8 @@ func BenchmarkSumSIMD(b *testing.B) {
 func TestMaxMinSIMDSpecialsInVectorLanes(t *testing.T) {
 	for n := 8; n <= 40; n++ {
 		for pos := 0; pos < n; pos++ {
-			for _, fill := range []float64{-0.0, 0.0, -1, 1} {
-				for _, v := range []float64{-0.0, 0.0, math.Inf(1), math.Inf(-1)} {
+			for _, fill := range []float64{negZero, 0.0, -1, 1} {
+				for _, v := range []float64{negZero, 0.0, math.Inf(1), math.Inf(-1)} {
 					a := make([]float64, n)
 					for i := range a {
 						a[i] = fill
