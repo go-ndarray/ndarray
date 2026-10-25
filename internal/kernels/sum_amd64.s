@@ -898,3 +898,39 @@ TEXT ·div32SSE2(SB), NOSPLIT, $0-32
 	fdone:
 	RET
 
+TEXT ·sqrt32SSE2(SB), NOSPLIT, $0-24
+	MOVQ dst+0(FP), DI
+	MOVQ src+8(FP), SI
+	MOVQ n+16(FP), CX
+	qblock:
+	CMPQ CX, $16
+	JL qtail
+	MOVUPS 0(SI), X0
+	MOVUPS 16(SI), X1
+	MOVUPS 32(SI), X2
+	MOVUPS 48(SI), X3
+	SQRTPS X0, X0
+	SQRTPS X1, X1
+	SQRTPS X2, X2
+	SQRTPS X3, X3
+	MOVUPS X0, 0(DI)
+	MOVUPS X1, 16(DI)
+	MOVUPS X2, 32(DI)
+	MOVUPS X3, 48(DI)
+	ADDQ $64, SI
+	ADDQ $64, DI
+	SUBQ $16, CX
+	JMP qblock
+	qtail:
+	TESTQ CX, CX
+	JZ qdone
+	MOVSS (SI), X0
+	SQRTSS X0, X0
+	MOVSS X0, (DI)
+	ADDQ $4, SI
+	ADDQ $4, DI
+	DECQ CX
+	JMP qtail
+	qdone:
+	RET
+

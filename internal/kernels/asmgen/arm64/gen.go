@@ -51,6 +51,7 @@ func main() {
 	f.Add(bin32Kernel("sub32NEON", "VFSUB", "FSUBS"))
 	f.Add(bin32Kernel("mul32NEON", "VFMUL", "FMULS"))
 	f.Add(bin32Kernel("div32NEON", "VFDIV", "FDIVS"))
+	f.Add(sqrt32Kernel())
 	f.Add(extremumKernel("maxNEON", "VFMAX", "FMAXD"))
 	f.Add(extremumKernel("minNEON", "VFMIN", "FMIND"))
 	f.Add(gemmKernel())
@@ -152,6 +153,31 @@ func binKernel(name, vop, sop string) *emit.Function {
 		Raw(sop + " F1, F0, F0").
 		Raw("FMOVD.P F0, 8(R0)").
 		Raw("SUB $1, R3").Raw("B tail").
+		Raw("done:").Ret()
+	return b.Func()
+}
+
+// sqrt32Kernel builds sqrt32NEON(dst, src *float32, n int): VFSQRT on .S4
+// over 16 floats per iteration, FSQRTS for the tail; the correctly rounded
+// float32 square root, bit-identical to float32(math.Sqrt(float64(x))).
+func sqrt32Kernel() *emit.Function {
+	sig := arm64.Layout(
+		[]string{"dst", "src", "n"},
+		[]arm64.Type{arm64.Ptr, arm64.Ptr, arm64.Int64},
+		nil, nil,
+	)
+	b := arm64.NewFunc("sqrt32NEON", sig, 0)
+	b.LoadArg("dst", "R0").LoadArg("src", "R1").LoadArg("n", "R2").
+		Raw("block:").Raw("CMP $16, R2").Raw("BLT tail").
+		Raw("VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]")
+	for r := 0; r < 4; r++ {
+		b.Raw(fmt.Sprintf("VFSQRT V%d.S4, V%d.S4", r, r))
+	}
+	b.Raw("VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)").
+		Raw("SUB $16, R2").Raw("B block").
+		Raw("tail:").Raw("CBZ R2, done").
+		Raw("FMOVS.P 4(R1), F0").Raw("FSQRTS F0, F0").Raw("FMOVS.P F0, 4(R0)").
+		Raw("SUB $1, R2").Raw("B tail").
 		Raw("done:").Ret()
 	return b.Func()
 }

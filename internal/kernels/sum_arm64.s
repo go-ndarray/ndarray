@@ -346,6 +346,31 @@ TEXT ·div32NEON(SB), NOSPLIT, $0-32
 	done:
 	RET
 
+TEXT ·sqrt32NEON(SB), NOSPLIT, $0-24
+	MOVD dst+0(FP), R0
+	MOVD src+8(FP), R1
+	MOVD n+16(FP), R2
+	block:
+	CMP $16, R2
+	BLT tail
+	VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]
+	VFSQRT V0.S4, V0.S4
+	VFSQRT V1.S4, V1.S4
+	VFSQRT V2.S4, V2.S4
+	VFSQRT V3.S4, V3.S4
+	VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)
+	SUB $16, R2
+	B block
+	tail:
+	CBZ R2, done
+	FMOVS.P 4(R1), F0
+	FSQRTS F0, F0
+	FMOVS.P F0, 4(R0)
+	SUB $1, R2
+	B tail
+	done:
+	RET
+
 TEXT ·maxNEON(SB), NOSPLIT, $0-24
 	MOVD a+0(FP), R0
 	MOVD n+8(FP), R1

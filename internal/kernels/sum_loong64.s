@@ -616,3 +616,38 @@ b8loop:
 	VMOVQ V1, 16(R4)
 	RET
 
+TEXT ·sqrt32LSX(SB), NOSPLIT, $0-24
+	MOVV dst+0(FP), R4
+	MOVV src+8(FP), R6
+	MOVV n+16(FP), R5
+qloop:
+	MOVV $16, R12
+	BLT R5, R12, qtail
+	VMOVQ 0(R6), V0
+	VMOVQ 16(R6), V1
+	VMOVQ 32(R6), V2
+	VMOVQ 48(R6), V3
+	VFSQRTF V0, V4
+	VFSQRTF V1, V5
+	VFSQRTF V2, V6
+	VFSQRTF V3, V7
+	VMOVQ V4, 0(R4)
+	VMOVQ V5, 16(R4)
+	VMOVQ V6, 32(R4)
+	VMOVQ V7, 48(R4)
+	ADDV $64, R4
+	ADDV $64, R6
+	ADDV $-16, R5
+	JMP qloop
+qtail:
+	BEQ R5, qdone
+	MOVF 0(R6), F1
+	SQRTF F1, F1
+	MOVF F1, 0(R4)
+	ADDV $4, R4
+	ADDV $4, R6
+	ADDV $-1, R5
+	JMP qtail
+qdone:
+	RET
+

@@ -976,6 +976,48 @@ POWER9, one core, against NumPy 2.5.3:
 float64 `AddInto` against `np.add(out=)`: 5.70 against 7.75 µs (2¹⁴), and
 724 against 768 µs (2²⁰).
 
+### float32 survey against NumPy, and `Sqrt` (2026-10-20)
+
+The rest of the float32 surface, on the same POWER9 core against NumPy 2.5.3:
+
+| | ours | NumPy | |
+|---|---:|---:|---|
+| float32 `Max`, 2¹⁴ / 2²⁰ | 84.7 µs / 4.86 ms | 7.13 µs / 0.324 ms | **11.9× / 15× slower** |
+| float64 `Max`, 2¹⁴ / 2²⁰ | 51.6 µs / 3.33 ms | 11.8 µs / 0.615 ms | 4.4× / 5.4× slower |
+| float32 `Sqrt`, 2¹⁴ / 2²⁰ | 100 µs / 6.3 ms | 14.7 µs / 0.835 ms | 6.8× / 7.5× slower |
+| float64 `Sqrt`, 2¹⁴ / 2²⁰ | 52.5 µs / 2.7 ms | 37.4 µs / 2.3 ms | 1.4× / 1.2× slower |
+| `MatMul` 256², float32 / float64 | 20.4 / 2.25 ms | 30.4 / 29.8 ms | NumPy here has no BLAS |
+
+Read each row against the one below it:
+
+- float32 `Max` has no kernel anywhere, and on ppc64le neither has float64:
+  `xvmaxdp` does not propagate NaN as NumPy does.
+- float32 `Sqrt` called `math.Sqrt` through a function value for every
+  element.
+- float32 `MatMul` is 9× slower than our own float64 `MatMul`: float32 has no
+  packed GEMM.
+
+`Sqrt` is fixed here. `kernels.Sqrt32` runs `SQRTPS`, NEON `.S4`,
+`xvsqrtsp`, `vfsqsb` (z14), LSX `vfsqrt.s` or RVV E32. Each is the correctly
+rounded float32 square root, so `float32(math.Sqrt(float64(x)))` bit for bit:
+float64 carries more than twice float32's precision.
+
+The kernel tests (special values, every length to 70, in place) and the
+PROT_NONE fence pass on Zen 3, Apple M, POWER9, IBM Z, SpacemiT X60 and
+Loongson 3C5000L. Measured with fleettools' `abbench` (base and head
+alternated, 8 rounds, pinned core, `--max-busy 15`):
+
+| float32 `Sqrt`, POWER9 | before | after | NumPy |
+|---|---:|---:|---:|
+| 2¹⁴ | 102.9 µs | **23.4 µs** (−77%) | 14.7 µs |
+| 2²⁰ | 6.21 ms | **1.08 ms** (−83%) | 0.835 ms |
+
+The controls (float64 `Sqrt`, `Add`, `AddInto`) are flat. The gap left to
+NumPy is the allocation, the open defect below.
+
+Still to do, in this order: `Max`/`Min` (float32 everywhere, float64 on
+ppc64le, loong64 and riscv64), then a float32 GEMM.
+
 **Open defect: the allocating operations.** `Add` is still 1.5–3.2× slower
 than NumPy's `a+b`, for float64 as well (21.9 against 8.48 µs at 2¹⁴). The
 kernel is no longer the difference, as `AddInto` shows; the allocation is.

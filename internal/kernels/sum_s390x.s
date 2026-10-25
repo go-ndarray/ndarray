@@ -559,3 +559,33 @@ TEXT ·blocks8VXE(SB), NOSPLIT, $0-24
 	VST V1, 16(R1)
 	RET
 
+TEXT ·sqrt32VXE(SB), NOSPLIT, $0-24
+	MOVD dst+0(FP), R1
+	MOVD src+8(FP), R2
+	MOVD n+16(FP), R4
+	loop:
+	CMP R4, $16
+	BLT tail
+	VLM (R2), V0, V3
+	WORD $0xe7000000; BYTE $0x20; BYTE $0xce // VFSQSB V0, V0
+	WORD $0xe7110000; BYTE $0x20; BYTE $0xce // VFSQSB V1, V1
+	WORD $0xe7220000; BYTE $0x20; BYTE $0xce // VFSQSB V2, V2
+	WORD $0xe7330000; BYTE $0x20; BYTE $0xce // VFSQSB V3, V3
+	VSTM V0, V3, (R1)
+	ADD $64, R1
+	ADD $64, R2
+	SUB $16, R4
+	BR loop
+	tail:
+	CMP R4, $0
+	BEQ done
+	FMOVS (R2), F0
+	FSQRTS F0, F0
+	FMOVS F0, (R1)
+	ADD $4, R1
+	ADD $4, R2
+	SUB $1, R4
+	BR tail
+	done:
+	RET
+

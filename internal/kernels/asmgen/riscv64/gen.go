@@ -38,6 +38,7 @@ func main() {
 	}
 	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
+	f.Add(sqrt32Kernel())
 	if err := os.WriteFile("sum_riscv64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -125,6 +126,27 @@ func binKernel(name, op string) *emit.Function {
 		Raw("%s V8, V0, V16", op). // V16 = a OP b
 		Raw("VSE64V V16, (X10)")
 	advance(b, "X14", "X10", "X11", "X12")
+	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
+	return b.Func()
+}
+
+// sqrt32Kernel builds sqrt32RVV(dst, src *float32, n int) for n >= 1:
+// vfsqrt.v on 32-bit elements, strip-mined; the correctly rounded float32
+// square root, bit-identical to float32(math.Sqrt(float64(x))).
+func sqrt32Kernel() *emit.Function {
+	sig := riscv64.Layout([]string{"dst", "src", "n"},
+		[]riscv64.Type{riscv64.Ptr, riscv64.Ptr, riscv64.Int64}, nil, nil)
+	b := riscv64.NewFunc("sqrt32RVV", sig, 0)
+	b.LoadArg("dst", "X10").LoadArg("src", "X11").LoadArg("n", "X13")
+	b.Raw("loop:").
+		Raw("VSETVLI X13, E32, M8, TA, MA, X14").
+		Raw("VLE32V (X11), V0").
+		Raw("VFSQRTV V0, V16").
+		Raw("VSE32V V16, (X10)").
+		Raw("SLLI $2, X14, X17") // vl elements of 4 bytes
+	for _, p := range []string{"X10", "X11"} {
+		b.Raw("ADD X17, %s, %s", p, p)
+	}
 	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
 	return b.Func()
 }

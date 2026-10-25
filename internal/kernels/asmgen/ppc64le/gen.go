@@ -42,6 +42,7 @@ func main() {
 	}
 	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
+	f.Add(sqrt32Kernel())
 	if err := os.WriteFile("sum_ppc64le.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -192,6 +193,32 @@ func binKernel(name, op, sca string) *emit.Function {
 		Raw("FMOVD 0(R5), F1").Raw("FMOVD 0(R6), F2").Raw("%s F2, F1", sca).Raw("FMOVD F1, 0(R3)").
 		Raw("ADD $8, R3").Raw("ADD $8, R5").Raw("ADD $8, R6").Raw("ADD $-1, R4").Raw("BR %stail", l)
 	b.Label(l + "done").Ret()
+	return b.Func()
+}
+
+// sqrt32Kernel builds sqrt32VSX(dst, src *float32, n int): xvsqrtsp over 16
+// floats per iteration, FSQRTS for the tail; the correctly rounded float32
+// square root, bit-identical to float32(math.Sqrt(float64(x))).
+func sqrt32Kernel() *emit.Function {
+	sig := ppc64.Layout([]string{"dst", "src", "n"}, []ppc64.Type{ppc64.Ptr, ppc64.Ptr, ppc64.Int64}, nil, nil)
+	b := ppc64.NewFunc("sqrt32VSX", sig, 0)
+	b.LoadArg("dst", "R3").LoadArg("src", "R5").LoadArg("n", "R4")
+	offsets(b, false)
+	b.Label("qloop").Raw("CMP R4, $16").Raw("BLT qtail")
+	for k := 0; k < 4; k++ {
+		b.Raw("LXVW4X (R5)(%s), VS%d", vidx(k), 32+k)
+	}
+	for k := 0; k < 4; k++ {
+		b.XVSQRTSP(36+k, 32+k)
+	}
+	for k := 0; k < 4; k++ {
+		b.Raw("STXVW4X VS%d, (R3)(%s)", 36+k, vidx(k))
+	}
+	b.Raw("ADD $64, R3").Raw("ADD $64, R5").Raw("ADD $-16, R4").Raw("BR qloop")
+	b.Label("qtail").Raw("CMP R4, $0").Raw("BEQ qdone").
+		Raw("FMOVS 0(R5), F1").Raw("FSQRTS F1, F1").Raw("FMOVS F1, 0(R3)").
+		Raw("ADD $4, R3").Raw("ADD $4, R5").Raw("ADD $-1, R4").Raw("BR qtail")
+	b.Label("qdone").Ret()
 	return b.Func()
 }
 

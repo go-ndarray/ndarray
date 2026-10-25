@@ -41,6 +41,7 @@ func main() {
 	f.Add(extremumKernel("maxVXE", "VFMAXDB", "WFMAXDB"))
 	f.Add(extremumKernel("minVXE", "VFMINDB", "WFMINDB"))
 	f.Add(blocks8Kernel())
+	f.Add(sqrt32Kernel())
 	if err := os.WriteFile("sum_s390x.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -140,6 +141,29 @@ func binKernel(name, vec, sca string) *emit.Function {
 		Raw(sca + " F1, F0").
 		Raw("FMOVD F0, (R1)").
 		Raw("ADD $8, R1").Raw("ADD $8, R2").Raw("ADD $8, R3").Raw("SUB $1, R4").Raw("BR tail").
+		Raw("done:").Ret()
+	return b.Func()
+}
+
+// sqrt32Kernel builds sqrt32VXE(dst, src *float32, n int): vfsqsb (z14,
+// WORD+BYTE+BYTE from go-asmgen) over 16 floats per iteration, FSQRTS for the
+// tail; the correctly rounded float32 square root, bit-identical to
+// float32(math.Sqrt(float64(x))).
+func sqrt32Kernel() *emit.Function {
+	sig := s390x.Layout([]string{"dst", "src", "n"},
+		[]s390x.Type{s390x.Ptr, s390x.Ptr, s390x.Int64}, nil, nil)
+	b := s390x.NewFunc("sqrt32VXE", sig, 0)
+	b.LoadArg("dst", "R1").LoadArg("src", "R2").LoadArg("n", "R4")
+	b.Raw("loop:").Raw("CMP R4, $16").Raw("BLT tail").
+		Raw("VLM (R2), V0, V3")
+	for r := 0; r < 4; r++ {
+		b.VFSQSB(r, r)
+	}
+	b.Raw("VSTM V0, V3, (R1)").
+		Raw("ADD $64, R1").Raw("ADD $64, R2").Raw("SUB $16, R4").Raw("BR loop").
+		Raw("tail:").Raw("CMP R4, $0").Raw("BEQ done").
+		Raw("FMOVS (R2), F0").Raw("FSQRTS F0, F0").Raw("FMOVS F0, (R1)").
+		Raw("ADD $4, R1").Raw("ADD $4, R2").Raw("SUB $1, R4").Raw("BR tail").
 		Raw("done:").Ret()
 	return b.Func()
 }
