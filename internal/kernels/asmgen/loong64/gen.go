@@ -179,6 +179,15 @@ func binKernel(name, vec, sca string) *emit.Function {
 	return b.Func()
 }
 
+// sabotage is TEMPORARY: it drops max32LSX's first-lane NaN mask into a
+// scratch register, so CI must fail. The next push removes it.
+func sabotage(name string, k int) int {
+	if name == "max32LSX" && k == 0 {
+		return 23
+	}
+	return 22
+}
+
 // lanes is a 16-byte vector constant: v in every lane of size bytes, each lane
 // little-endian.
 func lanes(size int, v uint64) []byte {
@@ -242,7 +251,7 @@ func extremumKernel(name string, bits int, isMax bool, abs, inf string) *emit.Fu
 		for k := 0; k < 4; k++ {
 			b.Raw("VANDV V20, V%d, V%d", 4+k, 12+k).
 				Raw("%s V%d, V21, V%d", sltu, 12+k, 12+k). // +Inf < |x|: NaN
-				Raw("VORV V%d, V22, V22", 12+k).
+				Raw("VORV V%d, V22, V%d", 12+k, sabotage(name, k)).
 				Raw("%s $%d, V%d, V%d", sra, bits-1, 4+k, 8+k).
 				Raw("%s $1, V%d, V%d", srl, 8+k, 8+k).
 				Raw("VXORV V%d, V%d, V%d", 4+k, 8+k, 8+k)
