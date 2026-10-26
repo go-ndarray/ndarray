@@ -1189,14 +1189,30 @@ float32 is now within the widening of float64: 86.7 against 54.0 µs at 64²,
 lanes per register and half the bytes, could go further; it is the next step
 for products.
 
-**Open defect: the allocating operations.** `Add` is still 1.5–3.2× slower
-than NumPy's `a+b`, for float64 as well (21.9 against 8.48 µs at 2¹⁴). The
-kernel is no longer the difference, as `AddInto` shows; the allocation is.
-NumPy's allocator hands back the buffer the previous result just freed,
-still in cache. Go allocates fresh memory, zeroes it, and pays for the GC
-cycles that follow; on the POWER9 the profile of float64 `Add` is half GC.
-Until that is addressed, a hot loop should use the `*Into` methods with a
-reused `out`.
+**Open: the allocating operations.** `Add` is still 1.5–3.2× slower than
+NumPy's `a+b`, for float64 as well. The kernel is no longer the difference,
+as `AddInto` shows; the allocation is. It splits like this, measured
+2026-10-26 (float64 `Add`, 2¹⁴ elements, one POWER9 core, 3 runs each):
+
+| | time | what it adds |
+|---|---:|---|
+| `AddInto` (no allocation) | 5.7 µs | the kernel |
+| `Add`, `GOGC=off` | 13.5–15.0 µs | +8 µs: a fresh 128 KiB, faulted in and zeroed |
+| `Add`, `GOGC=400` | 15.7 µs | fewer GC cycles |
+| `Add`, default GC | 23.5 µs | +9 µs of GC cycles |
+| NumPy 2.5.3 `a+b` | 8.48 µs | its allocator returns the buffer just freed, still in cache |
+
+Neither part is the library's to remove. Go zeroes every new allocation, and
+the GC's pace belongs to the program. With a live heap this small, a GC
+starts every few dozen results, so the benchmark is the worst case. A program
+that holds more data runs the GC far less often per operation.
+
+What does remove it:
+
+- **Reuse buffers:** the `*Into` methods with a reused `out`, or a
+  `Workspace` for chains of operations.
+- **Tune the GC:** `GOGC` or `GOMEMLIMIT` for a program dominated by
+  short-lived results.
 
 ## SIMD coverage
 
