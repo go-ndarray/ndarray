@@ -1049,7 +1049,30 @@ Still to do:
   vector float max, min or compare at all.
 - s390x (`VFMAXSB` mode 1) waits for a z machine to test on.
 - riscv64 (`vfmax.vv` with a `vmfne.vv` NaN mask) is next.
-- float32 GEMM.
+
+### float32 `MatMul` on the float64 GEMM (2026-10-26)
+
+float32 `MatMul` ran a generic triple loop, 9× slower than our float64 GEMM.
+It now runs on the float64 GEMM:
+
+- the operands are widened, which is exact and costs O(n²);
+- the products are accumulated in float64;
+- each element is rounded once to float32.
+
+That is at least as accurate as a BLAS sgemm, which accumulates in float32,
+and every architecture gets the packed, cache-blocked SIMD kernels at once.
+With integer-valued operands the result is exact; with random ones it agrees
+with the float32 triple loop to float32 precision (`TestMatMulFloat32`).
+
+| float32 `MatMul` (`abbench`, 5 rounds) | 64² | 256² | float64 control |
+|---|---:|---:|---|
+| POWER9 | −77% | **−87%** | ~ |
+| Zen 3 | −77% | **−90%** | ~ |
+
+float32 is now within the widening of float64: 86.7 against 54.0 µs at 64²,
+2.56 against 2.25 ms at 256² on the POWER9. A native float32 GEMM, twice the
+lanes per register and half the bytes, could go further; it is the next step
+for products.
 
 **Open defect: the allocating operations.** `Add` is still 1.5–3.2× slower
 than NumPy's `a+b`, for float64 as well (21.9 against 8.48 µs at 2¹⁴). The
