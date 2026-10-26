@@ -43,10 +43,11 @@ permissions:
 # amd64/arm64/ppc64le/loong64 ship SIMD kernels (ppc64le's and loong64's were
 # also run on real POWER8/POWER9 and a Loongson 3C5000L); riscv64 ships RVV
 # kernels (used when the CPU reports V) and s390x vector-facility kernels (used
-# when AT_HWCAP reports it). Under qemu the riscv64 lane runs with V and the
-# loong64 lane on la464 (LSX+LASX), and each FAILS if its CPU does not report
-# the extension (NDARRAY_REQUIRE_RVV / _LASX): until 2026-10-26 both lanes ran
-# qemu's default CPUs and so only ever tested the scalar fallbacks.
+# when AT_HWCAP reports it). Under qemu the riscv64 lane runs with V, the
+# loong64 lane on la464 (LSX+LASX) and the s390x lane on max (VX+VXE), and each
+# FAILS if its CPU does not report the extension (NDARRAY_REQUIRE_RVV / _LASX /
+# _VXE): until 2026-10-26 they ran qemu's default CPUs, and the riscv64 and
+# loong64 lanes only ever tested the scalar fallbacks.
 jobs:
   test:
     name: test (${{ matrix.os }})
@@ -108,9 +109,9 @@ jobs:
 
   # qemu-user execution for the targets without a hosted runner, plus 32-bit
   # arm. It runs their SIMD kernels where qemu emulates the extension: RVV on
-  # riscv64, LSX/LASX on loong64, VSX on ppc64le, and the vector facility on
-  # s390x (when the emulated CPU reports it). It is also the endianness and
-  # word-size guard.
+  # riscv64, LSX/LASX on loong64, VSX on ppc64le, and the vector facility with
+  # its z14 enhancements on s390x. It is also the endianness and word-size
+  # guard.
   arch-qemu:
     name: arch ${{ matrix.goarch }} (qemu)
     runs-on: ubuntu-latest
