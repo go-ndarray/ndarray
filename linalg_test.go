@@ -64,6 +64,43 @@ func TestMatMulFloat32(t *testing.T) {
 	}
 }
 
+// TestMatMulFloat32Operands multiplies float32 operands that the float32 GEMM
+// reads in place (a transposed view) or converts first (an Int8 operand, whose
+// common dtype with Float32 is Float32), on integer data where every path is
+// exact.
+func TestMatMulFloat32Operands(t *testing.T) {
+	m, k, n := 9, 13, 17
+	x := make([]float32, k*m) // holds aᵀ
+	y := make([]float32, k*n)
+	yi := make([]int8, k*n)
+	for i := range x {
+		x[i] = float32(i%11 - 5)
+	}
+	for i := range y {
+		yi[i] = int8(i%7 - 3)
+		y[i] = float32(yi[i])
+	}
+	at := mustArr(t, ok(FromSlice(x, k, m))).Transpose()
+	want := make([]float32, m*n)
+	matmulNum(want, data[float32](t, at), y, m, k, n)
+	saved := useGemm32
+	defer func() { useGemm32 = saved }()
+	for _, native := range []bool{saved, false} { // the float32 GEMM, then widening
+		useGemm32 = native
+		for _, b := range []*Array{mustArr(t, ok(FromSlice(y, k, n))), mustArr(t, ok(FromSlice(yi, k, n)))} {
+			r := mustArr(t, ok(at.MatMul(b)))
+			if r.DType() != Float32 {
+				t.Fatalf("%v operand: dtype %v, want float32", b.DType(), r.DType())
+			}
+			for i, g := range data[float32](t, r) {
+				if g != want[i] {
+					t.Fatalf("native=%v %v operand [%d] = %v, want %v", native, b.DType(), i, g, want[i])
+				}
+			}
+		}
+	}
+}
+
 func TestMatMulTransposedView(t *testing.T) {
 	// A.T @ A where A is (3x2): A.T is a (2x3) strided view, exercising
 	// materialize inside matmul2D. Result (2x2) == [[35,44],[44,56]] (numpy).

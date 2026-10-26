@@ -57,6 +57,7 @@ func main() {
 	f.Add(extremum32Kernel("max32NEON", "VFMAX", "FMAXS"))
 	f.Add(extremum32Kernel("min32NEON", "VFMIN", "FMINS"))
 	f.Add(gemmKernel())
+	f.Add(gemm32Kernel())
 	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_arm64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -290,9 +291,9 @@ func extremum32Kernel(name, vop, sop string) *emit.Function {
 	}
 	b.Raw("SUB $16, R1").Raw("B block").
 		Raw("fold:").
-		Raw(vop+" V1.S4, V0.S4, V0.S4").
-		Raw(vop+" V3.S4, V2.S4, V2.S4").
-		Raw(vop+" V2.S4, V0.S4, V0.S4")
+		Raw(vop + " V1.S4, V0.S4, V0.S4").
+		Raw(vop + " V3.S4, V2.S4, V2.S4").
+		Raw(vop + " V2.S4, V0.S4, V0.S4")
 	for l := 0; l < 4; l++ {
 		b.Raw(fmt.Sprintf("VMOV V0.S[%d], R%d", l, 3+l))
 	}
@@ -467,6 +468,73 @@ func gemmKernel() *emit.Function {
 		Raw("VFMLA V15.D2, V31.D2, V19.D2").
 		Raw("VST1 [V16.D2, V17.D2, V18.D2, V19.D2], (R5)").
 		Ret()
+	return b.Func()
+}
+
+// fmlaElemS is fmlaElem for single precision:
+//
+//	FMLA V{acc}.4S, V{breg}.4S, V{areg}.S[idx]   =>  V{acc} += V{breg} * V{areg}[idx]
+//
+// The same Advanced SIMD "FMLA (by element)" encoding with sz=0 (ARM C7-2):
+//
+//	0|1|0|01111|1|0|L|M|Rm[3:0]|0001|H|0|Rn|Rd
+//
+// where the element index is H:L and, for sz=0, the register is M:Rm, so
+// areg may be any of V0..V31. idx in {0,1,2,3}.
+func fmlaElemS(acc, breg, areg, idx int) string {
+	const base = 0x4F801000 // Q=1, sz=0, opcode 0001: FMLA by element .4S
+	M := (areg >> 4) & 1
+	Rm := areg & 0xF
+	H, L := (idx>>1)&1, idx&1
+	word := base | (L << 21) | (M << 20) | (Rm << 16) | (H << 11) | (breg << 5) | acc
+	return fmt.Sprintf("WORD $0x%08X // FMLA V%d.4S, V%d.4S, V%d.S[%d]",
+		word, acc, breg, areg, idx)
+}
+
+// gemm32Kernel builds gemmMicro8x8S(kc int, pa, pb, c *float32, ldc int), the
+// float32 micro-kernel of the packed GEMM: an 8-row x 8-col tile,
+//
+//	for p in [0,kc):  C[r][col] += pa[p*8+r] * pb[p*8+col]   (r<8, col<8)
+//
+// the float64 kernel's structure at twice the lanes. The tile lives in V0..V15
+// (row r in V(2r), V(2r+1), four floats each), the B row in V16,V17 and the
+// eight A values in V18=[a0..a3], V19=[a4..a7], which the by-element FMLA
+// (fmlaElemS) reads lane by lane. Sixteen independent accumulator chains cover
+// the FMA latency of two 4-cycle pipes (Neoverse N1) with room to spare; each
+// k step is two loads for sixteen FMAs. The closing C += acc is a VFADD.
+func gemm32Kernel() *emit.Function {
+	b := arm64.NewFunc("gemmMicro8x8S", gemmSig(), 0)
+	b.LoadArg("kc", "R0").
+		LoadArg("pa", "R1").
+		LoadArg("pb", "R2").
+		LoadArg("c", "R3").
+		LoadArg("ldc", "R4").
+		Raw("LSL $2, R4, R4") // ldc -> bytes
+	for r := 0; r < 16; r++ {
+		b.Raw(fmt.Sprintf("VEOR V%d.B16, V%d.B16, V%d.B16", r, r, r))
+	}
+	b.Raw("CBZ R0, sstore").
+		Raw("skloop:").
+		Raw("VLD1.P 32(R2), [V16.S4, V17.S4]"). // B row: 8 floats
+		Raw("VLD1.P 32(R1), [V18.S4, V19.S4]")  // A column: 8 floats
+	for r := 0; r < 8; r++ {
+		areg, lane := 18+r/4, r%4
+		b.Raw(fmlaElemS(2*r, 16, areg, lane))
+		b.Raw(fmlaElemS(2*r+1, 17, areg, lane))
+	}
+	b.Raw("SUB $1, R0").
+		Raw("CBNZ R0, skloop").
+		Raw("sstore:")
+	for r := 0; r < 8; r++ {
+		b.Raw("VLD1 (R3), [V16.S4, V17.S4]")
+		b.Raw(fmt.Sprintf("VFADD V%d.S4, V16.S4, V16.S4", 2*r))
+		b.Raw(fmt.Sprintf("VFADD V%d.S4, V17.S4, V17.S4", 2*r+1))
+		b.Raw("VST1 [V16.S4, V17.S4], (R3)")
+		if r < 7 {
+			b.Raw("ADD R4, R3, R3")
+		}
+	}
+	b.Ret()
 	return b.Func()
 }
 

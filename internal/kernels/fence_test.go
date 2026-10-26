@@ -135,3 +135,23 @@ func TestGemmMicroStaysInsideItsOperands(t *testing.T) {
 	run()
 	forEachFallback(run)
 }
+
+// TestGemmMicro32StaysInsideItsOperands fences the float32 GEMM kernel's
+// panels and C tile, where there is one.
+func TestGemmMicro32StaysInsideItsOperands(t *testing.T) {
+	g := gemm32
+	if g == nil {
+		t.Skip("no float32 GEMM kernel here")
+	}
+	for kc := 1; kc <= 9; kc++ {
+		for _, ldc := range []int{g.nr, g.nr + 3, 64} {
+			for _, pa := range fences32(t, kc*g.mr) {
+				for _, pb := range fences32(t, kc*g.nr) {
+					for _, dst := range fences32(t, (g.mr-1)*ldc+g.nr) {
+						g.micro(kc, pa, pb, dst, ldc)
+					}
+				}
+			}
+		}
+	}
+}

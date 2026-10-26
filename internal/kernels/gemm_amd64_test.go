@@ -15,3 +15,14 @@ func TestGemmSSE2Fallback(t *testing.T) {
 	t.Run("float", TestGemmFloatTolerance)
 	t.Run("dot", TestDotSIMD)
 }
+
+// TestGemm32NeedsFMA: without FMA there is no float32 kernel, and HasGemm32
+// sends float32 products to the float64 GEMM.
+func TestGemm32NeedsFMA(t *testing.T) {
+	if newGemm32(false) != nil {
+		t.Fatal("a float32 GEMM without FMA")
+	}
+	if g := newGemm32(true); g == nil || g.mr != 6 || g.nr != 16 {
+		t.Fatalf("newGemm32(true) = %+v", g)
+	}
+}
