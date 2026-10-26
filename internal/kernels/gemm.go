@@ -203,6 +203,9 @@ func (g *gemmKernel[T]) packB(b MatOf[T], pc, kc, jc, nc int, pb []T) {
 		nr := min(NR, nc-jr)
 		dst := pb[jr*kc:]
 		if b.CS == 1 {
+			if nr == NR && packRowsWhole(dst, b.Data, b.Off+pc*b.RS+jc+jr, b.RS, kc, NR) {
+				continue
+			}
 			// Element loops, not copy and clear: on runs this short (NR
 			// elements) each of those is a runtime call.
 			for p := 0; p < kc; p++ {
@@ -230,6 +233,27 @@ func (g *gemmKernel[T]) packB(b MatOf[T], pc, kc, jc, nc int, pb []T) {
 			}
 		}
 	}
+}
+
+// packRowsWhole copies kc runs of nr elements, the p-th starting at
+// src[s+p*rs], to dst[p*nr:], each as one fixed-size array assignment, which
+// the compiler lowers to a few vector moves instead of a loop or a runtime
+// call. It reports false, copying nothing, for a width it has no array type
+// for; the caller then copies element by element.
+func packRowsWhole[T gemmFloat](dst, src []T, s, rs, kc, nr int) bool {
+	switch nr {
+	case 8:
+		for p := 0; p < kc; p++ {
+			*(*[8]T)(dst[p*8:]) = *(*[8]T)(src[s+p*rs:])
+		}
+	case 16:
+		for p := 0; p < kc; p++ {
+			*(*[16]T)(dst[p*16:]) = *(*[16]T)(src[s+p*rs:])
+		}
+	default:
+		return false
+	}
+	return true
 }
 
 // packA copies A[ic:ic+mc][pc:pc+kc] into MR-tall row panels: for each panel ir
