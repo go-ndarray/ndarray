@@ -66,6 +66,14 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-26 (v0.24.0).** The ppc64le extremum kernels (`maxVSX`, `minVSX`,
+`max32VSX`, `min32VSX`) read the whole blocks of `a` (`len(a) &^ 7` or
+`&^ 15`, never 0, since the wrapper takes the scalar path below a block). They
+write one 16-byte vector to an `out` array on the wrapper's stack, and read
+two 16-byte read-only constants. They are fenced and tested against the
+sequential oracle on a POWER9, where a sabotaged kernel (one NaN-mask OR
+removed) fails.
+
 **2026-10-26 (v0.23.0).** The s390x float32 extremum kernels (`max32VXE`,
 `min32VXE`) read `len(a)` elements of a slice of at least 16, behind the
 `useVXE` gate. On a real IBM Z the PROT_NONE fence and the sequential-oracle
