@@ -157,9 +157,9 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   `fft` bridge shipped in v0.10.0 (package `fft`, over go-fft). float32 has
   SIMD kernels on all six 64-bit targets for `Sum` (v0.14.0–v0.17.0) and for
   `Add`/`Sub`/`Mul`/`Div` (v0.18.0) and `Sqrt` (v0.19.0). Still pure Go
-  for float32: `Max`/`Min` on ppc64le, loong64, s390x and riscv64 (v0.20.0
-  vectorised them on amd64 and arm64 and stopped converting to float64
-  everywhere), and the transcendental ufuncs. `MatMul` runs on the float64
+  for float32: `Max`/`Min` on ppc64le, loong64 and s390x (v0.20.0 vectorised
+  them on amd64 and arm64 and stopped converting to float64 everywhere,
+  v0.22.0 on riscv64 for float32 and float64), and the transcendental ufuncs. `MatMul` runs on the float64
   GEMM since v0.21.0, 77–90% faster than the triple loop; a native float32
   GEMM is still to write.
 - **Phase 3 — broadcasting ufuncs — MOSTLY DONE.** Broadcasting arithmetic,

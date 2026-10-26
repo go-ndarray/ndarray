@@ -32,8 +32,15 @@ func rvvFromAuxv() bool {
 	return err == nil && hwcapFrom(auxv)&hwcapV != 0
 }
 
+// sumSIMD is the RVV sum from 8 elements up. Below that it is the sequential
+// sum, the order NumPy's pairwise sum and the other targets' kernels (whose
+// scalar tails take n < 8 whole) use there. The strip-mined kernel would take
+// even 3 elements as one vector, and its unordered reduction regrouped
+// [MaxInt64, MinInt64, -3] as float64 so that max + (-3) rounded back to max
+// and cancelled: the mean was 0, NumPy's -1. Seen on a real SpacemiT X60,
+// never under CI's qemu, whose default CPU has no V.
 func sumSIMD(a []float64) float64 {
-	if !useRVV || len(a) == 0 {
+	if !useRVV || len(a) < 8 {
 		return Sum(a)
 	}
 	return sumRVV(&a[0], len(a))
@@ -48,8 +55,28 @@ func sqrtSIMD(dst, src []float64) {
 	sqrtRVV(&dst[0], &src[0], len(dst))
 }
 
-func maxSIMD(a []float64) float64 { return maxUnrolled(a) }
-func minSIMD(a []float64) float64 { return minUnrolled(a) }
+// maxSIMD / minSIMD are the NaN-propagating extrema of a (non-empty): the RVV
+// kernels (vfmax/vfmin with a vmfne NaN count) when the CPU reports V, the
+// four-chain scalar reducers otherwise.
+func maxSIMD(a []float64) float64 {
+	if !useRVV {
+		return maxUnrolled(a)
+	}
+	return maxRVV(&a[0], len(a))
+}
+
+func minSIMD(a []float64) float64 {
+	if !useRVV {
+		return minUnrolled(a)
+	}
+	return minRVV(&a[0], len(a))
+}
+
+//go:noescape
+func maxRVV(a *float64, n int) float64
+
+//go:noescape
+func minRVV(a *float64, n int) float64
 
 func addBin(dst, a, b []float64) {
 	if !useRVV || len(dst) == 0 {

@@ -66,6 +66,23 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-26 (v0.22.0).**
+
+- **Correctness defect.** On riscv64 with V, `MeanAxis(1)` of the int64 row
+  `[MaxInt64, MinInt64, -3]` was 0, NumPy's -1. The strip-mined float64 sum
+  took even 3 elements as one vector, and its unordered reduction cancelled
+  `MaxInt64 + (-3)` against `MinInt64`. Below 8 elements the sum is now
+  sequential, as on the other targets. Found by running the root suite on a
+  real SpacemiT X60.
+- **CI gap behind it.** The riscv64 qemu lane ran on qemu's default CPU,
+  which has no V, so the RVV kernels had never run in CI. It now enables V
+  and sets `NDARRAY_REQUIRE_RVV`, so a CPU without V fails the lane
+  (`TestRVVWhenRequired`).
+- **New kernels.** The riscv64 extremum kernels (`maxRVV`, `minRVV`,
+  `max32RVV`, `min32RVV`) read `len(a)` elements of a non-empty slice, behind
+  the `useRVV` gate. They are fenced and tested against the sequential oracle
+  on the X60. A sabotaged one, which drops its NaN count, fails that test.
+
 **2026-10-26 (v0.20.0).** The float32 extremum kernels (`max32SSE2`,
 `min32SSE2`, `max32NEON`, `min32NEON`) read `len(a)` elements from a
 non-empty slice. The Go wrappers pass `len(a)` and never an empty slice

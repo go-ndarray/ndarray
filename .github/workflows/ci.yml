@@ -116,7 +116,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { goarch: riscv64, qemu: qemu-riscv64-static }
+          # V enabled: qemu's default riscv64 CPU has none, and the RVV kernels
+          # went untested here until 2026-10-26. NDARRAY_REQUIRE_RVV makes a
+          # CPU without V fail the lane (TestRVVWhenRequired).
+          - { goarch: riscv64, qemu: qemu-riscv64-static, cpu: "rv64,v=true,vlen=256", require: NDARRAY_REQUIRE_RVV }
           - { goarch: loong64, qemu: qemu-loongarch64-static }
           - { goarch: ppc64le, qemu: qemu-ppc64le-static }
           - { goarch: s390x,   qemu: qemu-s390x-static }
@@ -164,7 +167,11 @@ jobs:
           fi
           # Printed on purpose: without it, "ran under emulation" and "skipped" are
           # indistinguishable from a green tick.
-          echo "running ${{ matrix.goarch }} under $q"
+          if [ -n "${{ matrix.cpu }}" ]; then
+            export QEMU_CPU="${{ matrix.cpu }}"
+            export ${{ matrix.require }}=1
+          fi
+          echo "running ${{ matrix.goarch }} under $q (QEMU_CPU=${QEMU_CPU:-default})"
           GOARCH=${{ matrix.goarch }} go test -exec="$q" ./...
 
   # 386 runs natively on the amd64 runner (the kernel executes 32-bit x86
