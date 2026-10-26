@@ -1537,8 +1537,6 @@ func matmulStore(d, x, y any, m, k, n int) {
 		matmulNum(d, x.([]uint32), y.([]uint32), m, k, n)
 	case []uint64:
 		matmulNum(d, x.([]uint64), y.([]uint64), m, k, n)
-	case []float32:
-		matmulNum(d, x.([]float32), y.([]float32), m, k, n)
 	case []complex64:
 		matmulNum(d, x.([]complex64), y.([]complex64), m, k, n)
 	case []complex128:

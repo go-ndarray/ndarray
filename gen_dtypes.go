@@ -339,7 +339,8 @@ func main() {
 	p("// matmulStore multiplies (m x k) by (k x n) storage slices of one dtype into d.")
 	p("func matmulStore(d, x, y any, m, k, n int) {")
 	p("switch d := d.(type) {")
-	each("iufc-float64", "case []$T: matmulNum(d, x.([]$T), y.([]$T), m, k, n)")
+	// float32 and float64 run on the float64 GEMM (matmulTyped).
+	each("iufc-float64,float32", "case []$T: matmulNum(d, x.([]$T), y.([]$T), m, k, n)")
 	each("b", "case []$T: matmulBool(d, x.([]$T), y.([]$T), m, k, n)")
 	p("}")
 	p("}")

@@ -22,6 +22,48 @@ func TestMatMul(t *testing.T) {
 		[]float64{27, 30, 33, 61, 68, 75, 95, 106, 117})
 }
 
+// TestMatMulFloat32 runs the float32 product on the float64 GEMM. With
+// integer-valued operands every product and sum is exact in both widths, so
+// the result is exact. With random operands it agrees with a float32
+// triple loop to float32 precision. Big enough (40x50x30) to take the blocked
+// GEMM path, and the result keeps the Float32 dtype.
+func TestMatMulFloat32(t *testing.T) {
+	m, k, n := 40, 50, 30
+	ints := func(seed int) []float32 {
+		d := make([]float32, 0, m*k)
+		for i := range cap(d) {
+			d = append(d, float32((i*seed)%17-8))
+		}
+		return d
+	}
+	for _, exact := range []bool{true, false} {
+		x, y := ints(7), ints(11)[:k*n]
+		if !exact {
+			for i := range x {
+				x[i] = x[i]/3 + 0.1
+			}
+			for i := range y {
+				y[i] = y[i]/7 - 0.05
+			}
+		}
+		a := mustArr(t, ok(FromSlice(x, m, k)))
+		b := mustArr(t, ok(FromSlice(y, k, n)))
+		r := mustArr(t, ok(a.MatMul(b)))
+		if r.DType() != Float32 {
+			t.Fatalf("dtype %v, want float32", r.DType())
+		}
+		got := data[float32](t, r)
+		want := make([]float32, m*n)
+		matmulNum(want, x, y, m, k, n)
+		for i := range want {
+			d := float64(got[i]) - float64(want[i])
+			if exact && d != 0 || !exact && d*d > 1e-10*(1+float64(want[i])*float64(want[i])) {
+				t.Fatalf("exact=%v [%d] = %v, float32 loop %v", exact, i, got[i], want[i])
+			}
+		}
+	}
+}
+
 func TestMatMulTransposedView(t *testing.T) {
 	// A.T @ A where A is (3x2): A.T is a (2x3) strided view, exercising
 	// materialize inside matmul2D. Result (2x2) == [[35,44],[44,56]] (numpy).
