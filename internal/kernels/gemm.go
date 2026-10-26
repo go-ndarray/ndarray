@@ -203,11 +203,17 @@ func (g *gemmKernel[T]) packB(b MatOf[T], pc, kc, jc, nc int, pb []T) {
 		nr := min(NR, nc-jr)
 		dst := pb[jr*kc:]
 		if b.CS == 1 {
+			// Element loops, not copy and clear: on runs this short (NR
+			// elements) each of those is a runtime call.
 			for p := 0; p < kc; p++ {
 				srcRow := b.Data[b.Off+(pc+p)*b.RS+jc+jr:]
 				d := dst[p*NR:]
-				copy(d[:nr], srcRow[:nr])
-				clear(d[nr:NR])
+				for c := 0; c < nr; c++ {
+					d[c] = srcRow[c]
+				}
+				for c := nr; c < NR; c++ {
+					d[c] = 0
+				}
 			}
 			continue
 		}
@@ -217,9 +223,10 @@ func (g *gemmKernel[T]) packB(b MatOf[T], pc, kc, jc, nc int, pb []T) {
 				dst[p*NR+c] = b.Data[src+p*b.RS]
 			}
 		}
-		if nr < NR {
-			for p := 0; p < kc; p++ {
-				clear(dst[p*NR+nr : p*NR+NR])
+		for p := 0; p < kc; p++ {
+			d := dst[p*NR:]
+			for c := nr; c < NR; c++ {
+				d[c] = 0
 			}
 		}
 	}
@@ -234,13 +241,34 @@ func (g *gemmKernel[T]) packA(a MatOf[T], ic, mc, pc, kc int, pa []T) {
 		mr := min(MR, mc-ir)
 		dst := pa[ir*kc:]
 		src := a.Off + (ic+ir)*a.RS + pc*a.CS
+		if a.CS == 1 {
+			// Row-major A: read each row as one contiguous run and scatter it
+			// into its lane of the panel. The column-wise walk below spends
+			// its loop and bounds checks on every MR elements; at 64² it
+			// took longer than the micro-kernel.
+			for r := 0; r < mr; r++ {
+				row := a.Data[src+r*a.RS : src+r*a.RS+kc]
+				d := dst[r : r+(kc-1)*MR+1]
+				for p, v := range row {
+					d[p*MR] = v
+				}
+			}
+			for r := mr; r < MR; r++ {
+				for p := 0; p < kc; p++ {
+					dst[p*MR+r] = 0
+				}
+			}
+			continue
+		}
 		for p := 0; p < kc; p++ {
-			d := dst[p*MR : p*MR+MR]
+			d := dst[p*MR:]
 			at := src + p*a.CS
 			for r := 0; r < mr; r++ {
 				d[r] = a.Data[at+r*a.RS]
 			}
-			clear(d[mr:])
+			for r := mr; r < MR; r++ {
+				d[r] = 0
+			}
 		}
 	}
 }
