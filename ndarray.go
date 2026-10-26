@@ -877,6 +877,9 @@ func (a *Array) Mean() (float64, error) {
 // Max returns the maximum element. It returns an error for an empty array.
 // On a complex array it panics; use MaxAxis.
 func (a *Array) Max() (float64, error) {
+	if a.dtype == Float32 && a.Size() > 0 {
+		return float64(kernels.Max32(a.contiguousStore().([]float32))), nil
+	}
 	if a.dtype != Float64 {
 		a.realOnly("Max", "MaxAxis")
 		return a.AsType(Float64).Max()
@@ -890,6 +893,9 @@ func (a *Array) Max() (float64, error) {
 // Min returns the minimum element. It returns an error for an empty array.
 // On a complex array it panics; use MinAxis.
 func (a *Array) Min() (float64, error) {
+	if a.dtype == Float32 && a.Size() > 0 {
+		return float64(kernels.Min32(a.contiguousStore().([]float32))), nil
+	}
 	if a.dtype != Float64 {
 		a.realOnly("Min", "MinAxis")
 		return a.AsType(Float64).Min()
