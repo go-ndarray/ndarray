@@ -43,6 +43,14 @@ func main() {
 	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
 	f.Add(sqrt32Kernel())
+	abs64 := f.Data("abs64", lanes(8, 0x7fffffffffffffff))
+	inf64 := f.Data("inf64", lanes(8, 0x7ff0000000000000))
+	abs32 := f.Data("abs32", lanes(4, 0x7fffffff))
+	inf32 := f.Data("inf32", lanes(4, 0x7f800000))
+	f.Add(extremumKernel("maxVSX", 64, true, abs64, inf64))
+	f.Add(extremumKernel("minVSX", 64, false, abs64, inf64))
+	f.Add(extremumKernel("max32VSX", 32, true, abs32, inf32))
+	f.Add(extremumKernel("min32VSX", 32, false, abs32, inf32))
 	if err := os.WriteFile("sum_ppc64le.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -193,6 +201,89 @@ func binKernel(name, op, sca string) *emit.Function {
 		Raw("FMOVD 0(R5), F1").Raw("FMOVD 0(R6), F2").Raw("%s F2, F1", sca).Raw("FMOVD F1, 0(R3)").
 		Raw("ADD $8, R3").Raw("ADD $8, R5").Raw("ADD $8, R6").Raw("ADD $-1, R4").Raw("BR %stail", l)
 	b.Label(l + "done").Ret()
+	return b.Func()
+}
+
+// lanes is a 16-byte vector constant: v in every lane of size bytes, each lane
+// little-endian, as LXVD2X/LXVW4X load it on ppc64le (every lane equal, so
+// their lane order does not matter).
+func lanes(size int, v uint64) []byte {
+	b := make([]byte, 0, 16)
+	for len(b) < 16 {
+		for i := 0; i < size; i++ {
+			b = append(b, byte(v>>(8*i)))
+		}
+	}
+	return b
+}
+
+// extremumKernel builds NAME(a *floatN, n int, out *[16]byte) int64 for n a
+// positive multiple of the block (8 doubles or 16 floats). It reduces a with
+// xvmaxdp/xvmindp (xvmaxsp/xvminsp) into four accumulators, folds them
+// vertically into one vector stored at out, and returns non-zero if any
+// element was NaN. The Go wrapper folds the lanes and the tail with Go's
+// max/min. So neither the instruction's NaN rule nor its sign of a zero tie
+// matters: NaN is detected separately, and a zero result goes to the scalar
+// oracle.
+//
+// NaN detection is integer arithmetic on the VMX registers, because Go's
+// assembler has no VSX float compare: a lane is NaN iff its magnitude bits
+// (x AND abs) exceed +Inf's bits as an unsigned integer (vcmpgtud/vcmpgtuw).
+// The masks are OR-accumulated in V22. Registers: VS0-VS3 accumulators;
+// V4-V7 (VS36-VS39) the block; V8-V11 scratch; V20, V21 the abs and +Inf
+// constants; V22 the NaN mask.
+func extremumKernel(name string, bits int, isMax bool, abs, inf string) *emit.Function {
+	sig := ppc64.Layout([]string{"a", "n", "out"},
+		[]ppc64.Type{ppc64.Ptr, ppc64.Int64, ppc64.Ptr}, []string{"ret"}, []ppc64.Type{ppc64.Int64})
+	b := ppc64.NewFunc(name, sig, 0)
+	b.LoadArg("a", "R3").LoadArg("n", "R4").LoadArg("out", "R5")
+	offsets(b, false)
+	ld, st, cmp, block := "LXVD2X", "STXVD2X", "VCMPGTUD", 8
+	op := b.XVMAXDP
+	if !isMax {
+		op = b.XVMINDP
+	}
+	if bits == 32 {
+		ld, st, cmp, block = "LXVW4X", "STXVW4X", "VCMPGTUW", 16
+		op = b.XVMAXSP
+		if !isMax {
+			op = b.XVMINSP
+		}
+	}
+	b.Raw("MOVD $%s+0(SB), R7", abs).Raw("%s (R7)(R0), VS52", ld).
+		Raw("MOVD $%s+0(SB), R7", inf).Raw("%s (R7)(R0), VS53", ld).
+		Raw("XXLXOR VS54, VS54, VS54")
+	loadAndScan := func() {
+		for k := 0; k < 4; k++ {
+			b.Raw("%s (R3)(%s), VS%d", ld, vidx(k), 36+k)
+		}
+		for k := 0; k < 4; k++ {
+			b.Raw("VAND V%d, V20, V%d", 4+k, 8+k).
+				Raw("%s V%d, V21, V%d", cmp, 8+k, 8+k). // magnitude > +Inf: NaN
+				Raw("VOR V%d, V22, V22", 8+k)
+		}
+		b.Raw("ADD $64, R3").Raw("ADD $-%d, R4", block)
+	}
+	// The first block seeds the accumulators.
+	loadAndScan()
+	for k := 0; k < 4; k++ {
+		b.Raw("XXLOR VS%d, VS%d, VS%d", 36+k, 36+k, k)
+	}
+	b.Label(name + "loop").Raw("CMP R4, $0").Raw("BEQ %sfold", name)
+	loadAndScan()
+	for k := 0; k < 4; k++ {
+		op(k, k, 36+k)
+	}
+	b.Raw("BR %sloop", name)
+	b.Label(name + "fold")
+	op(0, 0, 1)
+	op(2, 2, 3)
+	op(0, 0, 2)
+	b.Raw("%s VS0, (R5)(R0)", st).
+		// The NaN mask's two doublewords, ORed into R6.
+		Raw("XXPERMDI VS54, VS54, $2, VS55").
+		Raw("MFVSRD VS54, R6").Raw("MFVSRD VS55, R7").Raw("OR R7, R6").
+		StoreRet("R6", "ret").Ret()
 	return b.Func()
 }
 

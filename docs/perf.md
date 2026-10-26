@@ -1044,9 +1044,33 @@ On the POWER9 float32 `Max` is still about 7× slower than NumPy, because
 Go's NaN-correct `max` is scalar there.
 
 Still to do:
-- ppc64le and loong64 need registry entries in go-asmgen first. Go's
-  assemblers have no VSX float compare (for the NaN mask), and on loong64 no
+- ppc64le: done in v0.24.0, below, without a registry entry.
+- loong64 needs registry entries in go-asmgen first: Go's assembler has no
   vector float max, min or compare at all.
+
+### ppc64le `Max`/`Min` (2026-10-26)
+
+`xvmaxdp`/`xvmindp` (and the `sp` forms) do not propagate NaN as Go and
+NumPy do, and Go's assembler has no VSX float compare to build a NaN mask
+from. The mask is built in integer arithmetic instead:
+
+- A lane is NaN iff its magnitude bits (`x AND 0x7FF…F`) exceed +Inf's bits
+  as an unsigned integer. `vcmpgtud`/`vcmpgtuw` test that on the VMX
+  registers, against constants loaded from a read-only DATA table, and the
+  results are OR-accumulated.
+- The kernel works only vertically: four accumulators folded into one vector
+  stored to memory, plus the NaN flag.
+- Go folds the lanes and the tail with its `max`/`min`. A zero result goes to
+  the scalar oracle for its sign, as on amd64.
+
+| POWER9, `Max` (`abbench`) | 2¹⁴ | 2²⁰ | NumPy 2.5.3, one core |
+|---|---:|---:|---|
+| float64 | 53.5 → **7.28 µs** (−86%) | 3.48 → **0.472 ms** (−86%) | 11.8 µs / 0.615 ms |
+| float32 | 49.9 → **4.58 µs** (−91%) | 3.13 → **0.289 ms** (−91%) | 7.13 µs / 0.324 ms |
+
+`Max` is now faster than NumPy on the POWER9 for both widths, and the `Sum`
+controls are flat. A sabotaged kernel, with one of the four NaN-mask ORs
+removed, fails the float32 and float64 oracle tests there.
 - s390x: done in v0.23.0, below.
 
 ### s390x float32 `Max`/`Min`, and the z14 float32 kernels measured (2026-10-26)
