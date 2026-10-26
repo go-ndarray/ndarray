@@ -1047,7 +1047,34 @@ Still to do:
 - ppc64le and loong64 need registry entries in go-asmgen first. Go's
   assemblers have no VSX float compare (for the NaN mask), and on loong64 no
   vector float max, min or compare at all.
-- s390x (`VFMAXSB` mode 1) waits for a z machine to test on.
+- s390x: done in v0.23.0, below.
+
+### s390x float32 `Max`/`Min`, and the z14 float32 kernels measured (2026-10-26)
+
+The s390x kernels use `VFMAXSB`/`VFMINSB` in mode 1 (Java's Math.max/min):
+a NaN operand gives NaN, and −0 orders below +0. Four four-lane accumulators
+are folded by an 8-byte `VSLDB` rotation, then lane 1 onto lane 0, behind the
+`useVXE` gate (z14).
+
+The IBM Z (LinuxONE) had looked unreachable since 2026-10-25, but the access
+had not expired. After the macOS upgrade the SSH agent held no key, and the
+`id_ed25519` the server accepts needs a passphrase. With the key loaded
+again, everything was measured on the real machine (`abbench`, 6 rounds,
+alternated, pinned core):
+
+| float32, IBM Z | 2¹⁴ | 2²⁰ | base |
+|---|---:|---:|---|
+| `Max` | **−98.3%** | **−97.2%** | v0.22.0 (Go loop) |
+| `Add` | −80.2% | −85.3% | v0.17.0 |
+| `AddInto` | −91.9% | −89.1% | v0.17.0 |
+| `Sqrt` | −81.7% | −82.7% | v0.17.0 |
+
+The float64 controls are flat in both runs.
+
+On the machine, a sabotaged kernel (one `VFMINSB` lane in `max32VXE`)
+fails the sequential-oracle test. The kernel suite passes with
+`NDARRAY_REQUIRE_VXE=1`, and so does the root suite. Since #68 the s390x qemu
+lane in CI also runs VX and VXE, on qemu's `max` CPU.
 - riscv64: done in v0.22.0, below.
 
 ### riscv64 `Max`/`Min` and a sum defect (2026-10-26)
