@@ -126,7 +126,9 @@ jobs:
           # not report LASX fail the lane (TestLASXWhenRequired).
           - { goarch: loong64, qemu: qemu-loongarch64-static, cpu: "la464", require: NDARRAY_REQUIRE_LASX }
           - { goarch: ppc64le, qemu: qemu-ppc64le-static }
-          - { goarch: s390x,   qemu: qemu-s390x-static }
+          # max includes z14's vector enhancements (VXE), which the float32
+          # kernels need; NDARRAY_REQUIRE_VXE fails the lane without them.
+          - { goarch: s390x,   qemu: qemu-s390x-static, cpu: "max", require: NDARRAY_REQUIRE_VXE }
           # 32-bit: int is 32 bits, so shape/size overflow paths differ.
           - { goarch: arm,     qemu: qemu-arm-static }
     steps:
