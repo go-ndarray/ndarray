@@ -1048,7 +1048,41 @@ Still to do:
   assemblers have no VSX float compare (for the NaN mask), and on loong64 no
   vector float max, min or compare at all.
 - s390x (`VFMAXSB` mode 1) waits for a z machine to test on.
-- riscv64 (`vfmax.vv` with a `vmfne.vv` NaN mask) is next.
+- riscv64: done in v0.22.0, below.
+
+### riscv64 `Max`/`Min` and a sum defect (2026-10-26)
+
+The RVV kernels for float64 and float32 work in three steps:
+
+- **Accumulate:** each strip is folded into a register group with `vfmax.vv`
+  (or `vfmin.vv`). The tail-undisturbed policy keeps a short last strip from
+  touching the other lanes.
+- **Count NaNs:** RISC-V's `fmax` returns the non-NaN operand, so each strip
+  also counts its NaN lanes (`vmfne.vv x, x`, then `vcpop.m`), and a non-zero
+  count gives NaN.
+- **Fold:** `vfredmax.vs` reduces the group at the end. `fmax` already orders
+  −0 below +0.
+
+On a SpacemiT X60 (`abbench`, 6 rounds, alternated):
+
+| `Max`, 2¹⁴ / 2²⁰ | change |
+|---|---:|
+| float64 | **−89% / −83%** |
+| float32 | **−93% / −90%** |
+| `Sum` (controls) | ~ |
+
+Running the root suite on that real X60 found a defect:
+`MeanAxis(1)` of the int64 row `[MaxInt64, MinInt64, −3]` was 0, NumPy's −1.
+
+- **Cause:** the strip-mined sum kernel took even 3 elements as one vector,
+  and its unordered reduction added `MaxInt64 + (−3)` first. In float64 that
+  rounds back to `MaxInt64` and cancels.
+- **Fix:** below 8 elements the sum is now sequential, the order NumPy and the
+  other targets' kernels (whose scalar tails take n < 8 whole) use there.
+- **Why CI never saw it:** its riscv64 lane runs under qemu, whose default CPU
+  has no V, so no RVV kernel had ever run in CI. The lane now enables V
+  (`QEMU_CPU=rv64,v=true,vlen=256`). It also sets `NDARRAY_REQUIRE_RVV`, so a
+  CPU without V fails the lane instead of passing on the scalar paths.
 
 ### float32 `MatMul` on the float64 GEMM (2026-10-26)
 

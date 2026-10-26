@@ -39,6 +39,16 @@ func main() {
 	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
 	f.Add(sqrt32Kernel())
+	for _, k := range []struct {
+		name    string
+		bits    int
+		vop, rd string
+	}{
+		{"maxRVV", 64, "VFMAXVV", "VFREDMAXVS"}, {"minRVV", 64, "VFMINVV", "VFREDMINVS"},
+		{"max32RVV", 32, "VFMAXVV", "VFREDMAXVS"}, {"min32RVV", 32, "VFMINVV", "VFREDMINVS"},
+	} {
+		f.Add(extremumKernel(k.name, k.bits, k.vop, k.rd))
+	}
 	if err := os.WriteFile("sum_riscv64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -127,6 +137,57 @@ func binKernel(name, op string) *emit.Function {
 		Raw("VSE64V V16, (X10)")
 	advance(b, "X14", "X10", "X11", "X12")
 	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
+	return b.Func()
+}
+
+// extremumKernel builds NAME(a *floatN, n int) floatN for n >= 1, the
+// NaN-propagating maximum (or minimum), N = bits:
+//
+//   - The accumulator group V16 (LMUL=4) is seeded with a[0] in every lane.
+//   - Each strip of vl elements is folded in with vfmax.vv/vfmin.vv under
+//     the tail-undisturbed policy, so a short last strip leaves the other
+//     lanes alone.
+//   - At the end the group is reduced with vfredmax.vs/vfredmin.vs.
+//
+// RISC-V's fmax/fmin order -0 below +0, as Go does, but return the non-NaN
+// operand when one is NaN. So each strip also counts its NaN lanes (vmfne.vv
+// x, x, then vcpop.m), and a non-zero count makes the result a quiet NaN.
+func extremumKernel(name string, bits int, vop, red string) *emit.Function {
+	ret, mov, ew, shift, fmv := riscv64.Float64, "MOVD", "E64", 3, "FMVDX"
+	nan := "$0x7ff8000000000000"
+	if bits == 32 {
+		ret, mov, ew, shift, fmv = riscv64.Float32, "MOVF", "E32", 2, "FMVWX"
+		nan = "$0x7fc00000"
+	}
+	sig := riscv64.Layout([]string{"a", "n"}, []riscv64.Type{riscv64.Ptr, riscv64.Int64},
+		[]string{"ret"}, []riscv64.Type{ret})
+	b := riscv64.NewFunc(name, sig, 0)
+	b.LoadArg("a", "X10").LoadArg("n", "X11")
+	b.Raw("%s (X10), F0", mov).
+		Raw("VSETVLI X0, %s, M4, TA, MA, X16", ew). // vl = VLMAX
+		Raw("VFMVVF F0, V16").
+		Raw("MOV $0, X17"). // NaN lanes seen
+		Raw("loop:").
+		Raw("VSETVLI X11, %s, M4, TU, MA, X14", ew).
+		Raw("VLE%dV (X10), V8", bits).
+		Raw("VMFNEVV V8, V8, V4"). // V4 = the NaN lanes of the strip
+		Raw("VCPOPM V4, X15").
+		Raw("ADD X15, X17, X17").
+		Raw("%s V8, V16, V16", vop).
+		Raw("SLLI $%d, X14, X18", shift).
+		Raw("ADD X18, X10, X10").
+		Raw("SUB X14, X11, X11").
+		Raw("BNEZ X11, loop").
+		Raw("VSETVLI X0, %s, M4, TA, MA, X16", ew).
+		Raw("VFMVSF F0, V1").
+		Raw("%s V1, V16, V1", red). // V1[0] = extremum of V1[0] and every lane of V16
+		Raw("VFMVFS V1, F0").
+		Raw("BEQZ X17, done").
+		Raw("MOV %s, X5", nan).
+		Raw("%s X5, F0", fmv).
+		Raw("done:").
+		StoreRet("F0", "ret").
+		Ret()
 	return b.Func()
 }
 
