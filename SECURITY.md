@@ -66,6 +66,12 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-26 (v0.23.0).** The s390x float32 extremum kernels (`max32VXE`,
+`min32VXE`) read `len(a)` elements of a slice of at least 16, behind the
+`useVXE` gate. On a real IBM Z the PROT_NONE fence and the sequential-oracle
+test pass, and a sabotaged kernel fails the latter. The CI s390x lane runs
+VX and VXE (`NDARRAY_REQUIRE_VXE`) since #68.
+
 **2026-10-26 (v0.22.0).**
 
 - **Correctness defect.** On riscv64 with V, `MeanAxis(1)` of the int64 row
