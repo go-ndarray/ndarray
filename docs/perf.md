@@ -1045,8 +1045,38 @@ Go's NaN-correct `max` is scalar there.
 
 Still to do:
 - ppc64le: done in v0.24.0, below, without a registry entry.
-- loong64 needs registry entries in go-asmgen first: Go's assembler has no
-  vector float max, min or compare at all.
+- loong64: done in v0.25.0, below, without a registry entry.
+
+### loong64 `Max`/`Min`, and negative NaNs (2026-10-26)
+
+Go's loong64 assembler has no vector float max, min or compare, so the LSX
+kernels work entirely in integer arithmetic:
+
+- **Order:** `t = x XOR ((x >>a N−1) >>l 1)` flips the magnitude bits of the
+  negatives. The signed order of `t` is the float order, with −0 below +0
+  (Go's rule), and the map is its own inverse.
+- **Extremum:** `max(acc, t) = acc XOR ((acc XOR t) AND (acc < t))`, with
+  `vslt`.
+- **NaN:** a lane is NaN iff `(x AND abs) >u +Inf's bits` (`vsltu`),
+  OR-accumulated.
+
+**What the sabotage run found.** A sabotaged kernel, with the NaN mask of
+`max32LSX`'s first lane dropped, *passed* every test in CI's loong64 lane. In
+that integer order a **positive** NaN sorts above +Inf, so a max finds it
+without any NaN test. Every NaN in the tests was `math.NaN()`, which is
+positive. A **negative** NaN sorts below everything, and only the NaN test
+catches it. That is no corner case: x86's default NaN (from `0×∞` or `∞−∞`)
+is negative.
+
+The extremum tests now cover both signs, for float32 and float64 on every
+architecture. With them the sabotage failed CI's loong64 lane
+(`special Max32 n=16: -0, sequential NaN`), and every other architecture's
+kernels passed.
+
+**Validated under emulation only.** The kernels pass on qemu `la464` (LSX and
+LASX, required since #67). The Loongson they would be measured on
+(cfarm401) accepted TCP but never sent its SSH banner on 2026-10-26, so their
+speed is not measured yet.
 
 ### ppc64le `Max`/`Min` (2026-10-26)
 
