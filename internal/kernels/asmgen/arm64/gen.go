@@ -54,6 +54,8 @@ func main() {
 	f.Add(sqrt32Kernel())
 	f.Add(extremumKernel("maxNEON", "VFMAX", "FMAXD"))
 	f.Add(extremumKernel("minNEON", "VFMIN", "FMIND"))
+	f.Add(extremum32Kernel("max32NEON", "VFMAX", "FMAXS"))
+	f.Add(extremum32Kernel("min32NEON", "VFMIN", "FMINS"))
 	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_arm64.s", []byte(f.String()), 0o644); err != nil {
@@ -260,6 +262,44 @@ func extremumKernel(name, vop, sop string) *emit.Function {
 		Raw(sop+" F9, F0, F0").
 		Raw("tail:").Raw("CBZ R1, done").
 		Raw("FMOVD.P 8(R0), F10").
+		Raw(sop+" F10, F0, F0").
+		Raw("SUB $1, R1").Raw("B tail").
+		Raw("done:").
+		StoreRet("F0", "ret").
+		Ret()
+	return b.Func()
+}
+
+// extremum32Kernel builds NAME(a *float32, n int) float32, the maximum (or
+// minimum) of a, for n >= 16: four .S4 accumulators seeded with the first 16
+// elements, folded together, then the four lanes, then the tail one at a time.
+// VFMAX/VFMIN, like the scalar FMAXS/FMINS Go's builtin max/min compile to,
+// return NaN when either operand is NaN and order -0 below +0, so the result is
+// the sequential max's bit for bit (the operation is associative under them).
+func extremum32Kernel(name, vop, sop string) *emit.Function {
+	sig := arm64.Layout([]string{"a", "n"}, []arm64.Type{arm64.Ptr, arm64.Int64},
+		[]string{"ret"}, []arm64.Type{arm64.Float32})
+	b := arm64.NewFunc(name, sig, 0)
+	b.LoadArg("a", "R0").LoadArg("n", "R1").
+		Raw("VLD1.P 64(R0), [V0.S4, V1.S4, V2.S4, V3.S4]").
+		Raw("SUB $16, R1").
+		Raw("block:").Raw("CMP $16, R1").Raw("BLT fold").
+		Raw("VLD1.P 64(R0), [V4.S4, V5.S4, V6.S4, V7.S4]")
+	for r := 0; r < 4; r++ {
+		b.Raw(fmt.Sprintf("%s V%d.S4, V%d.S4, V%d.S4", vop, 4+r, r, r))
+	}
+	b.Raw("SUB $16, R1").Raw("B block").
+		Raw("fold:").
+		Raw(vop+" V1.S4, V0.S4, V0.S4").
+		Raw(vop+" V3.S4, V2.S4, V2.S4").
+		Raw(vop+" V2.S4, V0.S4, V0.S4")
+	for l := 0; l < 4; l++ {
+		b.Raw(fmt.Sprintf("VMOV V0.S[%d], R%d", l, 3+l))
+	}
+	b.Raw("FMOVS R3, F0").Raw("FMOVS R4, F9").Raw("FMOVS R5, F10").Raw("FMOVS R6, F11").
+		Raw(sop+" F9, F0, F0").Raw(sop+" F11, F10, F10").Raw(sop+" F10, F0, F0").
+		Raw("tail:").Raw("CBZ R1, done").
+		Raw("FMOVS.P 4(R0), F10").
 		Raw(sop+" F10, F0, F0").
 		Raw("SUB $1, R1").Raw("B tail").
 		Raw("done:").

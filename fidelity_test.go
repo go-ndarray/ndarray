@@ -123,6 +123,42 @@ func TestLog2Accuracy(t *testing.T) {
 	}
 }
 
+// TestFloat32ExtremaMatchTheFloat64Path: the float32 Max/Min read the float32
+// elements directly; converting to float64 first (the path they replace) gives
+// the same value, since the conversion is exact. Strided views are included.
+func TestFloat32ExtremaMatchTheFloat64Path(t *testing.T) {
+	nan := float32(math.NaN())
+	for _, d := range [][]float32{
+		{3}, {1, -2, 5.5, 0.25}, {-1, -7, float32(math.Copysign(0, -1)), -3, 0},
+		{1, nan, 3}, {float32(math.Inf(-1)), -1e30, 1e-45},
+	} {
+		a := mustArr(t, ok(FromSlice(d, len(d))))
+		for _, v := range []*Array{a, mustArr(t, ok(a.Slice(Step(-1))))} {
+			mx, _ := v.Max()
+			mn, _ := v.Min()
+			wmx, _ := v.AsType(Float64).Max()
+			wmn, _ := v.AsType(Float64).Min()
+			if !sameFloat(mx, wmx) || !sameFloat(mn, wmn) {
+				t.Errorf("%v: Max=%v Min=%v, float64 path %v %v", d, mx, mn, wmx, wmn)
+			}
+		}
+	}
+	if _, err := mustArr(t, ok(ZerosOf(Float32, 0))).Max(); err == nil {
+		t.Error("Max of an empty float32 array: no error")
+	}
+	if _, err := mustArr(t, ok(ZerosOf(Float32, 0))).Min(); err == nil {
+		t.Error("Min of an empty float32 array: no error")
+	}
+}
+
+// sameFloat is bit equality, any NaN matching any NaN.
+func sameFloat(a, b float64) bool {
+	if a != a && b != b {
+		return true
+	}
+	return math.Float64bits(a) == math.Float64bits(b)
+}
+
 // TestExtremaOfSignedZeros: Max is +0 and Min is -0 over a mix of signed
 // zeros, whatever their order, as Go's max/min and math.Max/Min order them.
 // Until v0.19.1 amd64 returned the sign of whichever zero its kernel met last

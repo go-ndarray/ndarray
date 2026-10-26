@@ -55,6 +55,8 @@ func main() {
 	f.Add(bin32Kernel("mul32SSE2", "MULPS", "MULSS"))
 	f.Add(bin32Kernel("div32SSE2", "DIVPS", "DIVSS"))
 	f.Add(sqrt32Kernel())
+	f.Add(extremum32Kernel("max32SSE2", "MAXPS", "MAXSS"))
+	f.Add(extremum32Kernel("min32SSE2", "MINPS", "MINSS"))
 
 	if err := os.WriteFile("sum_amd64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -606,6 +608,58 @@ func gemmSSE2HalfKernel() *emit.Function {
 
 // nanScan emits: X9 = (reg unordered reg) ? all-ones : 0 ; X8 |= X9, i.e. it
 // ORs into the NaN-seen mask X8 a lane of all-ones wherever reg holds a NaN.
+// extremum32Kernel builds max32SSE2/min32SSE2(a *float32, n int) float32, for
+// n >= 1: the extremum over 16 floats per iteration in four XMM accumulators
+// (MAXPS/MINPS), with X8 the OR of every CMPPS-unordered mask so a NaN anywhere
+// gives NaN. MAXPS/MINPS return their source operand on a zero tie, so a zero
+// result may carry the wrong sign; the Go wrapper hands that case to the scalar
+// loop, as maxSIMD does.
+func extremum32Kernel(name, vec, sca string) *emit.Function {
+	sig := amd64.Layout([]string{"a", "n"}, []amd64.Type{amd64.Ptr, amd64.Int64},
+		[]string{"ret"}, []amd64.Type{amd64.Float32})
+	b := amd64.NewFunc(name, sig, 0)
+	b.LoadArg("a", "AX").LoadArg("n", "CX")
+	// Seed the accumulators with a[0] in every lane.
+	b.Raw("MOVSS (AX), X0").Raw("SHUFPS $0x00, X0, X0").
+		Raw("MOVAPS X0, X1").Raw("MOVAPS X0, X2").Raw("MOVAPS X0, X3").
+		Raw("XORPS X8, X8")
+	nanScan32(b, "X0")
+	b.Raw("xblock:").Raw("CMPQ CX, $16").Raw("JL xfold")
+	for r := 0; r < 4; r++ {
+		b.Raw("MOVUPS %d(AX), X%d", 16*r, 4+r)
+	}
+	for r := 0; r < 4; r++ {
+		nanScan32(b, fmt.Sprintf("X%d", 4+r))
+	}
+	for r := 0; r < 4; r++ {
+		b.Raw("%s X%d, X%d", vec, 4+r, r)
+	}
+	b.Raw("ADDQ $64, AX").Raw("SUBQ $16, CX").Raw("JMP xblock")
+	// Fold the accumulators, then the four lanes, into X0's low lane.
+	b.Raw("xfold:").
+		Raw("%s X1, X0", vec).Raw("%s X3, X2", vec).Raw("%s X2, X0", vec).
+		Raw("MOVAPS X0, X1").Raw("MOVHLPS X1, X1").Raw("%s X1, X0", vec).
+		Raw("MOVAPS X0, X1").Raw("SHUFPS $0x55, X1, X1").Raw("%s X1, X0", sca).
+		Raw("xtail:").Raw("TESTQ CX, CX").Raw("JZ xnan").
+		Raw("MOVSS (AX), X4")
+	nanScan32(b, "X4")
+	b.Raw("%s X4, X0", sca).
+		Raw("ADDQ $4, AX").Raw("DECQ CX").Raw("JMP xtail").
+		// Any lane of X8 set: some element was NaN.
+		Raw("xnan:").Raw("MOVMSKPS X8, DX").Raw("TESTQ DX, DX").Raw("JZ xdone").
+		Raw("XORPS X1, X1").Raw("DIVSS X1, X1"). // 0/0 = NaN
+		Raw("MOVSS X1, X0").
+		Raw("xdone:").
+		StoreRet("X0", "ret").
+		Ret()
+	return b.Func()
+}
+
+// nanScan32 ORs the unordered (NaN) lanes of reg into X8.
+func nanScan32(b *amd64.Builder, reg string) {
+	b.Raw("MOVAPS %s, X9", reg).Raw("CMPPS X9, X9, $3").Raw("ORPS X9, X8")
+}
+
 func nanScan(b *amd64.Builder, reg string) {
 	b.Raw("MOVAPS " + reg + ", X9")
 	b.Raw("CMPPD X9, X9, $3")

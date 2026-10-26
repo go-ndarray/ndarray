@@ -16,7 +16,8 @@
   `ZerosOf`, `FromSlice`, typed access with `Data[T]`/`Item[T]`, weak Go
   scalars with `Scalar`). Float64 is the default and the most SIMD-accelerated
   one. Float32 has SIMD `Sum`, `Add`/`Sub`/`Mul`/`Div` and `Sqrt` on every
-  64-bit target, bit-identical to its scalar loops
+  64-bit target, and `Max`/`Min` on amd64 and arm64, bit-identical to its
+  scalar loops
   ([docs/design-dtypes.md](docs/design-dtypes.md)).
 - **Creation** — `New`/`Zeros`/`Ones`/`Full`/`FromData`/`Arange`/`Linspace`/
   `Eye`/`Identity`.

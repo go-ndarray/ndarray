@@ -91,6 +91,7 @@ func TestBin32StaysInsideItsOperands(t *testing.T) {
 						Bin32(op, dst, a, b)
 					}
 					Sqrt32(dst, a)
+					_, _ = Max32(a), Min32(a)
 				}
 			}
 		}

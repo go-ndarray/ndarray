@@ -1015,8 +1015,41 @@ alternated, 8 rounds, pinned core, `--max-busy 15`):
 The controls (float64 `Sqrt`, `Add`, `AddInto`) are flat. The gap left to
 NumPy is the allocation, the open defect below.
 
-Still to do, in this order: `Max`/`Min` (float32 everywhere, float64 on
-ppc64le, loong64 and riscv64), then a float32 GEMM.
+### float32 `Max`/`Min` (2026-10-26)
+
+Two changes:
+
+- **Every architecture.** float32 `Max`/`Min` converted the whole array to a
+  new float64 array and reduced that. They now read the float32 elements
+  (`kernels.Max32`/`Min32`), with four independent chains of Go's `max`/`min`.
+  The value is the same, since the conversion is exact.
+- **amd64 and arm64: vector kernels.**
+  - **amd64:** `MAXPS`/`MINPS` with a `CMPPS`-unordered NaN mask. A zero
+    result goes back to the scalar loop for its sign, the v0.19.1 rule.
+  - **arm64:** NEON `VFMAX`/`VFMIN` on `.S4`, which propagate NaN and order
+    −0 below +0 themselves.
+
+Each is bit for bit one sequential pass of Go's `max`/`min`. That is tested
+with NaN, real signed zeros and infinities at every position up to length 70,
+and a sabotaged kernel fails it on both architectures. Measured with
+`abbench` (alternated, 6 rounds, pinned core):
+
+| float32 `Max`, 2¹⁴ / 2²⁰ | change | control (float64) |
+|---|---:|---|
+| Zen 3 (SSE2) | **−92% / −88%** | ~ |
+| Neoverse N1 (NEON) | **−95% / −93%** | ~ |
+| POWER9 (Go loop, no kernel yet) | −42% / −34% | ~ |
+
+On the POWER9 float32 `Max` is still about 7× slower than NumPy, because
+Go's NaN-correct `max` is scalar there.
+
+Still to do:
+- ppc64le and loong64 need registry entries in go-asmgen first. Go's
+  assemblers have no VSX float compare (for the NaN mask), and on loong64 no
+  vector float max, min or compare at all.
+- s390x (`VFMAXSB` mode 1) waits for a z machine to test on.
+- riscv64 (`vfmax.vv` with a `vmfne.vv` NaN mask) is next.
+- float32 GEMM.
 
 **Open defect: the allocating operations.** `Add` is still 1.5–3.2× slower
 than NumPy's `a+b`, for float64 as well (21.9 against 8.48 µs at 2¹⁴). The
