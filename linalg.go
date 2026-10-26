@@ -51,23 +51,51 @@ func (a *Array) MatMul(b *Array) (*Array, error) {
 }
 
 // matmulTyped is MatMul for operands of other dtypes, in their common dtype.
-// Float32 runs on the blocked SIMD float64 GEMM: the operands are widened
-// (exact, O(n²)), multiplied and accumulated in float64, and each element is
-// rounded once to float32. That is at least as accurate as accumulating in
-// float32, as a BLAS sgemm does, and on a POWER9 it was 9x faster at 256² than
-// the triple loop below, which the other dtypes keep.
+//
+// Float32 runs on the packed float32 GEMM where there is a float32 kernel
+// (arm64, and amd64 with FMA): it accumulates in float32, as NumPy's BLAS
+// sgemm does, at twice the SIMD lanes of float64. Elsewhere it runs on the
+// float64 GEMM: the operands are widened (exact, O(n²)), multiplied and
+// accumulated in float64, and each element is rounded once to float32, which
+// is at least as accurate; on a POWER9 that was 9x faster at 256² than the
+// triple loop below, which the other dtypes keep.
 func matmulTyped(a, b *Array) *Array {
 	dt := ResultType(a.dtype, b.dtype)
 	switch dt {
 	case Float64:
 		return a.toFloat64().matmulFloat64(b.toFloat64())
 	case Float32:
+		if useGemm32 {
+			return matmulFloat32(a, b)
+		}
 		return a.toFloat64().matmulFloat64(b.toFloat64()).AsType(Float32)
 	}
 	m, k, n := a.shape[0], a.shape[1], b.shape[1]
 	d := makeStore(dt, m*n)
 	matmulStore(d, a.operandStore(dt, a.shape), b.operandStore(dt, b.shape), m, k, n)
 	return a.result(d, []int{m, n})
+}
+
+// useGemm32 selects the float32 GEMM. It is a var so tests can force the
+// widening path on hardware that has the kernel (never the reverse).
+var useGemm32 = kernels.HasGemm32()
+
+// matmulFloat32 multiplies two validated 2-D operands whose common dtype is
+// Float32 on the float32 GEMM. A Float32 operand is read in place through its
+// strides, like matView; another dtype is converted first.
+func matmulFloat32(a, b *Array) *Array {
+	m, k, n := a.shape[0], a.shape[1], b.shape[1]
+	dst := make([]float32, m*n) // MatMul32StridedP accumulates into dst
+	kernels.MatMul32StridedP(dst, a.matView32(), b.matView32(), m, k, n)
+	return a.result(dst, []int{m, n})
+}
+
+// matView32 is matView for an operand of the float32 GEMM.
+func (a *Array) matView32() kernels.Mat32 {
+	if a.dtype != Float32 {
+		return kernels.Mat32{Data: a.operandStore(Float32, a.shape).([]float32), RS: a.shape[1], CS: 1}
+	}
+	return kernels.Mat32{Data: typed[float32](a), Off: a.offset, RS: a.strides[0], CS: a.strides[1]}
 }
 
 // matmulFloat64 is matmul2D on two validated 2-D Float64 arrays.

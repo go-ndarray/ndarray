@@ -46,6 +46,7 @@ func main() {
 	f.Add(binKernel("mulSSE2", "MULPD", "MULSD"))
 	f.Add(binKernel("divSSE2", "DIVPD", "DIVSD"))
 	f.Add(gemmFMAKernel())
+	f.Add(gemm32FMAKernel())
 	f.Add(dotFMAKernel())
 	f.Add(gemmSSE2HalfKernel())
 	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
@@ -485,6 +486,79 @@ func gemmFMAKernel() *emit.Function {
 	b.Raw("VZEROUPPER") // no AVX-SSE transition penalty in the Go code after
 	b.Ret()
 	return b.Func()
+}
+
+// gemm32NR is the float32 tile width on amd64: two YMM of eight floats.
+const gemm32NR = 16
+
+// gemm32FMAKernel builds gemmMicro6x16FMA(kc int, pa, pb, c *float32, ldc int),
+// the float32 micro-kernel of the packed GEMM:
+//
+//	for p in [0,kc):  C[r][col] += pa[p*6+r] * pb[p*16+col]   (r<6, col<16)
+//
+// gemmFMAKernel at twice the lanes, the BLIS Haswell sgemm shape: the 16-float
+// B row in Y12,Y13, each of the six A values broadcast with VBROADCASTSS, and
+// twelve VFMADD231PS into Y0..Y11 (row r in Y(2r), Y(2r+1)). Gated on hasFMA.
+func gemm32FMAKernel() *emit.Function {
+	b := amd64.NewFunc("gemmMicro6x16FMA", gemmSig(), 0)
+	b.LoadArg("kc", "CX")
+	b.LoadArg("pa", "SI")
+	b.LoadArg("pb", "DI")
+	b.LoadArg("c", "DX")
+	b.LoadArg("ldc", "R8")
+	b.Raw("SHLQ $2, R8") // ldc -> bytes
+	// Prefetch the C tile: six rows of 64 bytes, each on one or two lines.
+	b.Raw("MOVQ DX, R9")
+	for r := 0; r < gemmMR; r++ {
+		b.Raw("PREFETCHT0 (R9)")
+		b.Raw("PREFETCHT0 63(R9)")
+		if r < gemmMR-1 {
+			b.Raw("ADDQ R8, R9")
+		}
+	}
+	for r := 0; r < 12; r++ {
+		b.Raw(fmt.Sprintf("VXORPS Y%d, Y%d, Y%d", r, r, r))
+	}
+	b.Raw("MOVQ CX, R10")
+	b.Raw("SHRQ $1, R10")
+	b.Raw("JZ stail")
+	b.Raw("skloop:")
+	b.Raw(fmt.Sprintf("PREFETCHT0 %d(SI)", 16*gemmMR*4))
+	fma32Step(b, 0)
+	fma32Step(b, 1)
+	b.Raw(fmt.Sprintf("ADDQ $%d, SI", 2*4*gemmMR))
+	b.Raw(fmt.Sprintf("ADDQ $%d, DI", 2*4*gemm32NR))
+	b.Raw("DECQ R10")
+	b.Raw("JNZ skloop")
+	b.Raw("stail:")
+	b.Raw("TESTQ $1, CX")
+	b.Raw("JZ sstore")
+	fma32Step(b, 0)
+	b.Raw("sstore:")
+	for r := 0; r < gemmMR; r++ {
+		b.Raw(fmt.Sprintf("VADDPS (DX), Y%d, Y15", 2*r))
+		b.Raw("VMOVUPS Y15, (DX)")
+		b.Raw(fmt.Sprintf("VADDPS 32(DX), Y%d, Y15", 2*r+1))
+		b.Raw("VMOVUPS Y15, 32(DX)")
+		if r < gemmMR-1 {
+			b.Raw("ADDQ R8, DX")
+		}
+	}
+	b.Raw("VZEROUPPER")
+	b.Ret()
+	return b.Func()
+}
+
+// fma32Step emits one k step of the 6x16 float32 FMA tile.
+func fma32Step(b *amd64.Builder, step int) {
+	ao, bo := 4*gemmMR*step, 4*gemm32NR*step
+	b.Raw(fmt.Sprintf("VMOVUPS %d(DI), Y12", bo))    // B cols 0..7
+	b.Raw(fmt.Sprintf("VMOVUPS %d(DI), Y13", bo+32)) // B cols 8..15
+	for r := 0; r < gemmMR; r++ {
+		b.Raw(fmt.Sprintf("VBROADCASTSS %d(SI), Y14", ao+4*r))
+		b.Raw(fmt.Sprintf("VFMADD231PS Y12, Y14, Y%d", 2*r))
+		b.Raw(fmt.Sprintf("VFMADD231PS Y13, Y14, Y%d", 2*r+1))
+	}
 }
 
 // dotFMAKernel builds dotFMA(a, b *float64, n int) float64, the inner product

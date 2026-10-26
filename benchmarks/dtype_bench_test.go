@@ -73,8 +73,8 @@ func BenchmarkDTypeMax(b *testing.B) {
 // BenchmarkDTypeMatMul is a square product, 2·n³ flops per op.
 func BenchmarkDTypeMatMul(b *testing.B) {
 	for _, dt := range []nd.DType{nd.Float64, nd.Float32} {
-		for _, n := range []int{64, 256} {
-			x, err := vec(n * n).AsType(dt).Reshape(n, n)
+		for _, n := range []int{64, 256, 1024} {
+			x, err := vec(n*n).AsType(dt).Reshape(n, n)
 			if err != nil {
 				b.Fatal(err)
 			}
