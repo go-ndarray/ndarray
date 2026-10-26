@@ -66,6 +66,27 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-25 (v0.19.1).** A correctness defect, found while reading the
+float64 extremum kernels before writing float32 ones. On amd64, `Max`, `Min`,
+`MaxAxis` and `MinAxis` over a mix of signed zeros returned the sign of
+whichever zero the kernel met last: `[+0, -0]` gave `Max = -0` and
+`[-0, +0]` gave `Min = +0`. MAXPD/MINPD return their source operand on a zero
+tie. Every other architecture, and the scalar oracle, give `Max = +0` and
+`Min = -0`, as Go's max/min order them.
+
+The tests had meant to cover this. They wrote `-0.0`, which Go's constant
+arithmetic makes +0, so no negative zero was ever tested: seven cases in two
+files. They now use `math.Copysign(0, -1)`, guarded by a test of the helper;
+corrected, they failed on a Zen 3.
+
+The fix leaves the kernel alone. A zero result is the only one whose sign
+can be wrong, and it needs every element <= 0 with a zero among them. The
+wrapper then asks the scalar oracle. Combining both operand orders inside
+the kernel was also correct, but cost 53-60% on a Zen 3; the wrapper check
+costs nothing measurable, +3.5% (6 ns) at n=1024 and ~ elsewhere.
+`TestExtremaOfSignedZeros` checks the public API; it fails on v0.19.0 (amd64)
+and passes now.
+
 **2026-10-20 (v0.19.0).** `kernels.Sqrt32` follows `Bin32`'s guards: it
 reslices `src` to `len(dst)` before the call (a short `src` panics in Go,
 tested), never passes an empty slice to a kernel, and keeps the LASX, V and

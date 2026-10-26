@@ -37,14 +37,28 @@ func sqrtSIMD(dst, src []float64) {
 // math.Max-based scalar oracle (Max) and numpy.max bit-for-bit. The SSE2 kernel
 // accumulates a packed running max with MAXPD and a separate "saw NaN" mask via
 // CMPUNORDPD, then returns NaN if any lane ever held a NaN.
+//
+// MAXPD returns its source operand when both inputs are zeros, so the kernel's
+// zero is +0 or -0 depending on where the zeros sit. A zero result is the one
+// case where that matters, and it needs every element <= 0 with a zero among
+// them: the scalar oracle then gives the sign Go's max uses (+0 if any +0).
+// Doing the same in the kernel, both operand orders combined at every step,
+// cost 53-60% on a Zen 3; this costs nothing on any other result.
 func maxSIMD(a []float64) float64 {
-	return maxSSE2(&a[0], len(a))
+	if r := maxSSE2(&a[0], len(a)); r != 0 {
+		return r
+	}
+	return Max(a)
 }
 
 // minSIMD returns the NaN-propagating minimum of a (non-empty), the dual of
-// maxSIMD via MINPD; bit-identical to the scalar Min oracle and numpy.min.
+// maxSIMD via MINPD; bit-identical to the scalar Min oracle and numpy.min. A
+// zero result is resolved by the oracle, as in maxSIMD (-0 if any -0).
 func minSIMD(a []float64) float64 {
-	return minSSE2(&a[0], len(a))
+	if r := minSSE2(&a[0], len(a)); r != 0 {
+		return r
+	}
+	return Min(a)
 }
 
 // addBin/subBin/mulBin/divBin write a[i] OP b[i] into dst[i] with the packed

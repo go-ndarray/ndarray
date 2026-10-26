@@ -126,7 +126,7 @@ func TestLogSpecial(t *testing.T) {
 // TestLogLoopMatchesLog1: Log's loop and log1 give the same bits everywhere.
 func TestLogLoopMatchesLog1(t *testing.T) {
 	rng := rand.New(rand.NewSource(4))
-	xs := []float64{0, -0.0, 1, 1 - 0x1p-4, 1 + 0x1.09p-4, 0x1p-1022, 5e-324, -3,
+	xs := []float64{0, negZero, 1, 1 - 0x1p-4, 1 + 0x1.09p-4, 0x1p-1022, 5e-324, -3,
 		math.Inf(1), math.Inf(-1), math.NaN(), math.MaxFloat64}
 	for i := 0; i < 20000; i++ {
 		xs = append(xs, math.Ldexp(rng.Float64()*2-0.5, rng.Intn(2100)-1074), 1+(rng.Float64()-0.5)*0.3)
