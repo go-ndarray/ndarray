@@ -183,19 +183,24 @@ func TestMaxMinSIMD(t *testing.T) {
 		if g, w := minSIMD(a), Min(a); !bitEq(g, w) {
 			t.Fatalf("n=%d: minSIMD=%v, Min=%v", n, g, w)
 		}
-		// Inject a NaN at several positions; both must propagate it.
-		for _, pos := range []int{0, n / 2, n - 1} {
-			b := append([]float64(nil), a...)
-			b[pos] = math.NaN()
-			if g := maxSIMD(b); !math.IsNaN(g) {
-				t.Fatalf("n=%d NaN@%d: maxSIMD=%v, want NaN", n, pos, g)
-			}
-			if g := minSIMD(b); !math.IsNaN(g) {
-				t.Fatalf("n=%d NaN@%d: minSIMD=%v, want NaN", n, pos, g)
-			}
-			// And the oracle agrees it is NaN (semantics match).
-			if !math.IsNaN(Max(b)) || !math.IsNaN(Min(b)) {
-				t.Fatalf("n=%d NaN@%d: oracle did not propagate NaN", n, pos)
+		// Inject a NaN at several positions; both must propagate it. Both
+		// signs: x86's default NaN is negative, and a kernel that orders the
+		// bits as integers finds a positive NaN by its size alone, so only the
+		// negative one shows whether its NaN test works.
+		for _, nan := range []float64{math.NaN(), math.Float64frombits(0xfff8000000000000)} {
+			for _, pos := range []int{0, n / 2, n - 1} {
+				b := append([]float64(nil), a...)
+				b[pos] = nan
+				if g := maxSIMD(b); !math.IsNaN(g) {
+					t.Fatalf("n=%d NaN@%d: maxSIMD=%v, want NaN", n, pos, g)
+				}
+				if g := minSIMD(b); !math.IsNaN(g) {
+					t.Fatalf("n=%d NaN@%d: minSIMD=%v, want NaN", n, pos, g)
+				}
+				// And the oracle agrees it is NaN (semantics match).
+				if !math.IsNaN(Max(b)) || !math.IsNaN(Min(b)) {
+					t.Fatalf("n=%d NaN@%d: oracle did not propagate NaN", n, pos)
+				}
 			}
 		}
 	}

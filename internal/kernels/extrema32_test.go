@@ -31,6 +31,12 @@ func TestExtrema32MatchSequential(t *testing.T) {
 	nz := float32(math.Copysign(0, -1))
 	inf := float32(math.Inf(1))
 	nan := float32(math.NaN())
+	// A negative NaN too: x86's default NaN (0*Inf, Inf-Inf) has the sign bit
+	// set. A kernel that orders the bits as integers sorts a positive NaN above
+	// +Inf, so a max finds it without any NaN test; only a negative NaN shows
+	// whether the NaN test works. (A sabotaged loong64 NaN mask passed every
+	// test until this case was added.)
+	negNaN := math.Float32frombits(0xffc00000)
 	check := func(name string, a []float32) {
 		t.Helper()
 		for _, f := range []struct {
@@ -51,7 +57,7 @@ func TestExtrema32MatchSequential(t *testing.T) {
 		check("mixed", operands32(n, 5))
 		for pos := 0; pos < n; pos++ {
 			for _, fill := range []float32{nz, 0, -1, 1} {
-				for _, v := range []float32{nz, 0, inf, -inf, nan} {
+				for _, v := range []float32{nz, 0, inf, -inf, nan, negNaN} {
 					a := make([]float32, n)
 					for i := range a {
 						a[i] = fill
