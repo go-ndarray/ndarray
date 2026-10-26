@@ -1232,6 +1232,17 @@ Against NumPy 2.5.4 (OpenBLAS, `OPENBLAS_NUM_THREADS=1`, the same core):
 | N1 float32 | 30.4 / 16.2 µs | 1.19 / 0.94 ms | 68.2 / 60.6 ms |
 | N1 float64 | 48.2 / 31.3 µs | 2.46 / 1.95 ms | 154 / 123 ms |
 
+v0.26.1 packs full B panels with one fixed-size array move per row (8 or 16
+elements, lowered to vector moves), where `packB` had copied element by
+element. Profiling had put it at 21% of a 64² float32 product.
+
+| `MatMul` vs v0.26.0 (`abbench`, 10 rounds) | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| Zen 3, float32 | −11.6% | −7.1% | −1.7% |
+| Zen 3, float64 | −4.4% | −2.3% | ~ |
+| Neoverse N1, float32 | −16.4% | −8.9% | ~ |
+| Neoverse N1, float64 | −9.5% | ~ | ~ |
+
 **Open defect: products are still slower than OpenBLAS on one core**, by
 1.1–1.3× at 1024² and up to 1.9× at 64². The gap is widest where the work
 around the kernel weighs most: packing, edge tiles, and the result's

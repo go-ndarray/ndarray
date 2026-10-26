@@ -187,6 +187,33 @@ func TestGemmFloatTolerance(t *testing.T) {
 	}
 }
 
+// TestPackRowsWhole: the whole-run copy moves exactly kc runs of 8 or 16
+// strided elements, and declines any other width without writing.
+func TestPackRowsWhole(t *testing.T) {
+	src := randVec(200, 3)
+	for _, nr := range []int{8, 16} {
+		const s, rs, kc = 5, 21, 7
+		dst := make([]float64, kc*nr+1)
+		if !packRowsWhole(dst, src, s, rs, kc, nr) {
+			t.Fatalf("nr=%d declined", nr)
+		}
+		for p := 0; p < kc; p++ {
+			for c := 0; c < nr; c++ {
+				if dst[p*nr+c] != src[s+p*rs+c] {
+					t.Fatalf("nr=%d [%d][%d] = %v, want %v", nr, p, c, dst[p*nr+c], src[s+p*rs+c])
+				}
+			}
+		}
+		if dst[kc*nr] != 0 {
+			t.Fatalf("nr=%d wrote past its %d runs", nr, kc)
+		}
+	}
+	dst := make([]float64, 40)
+	if packRowsWhole(dst, src, 0, 10, 4, 5) || dst[0] != 0 {
+		t.Fatal("nr=5 copied")
+	}
+}
+
 // TestGemmBufferRealloc forces block sizes larger than the pooled buffers were
 // first sized for, exercising the reallocation branch in getPackBuf, then a
 // normal-sized call to confirm the pool still serves valid scratch.
