@@ -120,7 +120,9 @@ jobs:
           # went untested here until 2026-10-26. NDARRAY_REQUIRE_RVV makes a
           # CPU without V fail the lane (TestRVVWhenRequired).
           - { goarch: riscv64, qemu: qemu-riscv64-static, cpu: "rv64,v=true,vlen=256", require: NDARRAY_REQUIRE_RVV }
-          - { goarch: loong64, qemu: qemu-loongarch64-static }
+          # la464 has LSX and LASX; NDARRAY_REQUIRE_LASX makes a CPU that does
+          # not report LASX fail the lane (TestLASXWhenRequired).
+          - { goarch: loong64, qemu: qemu-loongarch64-static, cpu: "la464", require: NDARRAY_REQUIRE_LASX }
           - { goarch: ppc64le, qemu: qemu-ppc64le-static }
           - { goarch: s390x,   qemu: qemu-s390x-static }
           # 32-bit: int is 32 bits, so shape/size overflow paths differ.
