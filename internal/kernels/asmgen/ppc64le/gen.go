@@ -51,6 +51,7 @@ func main() {
 	f.Add(extremumKernel("minVSX", 64, false, abs64, inf64))
 	f.Add(extremumKernel("max32VSX", 32, true, abs32, inf32))
 	f.Add(extremumKernel("min32VSX", 32, false, abs32, inf32))
+	f.Add(gemm32Kernel(f.Data("oddw", words(1, 3)), f.Data("highw", words(2, 3))))
 	if err := os.WriteFile("sum_ppc64le.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -440,6 +441,92 @@ func gemmKernel() *emit.Function {
 	}
 	b.Ret()
 	return b.Func()
+}
+
+// gemm32Kernel builds gemmMicro8x16VSX(kc int, pa, pb, c *float32, ldc int):
+//
+//	for p in [0,kc):  C[r][col] += pa[p*8+r] * pb[p*16+col]   (r<8, col<16)
+//
+// with the scheme of OpenBLAS's POWER9 sgemm (kernel/power/sgemm_macros_power9.S,
+// LOAD8x16): no splats. Each 4-float A vector is rotated three ways, and the
+// rotations multiply each B vector, so the tile is accumulated in a rotated
+// layout that the store untangles once. OpenBLAS rotates B with xxperm and
+// xxpermdi; this kernel rotates A, which has two vectors per k step against
+// B's four, with the cyclic word shift XXSLDWI a, a, $v: rotation v holds
+// a[(i+v)%4] in lane i (lanes numbered as LXVW4X loads them, memory order).
+//
+// Accumulator VS(16p+4k+v) lane i is then C[4p+(i+v)%4][4k+i]: A vector p
+// (rows 4p..4p+3), B vector k (columns 4k..4k+3), rotation v. Row 4p+r of
+// that 4x4 block takes lane i from rotation (r-i) mod 4, so it is three
+// selects: x = lanes 0,1 from rotations r, r-1; y = lanes 2,3 from r-2, r-3;
+// row = x's low half and y's high half (XXSEL against the odd-lanes and
+// high-lanes masks, VS48 and VS49).
+//
+// Per k step: 2 A loads, 6 rotations, 4 B loads, 32 XVMADDASP.
+func gemm32Kernel(odd, high string) *emit.Function {
+	name := "gemmMicro8x16VSX"
+	sig := ppc64.Layout([]string{"kc", "pa", "pb", "c", "ldc"},
+		[]ppc64.Type{ppc64.Int64, ppc64.Ptr, ppc64.Ptr, ppc64.Ptr, ppc64.Int64}, nil, nil)
+	b := ppc64.NewFunc(name, sig, 0)
+	b.LoadArg("kc", "R3").LoadArg("pa", "R4").LoadArg("pb", "R5").LoadArg("c", "R6").LoadArg("ldc", "R7")
+	b.Raw("SLD $2, R7")
+	offsets(b, false)
+	b.Raw("MOVD $%s+0(SB), R8", odd).Raw("LXVW4X (R8)(R0), VS48").
+		Raw("MOVD $%s+0(SB), R8", high).Raw("LXVW4X (R8)(R0), VS49")
+	for r := 0; r < 32; r++ {
+		b.Raw("XXLXOR VS%d, VS%d, VS%d", r, r, r)
+	}
+	b.Raw("CMP R3, $0").Raw("BEQ %sstore", name)
+	b.Label(name+"loop").
+		Raw("LXVW4X (R4)(R0), VS32").Raw("LXVW4X (R4)(R14), VS36")
+	for k := 0; k < 4; k++ {
+		b.Raw("LXVW4X (R5)(%s), VS%d", vidx(k), 40+k)
+	}
+	for p := 0; p < 2; p++ {
+		for v := 1; v < 4; v++ {
+			b.Raw("XXSLDWI VS%d, VS%d, $%d, VS%d", 32+4*p, 32+4*p, v, 32+4*p+v)
+		}
+	}
+	for p := 0; p < 2; p++ {
+		for k := 0; k < 4; k++ {
+			for v := 0; v < 4; v++ {
+				b.XVMADDASP(16*p+4*k+v, 32+4*p+v, 40+k)
+			}
+		}
+	}
+	b.Raw("ADD $32, R4").Raw("ADD $64, R5").Raw("ADD $-1, R3").
+		Raw("CMP R3, $0").Raw("BNE %sloop", name)
+	b.Label(name + "store")
+	acc := func(p, k, v int) int { return 16*p + 4*k + (v+4)%4 }
+	for p := 0; p < 2; p++ {
+		for r := 0; r < 4; r++ {
+			for k := 0; k < 4; k++ {
+				b.Raw("XXSEL VS%d, VS%d, VS48, VS44", acc(p, k, r), acc(p, k, r-1)).
+					Raw("XXSEL VS%d, VS%d, VS48, VS45", acc(p, k, r-2), acc(p, k, r-3)).
+					Raw("XXSEL VS44, VS45, VS49, VS46").
+					Raw("LXVW4X (R6)(%s), VS47", vidx(k))
+				b.XVADDSP(47, 47, 46)
+				b.Raw("STXVW4X VS47, (R6)(%s)", vidx(k))
+			}
+			if !(p == 1 && r == 3) {
+				b.Raw("ADD R7, R6")
+			}
+		}
+	}
+	b.Ret()
+	return b.Func()
+}
+
+// words is a 16-byte mask with all-ones in the given 4-byte lanes (memory
+// order, as LXVW4X loads them) and zeros elsewhere.
+func words(on ...int) []byte {
+	m := make([]byte, 16)
+	for _, w := range on {
+		for i := 0; i < 4; i++ {
+			m[4*w+i] = 0xff
+		}
+	}
+	return m
 }
 
 // blocks8Kernel builds blocks8VSX(r, a *float32, blocks int): for each of the
