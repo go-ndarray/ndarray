@@ -66,6 +66,15 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-27 (v0.27.0).** The unpacked-A GEMM kernels (`gemmUA*` on amd64
+and arm64) read A in place: `mr` rows `lda` elements apart, `kc` elements
+each. Their Go wrapper bounds-checks the whole reach,
+`a[(mr-1)*lda+kc-1]`, the packed B panel and the C tile before the call.
+`gemmBand` takes this path only for a unit column stride and a positive row
+stride, so a reversed or broadcast view is still packed. The kernels are
+fenced for every tile height and two row strides. A sabotaged kernel on each
+architecture failed CI.
+
 **2026-10-26 (v0.26.0).** The float32 GEMM kernels, `gemmMicro8x8S` (arm64)
 and `gemmMicro6x16FMA` (amd64, behind the FMA probe), read `kc·MR` and `kc·NR`
 packed floats and read and write one MR×NR tile of C. Their Go wrapper
