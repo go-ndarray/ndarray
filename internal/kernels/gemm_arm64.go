@@ -41,3 +41,30 @@ func dotNEON(a, b *float64, n int) float64
 
 //go:noescape
 func gemmMicro4x8(kc int, pa, pb, c *float64, ldc int)
+
+// gemmMicroUA is the unpacked-A float64 kernel (see gemmKernel.microUA).
+var gemmMicroUA = gemmMicroUA64
+
+// gemmUA64 holds the unpacked-A kernels by tile height.
+var gemmUA64 = [...]func(kc int, a *float64, lda int, pb, c *float64, ldc int){
+	1: gemmUA1x8D, 2: gemmUA2x8D, 3: gemmUA3x8D, 4: gemmUA4x8D,
+}
+
+// gemmMicroUA64 adds the mr x 8 tile sum_p a[r*lda+p]*pb[p*8..] into dst,
+// whose rows are ldc apart, reading A in place (mr in 1..4, lda > 0).
+func gemmMicroUA64(kc int, a []float64, lda int, pb, dst []float64, ldc, mr int) {
+	_, _, _ = a[(mr-1)*lda+kc-1], pb[kc*NR-1], dst[(mr-1)*ldc+NR-1] // the kernel's whole reach
+	gemmUA64[mr](kc, &a[0], lda, &pb[0], &dst[0], ldc)
+}
+
+//go:noescape
+func gemmUA1x8D(kc int, a *float64, lda int, pb, c *float64, ldc int)
+
+//go:noescape
+func gemmUA2x8D(kc int, a *float64, lda int, pb, c *float64, ldc int)
+
+//go:noescape
+func gemmUA3x8D(kc int, a *float64, lda int, pb, c *float64, ldc int)
+
+//go:noescape
+func gemmUA4x8D(kc int, a *float64, lda int, pb, c *float64, ldc int)

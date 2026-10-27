@@ -42,6 +42,30 @@ func withBandTiles(bt int, f func()) {
 // that make the ikj order reproduce the oracle exactly.
 func assertGemm(t *testing.T, m, k, n int, a, b []float64) {
 	t.Helper()
+	saved := unpackA
+	defer func() { unpackA = saved }()
+	for _, unpacked := range []bool{saved, false} {
+		unpackA = unpacked
+		assertGemmPath(t, m, k, n, a, b)
+	}
+	// A in place behind an offset, rows k+3 apart (lda != k).
+	as := Mat{Data: make([]float64, 2+m*(k+3)), Off: 2, RS: k + 3, CS: 1}
+	for i := 0; i < m; i++ {
+		copy(as.Data[2+i*(k+3):], a[i*k:(i+1)*k])
+	}
+	want := make([]float64, m*n)
+	gemmOracle(want, a, b, m, k, n)
+	got := make([]float64, m*n)
+	MatMulStridedP(got, as, rowMajor(b, n), m, k, n)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("strided A m=%d k=%d n=%d [%d]: %v != %v", m, k, n, i, got[i], want[i])
+		}
+	}
+}
+
+func assertGemmPath(t *testing.T, m, k, n int, a, b []float64) {
+	t.Helper()
 	want := make([]float64, m*n)
 	gemmOracle(want, a, b, m, k, n)
 

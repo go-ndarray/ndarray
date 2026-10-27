@@ -9,7 +9,20 @@ func newGemm32(fma bool) *gemmKernel[float32] {
 	if !fma {
 		return nil
 	}
-	return &gemmKernel[float32]{mr: 6, nr: 16, micro: gemmMicro32}
+	return &gemmKernel[float32]{mr: 6, nr: 16, micro: gemmMicro32, microUA: gemmMicroUA32}
+}
+
+// gemmUA32 holds the unpacked-A kernels by tile height.
+var gemmUA32 = [...]func(kc int, a *float32, lda int, pb, c *float32, ldc int){
+	1: gemmUA1x16FMA, 2: gemmUA2x16FMA, 3: gemmUA3x16FMA,
+	4: gemmUA4x16FMA, 5: gemmUA5x16FMA, 6: gemmUA6x16FMA,
+}
+
+// gemmMicroUA32 adds the mr x 16 tile sum_p a[r*lda+p]*pb[p*16..] into dst,
+// whose rows are ldc apart, reading A in place (mr in 1..6, lda > 0).
+func gemmMicroUA32(kc int, a []float32, lda int, pb, dst []float32, ldc, mr int) {
+	_, _, _ = a[(mr-1)*lda+kc-1], pb[kc*16-1], dst[(mr-1)*ldc+15] // the kernel's whole reach
+	gemmUA32[mr](kc, &a[0], lda, &pb[0], &dst[0], ldc)
 }
 
 // gemmMicro32 adds the 6 x 16 tile sum_p pa[p*6..]*pb[p*16..] into the C block
@@ -22,3 +35,21 @@ func gemmMicro32(kc int, pa, pb, dst []float32, ldc int) {
 
 //go:noescape
 func gemmMicro6x16FMA(kc int, pa, pb, c *float32, ldc int)
+
+//go:noescape
+func gemmUA1x16FMA(kc int, a *float32, lda int, pb, c *float32, ldc int)
+
+//go:noescape
+func gemmUA2x16FMA(kc int, a *float32, lda int, pb, c *float32, ldc int)
+
+//go:noescape
+func gemmUA3x16FMA(kc int, a *float32, lda int, pb, c *float32, ldc int)
+
+//go:noescape
+func gemmUA4x16FMA(kc int, a *float32, lda int, pb, c *float32, ldc int)
+
+//go:noescape
+func gemmUA5x16FMA(kc int, a *float32, lda int, pb, c *float32, ldc int)
+
+//go:noescape
+func gemmUA6x16FMA(kc int, a *float32, lda int, pb, c *float32, ldc int)

@@ -26,6 +26,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/go-asmgen/asmgen/arm64"
 	"github.com/go-asmgen/asmgen/emit"
@@ -58,6 +59,12 @@ func main() {
 	f.Add(extremum32Kernel("min32NEON", "VFMIN", "FMINS"))
 	f.Add(gemmKernel())
 	f.Add(gemm32Kernel())
+	for mr := 1; mr <= 8; mr++ {
+		f.Add(gemmUAKernel(mr, true))
+		if mr <= 4 {
+			f.Add(gemmUAKernel(mr, false))
+		}
+	}
 	f.Add(blocks8Kernel())
 	if err := os.WriteFile("sum_arm64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -469,6 +476,116 @@ func gemmKernel() *emit.Function {
 		Raw("VST1 [V16.D2, V17.D2, V18.D2, V19.D2], (R5)").
 		Ret()
 	return b.Func()
+}
+
+// gemmUAKernel builds the unpacked-A tiles (the "rv" sup kernels of BLIS,
+// bli_gemmsup_rv_*): A is read in place, mr rows lda elements apart, instead
+// of from a packed panel; B stays packed.
+//
+//	single: gemmUA<mr>x8S(kc int, a *float32, lda int, pb, c *float32, ldc int), mr <= 8
+//	double: gemmUA<mr>x8D(kc int, a *float64, lda int, pb, c *float64, ldc int), mr <= 4
+//
+// computing C[r][col] += a[r*lda+p] * pb[p*8+col] for r < mr. Each row has its
+// own pointer (R5..R12). A row is contiguous along k, so one plain vector load
+// brings U consecutive k values of it (U = 4 floats or 2 doubles) into V20+r,
+// and the U k steps that follow take their A value from lane s of that vector
+// with the by-element FMLA (fmlaElem/fmlaElemS), as the packed kernels do.
+// The kc%U remaining steps load each row's value as a scalar into lane 0.
+// A first version loaded every A value with a load-and-replicate (VLD1R) and
+// used the vector FMLA: on a Neoverse N1 it was 26-78% slower than packing A,
+// apparently because the replicating loads compete with the FMAs for the
+// vector pipes.
+// Accumulators: float32 row r in V(2r), V(2r+1); float64 row r in V(4r)..V(4r+3).
+func gemmUAKernel(mr int, single bool) *emit.Function {
+	sig := arm64.Layout(
+		[]string{"kc", "a", "lda", "pb", "c", "ldc"},
+		[]arm64.Type{arm64.Int64, arm64.Ptr, arm64.Int64, arm64.Ptr, arm64.Ptr, arm64.Int64},
+		nil, nil,
+	)
+	name, shift, arr, vecs := fmt.Sprintf("gemmUA%dx8D", mr), 3, "D2", 4
+	if single {
+		name, shift, arr, vecs = fmt.Sprintf("gemmUA%dx8S", mr), 2, "S4", 2
+	}
+	size := 1 << shift
+	bregs := make([]string, vecs)
+	for v := range bregs {
+		bregs[v] = fmt.Sprintf("V%d.%s", 16+v, arr)
+	}
+	blist := "[" + strings.Join(bregs, ", ") + "]"
+	b := arm64.NewFunc(name, sig, 0)
+	b.LoadArg("kc", "R0").
+		LoadArg("a", "R1").
+		LoadArg("lda", "R2").
+		LoadArg("pb", "R13").
+		LoadArg("c", "R3").
+		LoadArg("ldc", "R4").
+		Raw(fmt.Sprintf("LSL $%d, R2, R2", shift)).
+		Raw(fmt.Sprintf("LSL $%d, R4, R4", shift))
+	for r := 0; r < mr; r++ { // row pointers R5.. = a + r*lda
+		if r == 0 {
+			b.Raw("MOVD R1, R5")
+		} else {
+			b.Raw(fmt.Sprintf("ADD R2, R%d, R%d", 4+r, 5+r))
+		}
+	}
+	for v := 0; v < mr*vecs; v++ {
+		b.Raw(fmt.Sprintf("VEOR V%d.B16, V%d.B16, V%d.B16", v, v, v))
+	}
+	u := 16 / size // k steps per A vector
+	fmla, scalar := fmlaElem, "FMOVD"
+	if single {
+		fmla, scalar = fmlaElemS, "FMOVS"
+	}
+	step := func(lane int) {
+		b.Raw(fmt.Sprintf("VLD1.P %d(R13), %s", 8*size, blist))
+		for r := 0; r < mr; r++ {
+			for v := 0; v < vecs; v++ {
+				b.Raw(fmla(vecs*r+v, 16+v, 20+r, lane))
+			}
+		}
+	}
+	b.Raw(fmt.Sprintf("LSR $%d, R0, R14", shift4(u))). // whole groups of u steps
+								Raw(fmt.Sprintf("AND $%d, R0, R15", u-1)). // remaining steps
+								Raw("CBZ R14, uatail").
+								Raw("uakloop:")
+	for r := 0; r < mr; r++ {
+		b.Raw(fmt.Sprintf("VLD1.P 16(R%d), [V%d.%s]", 5+r, 20+r, arr))
+	}
+	for s := 0; s < u; s++ {
+		step(s)
+	}
+	b.Raw("SUB $1, R14").
+		Raw("CBNZ R14, uakloop").
+		Raw("uatail:").
+		Raw("CBZ R15, uastore").
+		Raw("uatloop:")
+	for r := 0; r < mr; r++ {
+		b.Raw(fmt.Sprintf("%s.P %d(R%d), F%d", scalar, size, 5+r, 20+r))
+	}
+	step(0)
+	b.Raw("SUB $1, R15").
+		Raw("CBNZ R15, uatloop").
+		Raw("uastore:")
+	for r := 0; r < mr; r++ {
+		b.Raw(fmt.Sprintf("VLD1 (R3), %s", blist))
+		for v := 0; v < vecs; v++ {
+			b.Raw(fmt.Sprintf("VFADD V%d.%s, V%d.%s, V%d.%s", vecs*r+v, arr, 16+v, arr, 16+v, arr))
+		}
+		b.Raw(fmt.Sprintf("VST1 %s, (R3)", blist))
+		if r < mr-1 {
+			b.Raw("ADD R4, R3, R3")
+		}
+	}
+	b.Ret()
+	return b.Func()
+}
+
+// shift4 is log2 of u, 2 or 4.
+func shift4(u int) int {
+	if u == 4 {
+		return 2
+	}
+	return 1
 }
 
 // fmlaElemS is fmlaElem for single precision:

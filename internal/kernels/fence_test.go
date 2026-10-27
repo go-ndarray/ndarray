@@ -134,6 +134,23 @@ func TestGemmMicroStaysInsideItsOperands(t *testing.T) {
 	}
 	run()
 	forEachFallback(run)
+	if gemm64.microUA == nil {
+		return
+	}
+	for kc := 1; kc <= 9; kc++ {
+		for _, ldc := range []int{NR, NR + 3} {
+			pb := fences(t, kc*NR)[1]
+			for mr := 1; mr <= MR; mr++ {
+				for _, lda := range []int{kc, kc + 5} {
+					for _, a := range fences(t, (mr-1)*lda+kc) {
+						for _, dst := range fences(t, (mr-1)*ldc+NR) {
+							gemm64.microUA(kc, a, lda, pb, dst, ldc, mr)
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 // TestGemmMicro32StaysInsideItsOperands fences the float32 GEMM kernel's
@@ -149,6 +166,18 @@ func TestGemmMicro32StaysInsideItsOperands(t *testing.T) {
 				for _, pb := range fences32(t, kc*g.nr) {
 					for _, dst := range fences32(t, (g.mr-1)*ldc+g.nr) {
 						g.micro(kc, pa, pb, dst, ldc)
+					}
+					if g.microUA == nil {
+						continue
+					}
+					for mr := 1; mr <= g.mr; mr++ {
+						for _, lda := range []int{kc, kc + 5} {
+							for _, a := range fences32(t, (mr-1)*lda+kc) {
+								for _, dst := range fences32(t, (mr-1)*ldc+g.nr) {
+									g.microUA(kc, a, lda, pb, dst, ldc, mr)
+								}
+							}
+						}
 					}
 				}
 			}
