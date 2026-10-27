@@ -66,6 +66,12 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-10-27 (v0.28.0).** The ppc64le float32 GEMM kernel
+(`gemmMicro8x16VSX`) reads `kc·8` and `kc·16` packed floats and one 8×16 tile
+of C, which its wrapper bounds-checks before the call. It also reads two
+16-byte read-only mask constants. It is fenced and tested against the float32
+oracle on a real POWER9, and a sabotaged kernel failed CI's ppc64le lane.
+
 **2026-10-27 (v0.27.0).** The unpacked-A GEMM kernels (`gemmUA*` on amd64
 and arm64) read A in place: `mr` rows `lda` elements apart, `kc` elements
 each. Their Go wrapper bounds-checks the whole reach,

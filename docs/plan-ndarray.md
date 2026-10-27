@@ -161,8 +161,9 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   vectorised them on all six 64-bit targets, for float32 and float64), and the transcendental ufuncs. `MatMul` runs on the float64
   GEMM since v0.21.0, 77–90% faster than the triple loop, and since v0.26.0
   on a native float32 GEMM on arm64 (NEON 8×8) and amd64 with FMA (6×16),
-  a further 53–61% faster. The float32 kernels for ppc64le, s390x, riscv64
-  and loong64 are still to write.
+  a further 53–61% faster, and since v0.28.0 on ppc64le (VSX 8×16, 37–59%
+  faster on a POWER9). The float32 kernels for s390x, riscv64 and loong64
+  are still to write.
 - **Phase 3 — broadcasting ufuncs — MOSTLY DONE.** Broadcasting arithmetic,
   comparisons returning Bool masks, `Maximum`/`Minimum`, `Logical*`, `Power`,
   `Where` and the per-axis reductions, in every dtype. Not done: a public
