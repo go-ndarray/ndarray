@@ -7,9 +7,12 @@ import "testing"
 // (or a hypervisor that masks FMA) takes. The FMA path is the default and is
 // exercised by the rest of the suite wherever hasFMA is true.
 func TestGemmSSE2Fallback(t *testing.T) {
-	saved := useFMA
-	useFMA = false
-	defer func() { useFMA = saved }()
+	saved, savedUA := useFMA, unpackA
+	useFMA, unpackA = false, false // the SSE2 kernel reads packed A only
+	defer func() { useFMA, unpackA = saved, savedUA }()
+	if microUAIf(false) != nil || microUAIf(true) == nil {
+		t.Fatal("microUAIf: an unpacked-A kernel without FMA, or none with it")
+	}
 	t.Run("correctness", TestGemmCorrectness)
 	t.Run("bands", TestGemmBandSizing)
 	t.Run("float", TestGemmFloatTolerance)

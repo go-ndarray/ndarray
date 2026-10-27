@@ -47,6 +47,10 @@ func main() {
 	f.Add(binKernel("divSSE2", "DIVPD", "DIVSD"))
 	f.Add(gemmFMAKernel())
 	f.Add(gemm32FMAKernel())
+	for mr := 1; mr <= gemmMR; mr++ {
+		f.Add(gemm32UAKernel(mr))
+		f.Add(gemmUAKernel(mr, false))
+	}
 	f.Add(dotFMAKernel())
 	f.Add(gemmSSE2HalfKernel())
 	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
@@ -547,6 +551,91 @@ func gemm32FMAKernel() *emit.Function {
 	b.Raw("VZEROUPPER")
 	b.Ret()
 	return b.Func()
+}
+
+// gemm32UAKernel builds gemmUA<mr>x16FMA(kc int, a *float32, lda int, pb, c
+// *float32, ldc int): the 6x16 float32 tile with A read in place instead of
+// packed, for mr rows (1..6):
+//
+//	for p in [0,kc):  C[r][col] += a[r*lda+p] * pb[p*16+col]   (r<mr, col<16)
+//
+// It is the "rv" sup kernel of BLIS (bli_gemmsup_rv_haswell_asm_s6x16m.c):
+// each A value is broadcast straight from its row, r*lda bytes past the
+// k-step's column, through a scaled index (lda, 2lda, 3lda in R11, 4lda,
+// 5lda in R12), and the column advances 4 bytes per step. A small product
+// then pays no copy of A at all. B stays packed, so a partial last panel is
+// still zero-padded; the kernels for mr < 6 cover the bottom rows of a block
+// without reading past A's last row.
+//
+// gemmUAKernel(mr, false) is the float64 counterpart over the 6x8 packing,
+// gemmUA<mr>x8FMA: the same loop in PD instructions, 8-byte steps.
+func gemm32UAKernel(mr int) *emit.Function { return gemmUAKernel(mr, true) }
+
+func gemmUAKernel(mr int, single bool) *emit.Function {
+	sig := amd64.Layout(
+		[]string{"kc", "a", "lda", "pb", "c", "ldc"},
+		[]amd64.Type{amd64.Int64, amd64.Ptr, amd64.Int64, amd64.Ptr, amd64.Ptr, amd64.Int64},
+		nil, nil,
+	)
+	name, size, shift, sfx, bcast := fmt.Sprintf("gemmUA%dx8FMA", mr), 8, 3, "PD", "VBROADCASTSD"
+	if single {
+		name, size, shift, sfx, bcast = fmt.Sprintf("gemmUA%dx16FMA", mr), 4, 2, "PS", "VBROADCASTSS"
+	}
+	b := amd64.NewFunc(name, sig, 0)
+	b.LoadArg("kc", "CX")
+	b.LoadArg("a", "SI")
+	b.LoadArg("lda", "R8")
+	b.LoadArg("pb", "DI")
+	b.LoadArg("c", "DX")
+	b.LoadArg("ldc", "R9")
+	b.Raw(fmt.Sprintf("SHLQ $%d, R8", shift)) // lda -> bytes
+	b.Raw(fmt.Sprintf("SHLQ $%d, R9", shift)) // ldc -> bytes
+	b.Raw("LEAQ (R8)(R8*2), R11")             // 3*lda
+	b.Raw("LEAQ (R8)(R8*4), R12")             // 5*lda
+	b.Raw("MOVQ DX, R10")
+	for r := 0; r < mr; r++ {
+		b.Raw("PREFETCHT0 (R10)")
+		b.Raw("PREFETCHT0 63(R10)")
+		if r < mr-1 {
+			b.Raw("ADDQ R9, R10")
+		}
+	}
+	for r := 0; r < 2*mr; r++ {
+		b.Raw(fmt.Sprintf("VXOR%s Y%d, Y%d, Y%d", sfx, r, r, r))
+	}
+	b.Raw("TESTQ CX, CX")
+	b.Raw("JZ uastore")
+	b.Raw("uakloop:")
+	b.Raw(fmt.Sprintf("VMOVU%s (DI), Y12", sfx))
+	b.Raw(fmt.Sprintf("VMOVU%s 32(DI), Y13", sfx))
+	for r := 0; r < mr; r++ {
+		b.Raw(fmt.Sprintf("%s %s, Y14", bcast, uaRow(r)))
+		b.Raw(fmt.Sprintf("VFMADD231%s Y12, Y14, Y%d", sfx, 2*r))
+		b.Raw(fmt.Sprintf("VFMADD231%s Y13, Y14, Y%d", sfx, 2*r+1))
+	}
+	b.Raw(fmt.Sprintf("ADDQ $%d, SI", size))
+	b.Raw("ADDQ $64, DI") // one packed B row: 16 floats or 8 doubles
+	b.Raw("DECQ CX")
+	b.Raw("JNZ uakloop")
+	b.Raw("uastore:")
+	for r := 0; r < mr; r++ {
+		b.Raw(fmt.Sprintf("VADD%s (DX), Y%d, Y15", sfx, 2*r))
+		b.Raw(fmt.Sprintf("VMOVU%s Y15, (DX)", sfx))
+		b.Raw(fmt.Sprintf("VADD%s 32(DX), Y%d, Y15", sfx, 2*r+1))
+		b.Raw(fmt.Sprintf("VMOVU%s Y15, 32(DX)", sfx))
+		if r < mr-1 {
+			b.Raw("ADDQ R9, DX")
+		}
+	}
+	b.Raw("VZEROUPPER")
+	b.Ret()
+	return b.Func()
+}
+
+// uaRow is the address of row r of the unpacked A column at SI, rows lda
+// bytes apart (R8), 3*lda in R11 and 5*lda in R12.
+func uaRow(r int) string {
+	return [...]string{"(SI)", "(SI)(R8*1)", "(SI)(R8*2)", "(SI)(R11*1)", "(SI)(R8*4)", "(SI)(R12*1)"}[r]
 }
 
 // fma32Step emits one k step of the 6x16 float32 FMA tile.

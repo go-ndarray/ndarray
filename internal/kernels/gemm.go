@@ -81,14 +81,23 @@ func rowMajor[T gemmFloat](data []T, ld int) MatOf[T] {
 // gemmKernel is one element type's micro-kernel, the mr x nr tile it computes,
 // and the pools of pack buffers sized for that tile. micro adds the mr x nr tile
 // sum_p pa[p*mr..]*pb[p*nr..] into dst, whose rows are ldc apart; see gemmMicro.
+//
+// microUA, where there is one, is the same tile with A read in place: rows
+// lda > 0 elements apart from a[0], k steps along each row, for the top mr
+// (1..mr) rows only. gemmBand then never packs a row-major A.
 type gemmKernel[T gemmFloat] struct {
 	mr, nr         int
 	micro          func(kc int, pa, pb, dst []T, ldc int)
+	microUA        func(kc int, a []T, lda int, pb, dst []T, ldc, mr int)
 	paPool, pbPool sync.Pool
 }
 
+// unpackA lets the GEMM read a row-major A in place where the kernel can. It
+// is a var so tests can drive the packed path on the same inputs.
+var unpackA = true
+
 // gemm64 is the float64 GEMM, on the per-architecture gemmMicro.
-var gemm64 = &gemmKernel[float64]{mr: MR, nr: NR, micro: gemmMicro}
+var gemm64 = &gemmKernel[float64]{mr: MR, nr: NR, micro: gemmMicro, microUA: gemmMicroUA}
 
 // packBuf is a pair of pack buffers: pa for the MC*KC A panel, pb for the KC*NC
 // B panel. The two come from separate pools, because the parallel GEMM needs
@@ -173,7 +182,11 @@ func (g *gemmKernel[T]) packGemmRows(r0, r1 int, dst []T, a, b MatOf[T], k, n in
 // dominant non-scaling cost of the old row-split parallelism.
 func (g *gemmKernel[T]) gemmBand(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T], n int, pa, pb []T) {
 	mr0, nr0 := g.mr, g.nr
-	tile := pa[len(pa)-mr0*nr0:]           // see paCap
+	tile := pa[len(pa)-mr0*nr0:] // see paCap
+	if g.microUA != nil && unpackA && a.CS == 1 && a.RS > 0 {
+		g.gemmBandUA(r0, r1, jc, nc, pc, kc, dst, a, n, pb, tile)
+		return
+	}
 	for ic := r0; ic < r1; ic += blockMC { // L1 row block of A
 		mc := min(blockMC, r1-ic)
 		g.packA(a, ic, mc, pc, kc, pa) // pack A(mc x kc) -> MR-tall panels
@@ -186,6 +199,37 @@ func (g *gemmKernel[T]) gemmBand(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T]
 					g.micro(kc, pa[ir*kc:], pb[jr*kc:], dst[c0:], n)
 				} else {
 					g.gemmEdge(kc, pa[ir*kc:], pb[jr*kc:], dst, c0, n, mr, nr, tile)
+				}
+			}
+		}
+	}
+}
+
+// gemmBandUA is gemmBand for a row-major A read in place by microUA: no A
+// panel is packed. Each tile's A is the mr rows starting at row ic+ir, column
+// pc, a.RS apart. A tile narrower than NR (the last B panel, zero-padded) runs
+// into the scratch tile and only its nr columns are added into dst; a tile
+// shorter than MR uses the kernel for its own height, so no row past A's last
+// is read.
+func (g *gemmKernel[T]) gemmBandUA(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T], n int, pb, tile []T) {
+	mr0, nr0 := g.mr, g.nr
+	for jr := 0; jr < nc; jr += nr0 {
+		nr := min(nr0, nc-jr)
+		bp := pb[jr*kc:]
+		for i := r0; i < r1; i += mr0 {
+			mr := min(mr0, r1-i)
+			ar := a.Data[a.Off+i*a.RS+pc:]
+			c0 := i*n + jc + jr
+			if nr == nr0 {
+				g.microUA(kc, ar, a.RS, bp, dst[c0:], n, mr)
+				continue
+			}
+			clear(tile)
+			g.microUA(kc, ar, a.RS, bp, tile, nr0, mr)
+			for r := 0; r < mr; r++ {
+				row := dst[c0+r*n : c0+r*n+nr]
+				for c := range row {
+					row[c] += tile[r*nr0+c]
 				}
 			}
 		}

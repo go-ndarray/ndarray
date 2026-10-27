@@ -1243,11 +1243,41 @@ element. Profiling had put it at 21% of a 64² float32 product.
 | Neoverse N1, float32 | −16.4% | −8.9% | ~ |
 | Neoverse N1, float64 | −9.5% | ~ | ~ |
 
-**Open defect: products are still slower than OpenBLAS on one core**, by
-1.1–1.3× at 1024² and up to 1.9× at 64². The gap is widest where the work
-around the kernel weighs most: packing, edge tiles, and the result's
-allocation and zeroing. The kernels for ppc64le, s390x, riscv64 and loong64
-are still to write.
+### Reading A in place (2026-10-27)
+
+v0.27.0 no longer packs a row-major A (unit column stride, positive row
+stride). Unpacked-A kernels read it in place: the "rv" gemmsup kernels of
+BLIS (`kernels/haswell/3/sup/bli_gemmsup_rv_haswell_asm_s6x16m.c`). B stays
+packed, so its last panel is still zero-padded. There is one kernel per tile
+height, so a band's bottom rows never read past A's last row.
+
+- **amd64 (FMA):** each A value is broadcast straight from its row through
+  a scaled index (`VBROADCASTSS (SI)(R8*2)`), as BLIS does.
+- **arm64:** the same idea, but broadcast loads (`VLD1R`) made it 26–78%
+  slower on a Neoverse N1, apparently because they compete with the FMAs for
+  the vector pipes. What shipped instead loads 4 floats (2 doubles) of each
+  row with one plain vector load, and the next k steps read them by lane with
+  the by-element FMLA.
+
+| `MatMul` vs v0.26.1 (`abbench`, 10 rounds) | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| Zen 3, float32 | −28% | −9.5% | −3.9% |
+| Zen 3, float64 | −17% | −5.5% | ~ |
+| Neoverse N1, float32 | −20% | −7.7% | ~ |
+| Neoverse N1, float64 | −12% | −4.5% | ~ |
+
+Against NumPy 2.5.4 (OpenBLAS, one core), the ratio ours / NumPy:
+
+| | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| Zen 3 float32 | 1.18 | 1.13 | 1.04 |
+| Zen 3 float64 | 1.16 | 1.03 | **0.97** |
+| N1 float32 | 1.20 | 1.06 | 1.09 |
+| N1 float64 | 1.18 | 1.11 | 1.18 |
+
+**Open defect: products are still up to 1.2× slower than OpenBLAS on one
+core.** The exception is float64 at 1024² on Zen 3, where we are 3% faster.
+The kernels for ppc64le, s390x, riscv64 and loong64 are still to write.
 
 **Open: the allocating operations.** `Add` is still 1.5–3.2× slower than
 NumPy's `a+b`, for float64 as well. The kernel is no longer the difference,

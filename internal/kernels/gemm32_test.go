@@ -35,16 +35,22 @@ func assertGemm32(t *testing.T, m, k, n int, a, b Mat32) {
 	t.Helper()
 	want := make([]float32, m*n)
 	gemmOracle32(want, a, b, m, k, n)
-	for _, gemm := range []int{1 << 30, 1} {
-		withThresholds(1<<20, gemm, func() {
-			got := make([]float32, m*n)
-			MatMul32StridedP(got, a, b, m, k, n)
-			for i := range want {
-				if got[i] != want[i] {
-					t.Fatalf("m=%d k=%d n=%d gemm=%d [%d]: %v != %v", m, k, n, gemm, i, got[i], want[i])
+	saved := unpackA
+	defer func() { unpackA = saved }()
+	for _, unpacked := range []bool{true, false} {
+		unpackA = unpacked
+		for _, gemm := range []int{1 << 30, 1} {
+			withThresholds(1<<20, gemm, func() {
+				got := make([]float32, m*n)
+				MatMul32StridedP(got, a, b, m, k, n)
+				for i := range want {
+					if got[i] != want[i] {
+						t.Fatalf("m=%d k=%d n=%d gemm=%d unpackA=%v [%d]: %v != %v",
+							m, k, n, gemm, unpacked, i, got[i], want[i])
+					}
 				}
-			}
-		})
+			})
+		}
 	}
 }
 
@@ -73,6 +79,13 @@ func TestGemm32Correctness(t *testing.T) {
 				bt.Data[3+j*s.k+p] = b.Data[p*s.n+j]
 			}
 		}
+		// as holds A behind a 2-element offset, rows k+3 apart: the
+		// unpacked-A kernels read it through lda != k.
+		as := Mat32{Data: make([]float32, 2+s.m*(s.k+3)), Off: 2, RS: s.k + 3, CS: 1}
+		for i := 0; i < s.m; i++ {
+			copy(as.Data[2+i*(s.k+3):], a.Data[i*s.k:(i+1)*s.k])
+		}
+		assertGemm32(t, s.m, s.k, s.n, as, b)
 		for _, bv := range []Mat32{b, bt} {
 			assertGemm32(t, s.m, s.k, s.n, a, bv)
 			withBlocks(MR, 2, NR, func() { assertGemm32(t, s.m, s.k, s.n, a, bv) })
