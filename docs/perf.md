@@ -1275,9 +1275,29 @@ Against NumPy 2.5.4 (OpenBLAS, one core), the ratio ours / NumPy:
 | N1 float32 | 1.20 | 1.06 | 1.09 |
 | N1 float64 | 1.18 | 1.11 | 1.18 |
 
+### ppc64le float32 GEMM (2026-10-27)
+
+`gemmMicro8x16VSX` follows OpenBLAS's POWER9 sgemm
+(`kernel/power/sgemm_macros_power9.S`, `LOAD8x16`) and uses no splats. Each
+4-float A vector is rotated three ways (`XXSLDWI a, a, $v`), and every
+rotation multiplies every B vector: 32 `XVMADDASP` per k step against 6 loads
+and 6 rotations. The tile therefore accumulates in a rotated layout, and the
+store untangles each 4×4 block with three `XXSEL`s per row. OpenBLAS rotates
+B; rotating A costs half as many permutes, because A has two vectors per k
+step and B four.
+
+| float32 `MatMul` vs v0.27.0 (`abbench`, 8 rounds, POWER9) | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| widened to the float64 GEMM → native | **−59%** | **−42%** | **−37%** |
+
+The NumPy 2.5.3 wheel on that host is no reference for products: x @ x takes
+0.48 ms at 64² and 2.7 s at 1024², for float32 and float64 alike. That is
+14–31× slower than us, consistent with a BLAS that has no POWER9 kernels. A
+comparison with a tuned POWER9 OpenBLAS remains to be made.
+
 **Open defect: products are still up to 1.2× slower than OpenBLAS on one
 core.** The exception is float64 at 1024² on Zen 3, where we are 3% faster.
-The kernels for ppc64le, s390x, riscv64 and loong64 are still to write.
+The float32 kernels for s390x, riscv64 and loong64 are still to write.
 
 **Open: the allocating operations.** `Add` is still 1.5–3.2× slower than
 NumPy's `a+b`, for float64 as well. The kernel is no longer the difference,
