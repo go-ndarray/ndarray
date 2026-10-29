@@ -2,4 +2,4 @@ module github.com/go-ndarray/ndarray
 
 go 1.27.2
 
-require github.com/go-fft/fft v0.27.3
+require github.com/go-fft/fft v0.28.6
