@@ -38,6 +38,7 @@ func main() {
 		f.Add(bin32Kernel(k.name[:3]+"32VXE", k.name[:3], k.sca+"S"))
 	}
 	f.Add(gemmKernel())
+	f.Add(gemm32Kernel())
 	f.Add(extremumKernel("maxVXE", "VFMAXDB", "WFMAXDB"))
 	f.Add(extremumKernel("minVXE", "VFMINDB", "WFMINDB"))
 	f.Add(blocks8Kernel())
@@ -276,6 +277,47 @@ func gemmKernel() *emit.Function {
 		b.Raw("VLM (R1), V24, V27")
 		for j := 0; j < 4; j++ {
 			b.Raw("VFADB V%d, V%d, V%d", 4*r+j, 24+j, 24+j) // C row += acc_r
+		}
+		b.Raw("VSTM V24, V27, (R1)")
+		if r < 3 {
+			b.Raw("ADD R4, R1")
+		}
+	}
+	return b.Ret().Func()
+}
+
+// gemm32Kernel builds gemmMicro4x16VXE(kc int, pa, pb, c *float32, ldc int)
+// for kc >= 1: C[r][0:16] += sum_p pa[p*4+r] * pb[p*16:p*16+16] for r < 4, the
+// rows of C ldc float32s apart. gemmKernel at twice the lanes: sixteen
+// four-lane accumulators V0..V15 (row r in V4r..V4r+3), the B row in one VLM,
+// each A value replicated across a register with VLREPF, and VFMASB, the
+// vector-enhancements facility 1 (z14) fused multiply-add, which go-asmgen
+// encodes because Go's assembler has no short-format vector float op.
+func gemm32Kernel() *emit.Function {
+	sig := s390x.Layout([]string{"kc", "pa", "pb", "c", "ldc"},
+		[]s390x.Type{s390x.Int64, s390x.Ptr, s390x.Ptr, s390x.Ptr, s390x.Int64}, nil, nil)
+	b := s390x.NewFunc("gemmMicro4x16VXE", sig, 0)
+	b.LoadArg("kc", "R5").LoadArg("pa", "R2").LoadArg("pb", "R3").
+		LoadArg("c", "R1").LoadArg("ldc", "R4")
+	for r := 0; r < 16; r++ {
+		b.Raw("VZERO V%d", r)
+	}
+	b.Raw("loop:").Raw("VLM (R3), V16, V19") // the B row: 16 floats
+	for r := 0; r < 4; r++ {
+		b.Raw("VLREPF %d(R2), V%d", 4*r, 20+r) // a_r in all four lanes
+	}
+	for r := 0; r < 4; r++ {
+		for j := 0; j < 4; j++ {
+			b.VFMASB(4*r+j, 20+r, 16+j, 4*r+j) // acc += a_r * b
+		}
+	}
+	b.Raw("ADD $16, R2").Raw("ADD $64, R3").Raw("SUB $1, R5").
+		Raw("CMP R5, $0").Raw("BNE loop").
+		Raw("SLD $2, R4") // row stride in bytes
+	for r := 0; r < 4; r++ {
+		b.Raw("VLM (R1), V24, V27")
+		for j := 0; j < 4; j++ {
+			b.VFASB(24+j, 24+j, 4*r+j) // C row += acc_r
 		}
 		b.Raw("VSTM V24, V27, (R1)")
 		if r < 3 {
