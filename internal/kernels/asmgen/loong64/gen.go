@@ -41,6 +41,7 @@ func main() {
 		f.Add(bin32Kernel(k.name[:3]+"32LSX", k.vec[1:len(k.vec)-1]+"F", k.sca[:len(k.sca)-1]+"F"))
 	}
 	f.Add(gemmKernel())
+	f.Add(gemm32Kernel())
 	f.Add(blocks8Kernel())
 	f.Add(sqrt32Kernel())
 	abs64 := f.Data("abs64", lanes(8, 0x7fffffffffffffff))
@@ -357,6 +358,45 @@ func gemmKernel() *emit.Function {
 		b.Raw("XVADDD X%d, X16, X16", 2*r).Raw("XVADDD X%d, X17, X17", 2*r+1)
 		b.Raw("XVMOVQ X16, 0(R8)").Raw("XVMOVQ X17, 32(R8)")
 		if r < gemmMR-1 {
+			b.Raw("ADDV R9, R8")
+		}
+	}
+	b.Ret()
+	return b.Func()
+}
+
+// gemm32Kernel builds gemmMicro8x16LASX(kc int, pa, pb, c *float32, ldc int):
+//
+//	for p in [0,kc):  C[r][col] += pa[p*8+r] * pb[p*16+col]   (r<8, col<16)
+//
+// gemmKernel at twice the lanes: 16 accumulators X0..X15 (row r in X(2r),
+// X(2r+1), eight columns each), the B row in X16, X17, each A value broadcast
+// with xvldrepl.w (XVMOVQ .W8) into X18..X25, and xvfmadd.s, which go-asmgen
+// encodes (XVFMADDF, v0.23.0) because Go's assembler has no vector float FMA.
+func gemm32Kernel() *emit.Function {
+	sig := loong64.Layout([]string{"kc", "pa", "pb", "c", "ldc"},
+		[]loong64.Type{loong64.Int64, loong64.Ptr, loong64.Ptr, loong64.Ptr, loong64.Int64}, nil, nil)
+	b := loong64.NewFunc("gemmMicro8x16LASX", sig, 0)
+	b.LoadArg("kc", "R5").LoadArg("pa", "R6").LoadArg("pb", "R7").LoadArg("c", "R8").LoadArg("ldc", "R9")
+	b.Raw("SLLV $2, R9") // ldc -> bytes
+	zero(b, 16)
+	b.Raw("BEQ R5, sstore")
+	b.Label("sloop")
+	b.Raw("XVMOVQ 0(R7), X16").Raw("XVMOVQ 32(R7), X17")
+	for r := 0; r < 8; r++ {
+		b.Raw("XVMOVQ %d(R6), X%d.W8", 4*r, 18+r) // xvldrepl.w: pa[r] in all eight lanes
+	}
+	for r := 0; r < 8; r++ {
+		b.XVFMADDF(2*r, 18+r, 16, 2*r)
+		b.XVFMADDF(2*r+1, 18+r, 17, 2*r+1)
+	}
+	b.Raw("ADDV $32, R6").Raw("ADDV $64, R7").Raw("ADDV $-1, R5").Raw("BNE R5, sloop")
+	b.Label("sstore")
+	for r := 0; r < 8; r++ {
+		b.Raw("XVMOVQ 0(R8), X16").Raw("XVMOVQ 32(R8), X17")
+		b.Raw("XVADDF X%d, X16, X16", 2*r).Raw("XVADDF X%d, X17, X17", 2*r+1)
+		b.Raw("XVMOVQ X16, 0(R8)").Raw("XVMOVQ X17, 32(R8)")
+		if r < 7 {
 			b.Raw("ADDV R9, R8")
 		}
 	}
