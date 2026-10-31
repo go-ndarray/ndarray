@@ -45,7 +45,7 @@ func gemmMicro(kc int, pa, pb, dst []float64, ldc int) {
 // FMA CPUs only; without FMA, A is packed for the SSE2 kernel.
 var gemmMicroUA = microUAIf(useFMA)
 
-func microUAIf(fma bool) func(kc int, a []float64, lda int, pb, dst []float64, ldc, mr int) {
+func microUAIf(fma bool) func(kc int, a []float64, lda int, b []float64, ldb int, dst []float64, ldc, mr int) {
 	if !fma {
 		return nil
 	}
@@ -53,35 +53,36 @@ func microUAIf(fma bool) func(kc int, a []float64, lda int, pb, dst []float64, l
 }
 
 // gemmUA64 holds the unpacked-A kernels by tile height.
-var gemmUA64 = [...]func(kc int, a *float64, lda int, pb, c *float64, ldc int){
+var gemmUA64 = [...]func(kc int, a *float64, lda int, pb *float64, ldb int, c *float64, ldc int){
 	1: gemmUA1x8FMA, 2: gemmUA2x8FMA, 3: gemmUA3x8FMA,
 	4: gemmUA4x8FMA, 5: gemmUA5x8FMA, 6: gemmUA6x8FMA,
 }
 
-// gemmMicroUA64 adds the mr x 8 tile sum_p a[r*lda+p]*pb[p*8..] into dst,
-// whose rows are ldc apart, reading A in place (mr in 1..6, lda > 0).
-func gemmMicroUA64(kc int, a []float64, lda int, pb, dst []float64, ldc, mr int) {
-	_, _, _ = a[(mr-1)*lda+kc-1], pb[kc*NR-1], dst[(mr-1)*ldc+NR-1] // the kernel's whole reach
-	gemmUA64[mr](kc, &a[0], lda, &pb[0], &dst[0], ldc)
+// gemmMicroUA64 adds the mr x 8 tile sum_p a[r*lda+p]*b[p*ldb..] into dst,
+// whose rows are ldc apart, reading A in place (mr in 1..6, lda > 0) and B
+// rows ldb > 0 apart (NR for a packed panel).
+func gemmMicroUA64(kc int, a []float64, lda int, b []float64, ldb int, dst []float64, ldc, mr int) {
+	_, _, _ = a[(mr-1)*lda+kc-1], b[(kc-1)*ldb+NR-1], dst[(mr-1)*ldc+NR-1] // the kernel's whole reach
+	gemmUA64[mr](kc, &a[0], lda, &b[0], ldb, &dst[0], ldc)
 }
 
 //go:noescape
-func gemmUA1x8FMA(kc int, a *float64, lda int, pb, c *float64, ldc int)
+func gemmUA1x8FMA(kc int, a *float64, lda int, pb *float64, ldb int, c *float64, ldc int)
 
 //go:noescape
-func gemmUA2x8FMA(kc int, a *float64, lda int, pb, c *float64, ldc int)
+func gemmUA2x8FMA(kc int, a *float64, lda int, pb *float64, ldb int, c *float64, ldc int)
 
 //go:noescape
-func gemmUA3x8FMA(kc int, a *float64, lda int, pb, c *float64, ldc int)
+func gemmUA3x8FMA(kc int, a *float64, lda int, pb *float64, ldb int, c *float64, ldc int)
 
 //go:noescape
-func gemmUA4x8FMA(kc int, a *float64, lda int, pb, c *float64, ldc int)
+func gemmUA4x8FMA(kc int, a *float64, lda int, pb *float64, ldb int, c *float64, ldc int)
 
 //go:noescape
-func gemmUA5x8FMA(kc int, a *float64, lda int, pb, c *float64, ldc int)
+func gemmUA5x8FMA(kc int, a *float64, lda int, pb *float64, ldb int, c *float64, ldc int)
 
 //go:noescape
-func gemmUA6x8FMA(kc int, a *float64, lda int, pb, c *float64, ldc int)
+func gemmUA6x8FMA(kc int, a *float64, lda int, pb *float64, ldb int, c *float64, ldc int)
 
 //go:noescape
 func gemmMicro6x8FMA(kc int, pa, pb, c *float64, ldc int)

@@ -563,9 +563,13 @@ func gemm32FMAKernel() *emit.Function {
 // each A value is broadcast straight from its row, r*lda bytes past the
 // k-step's column, through a scaled index (lda, 2lda, 3lda in R11, 4lda,
 // 5lda in R12), and the column advances 4 bytes per step. A small product
-// then pays no copy of A at all. B stays packed, so a partial last panel is
-// still zero-padded; the kernels for mr < 6 cover the bottom rows of a block
-// without reading past A's last row.
+// then pays no copy of A at all. The kernels for mr < 6 cover the bottom rows
+// of a block without reading past A's last row.
+//
+// B's rows are ldb elements apart (R13 in bytes), as BLIS's b += rs_b: a
+// packed panel passes its own width (16 or 8), and a full panel of a
+// row-major B is read in place with ldb its row stride. A partial last panel
+// is still packed, for its zero padding.
 //
 // gemmUAKernel(mr, false) is the float64 counterpart over the 6x8 packing,
 // gemmUA<mr>x8FMA: the same loop in PD instructions, 8-byte steps.
@@ -573,8 +577,8 @@ func gemm32UAKernel(mr int) *emit.Function { return gemmUAKernel(mr, true) }
 
 func gemmUAKernel(mr int, single bool) *emit.Function {
 	sig := amd64.Layout(
-		[]string{"kc", "a", "lda", "pb", "c", "ldc"},
-		[]amd64.Type{amd64.Int64, amd64.Ptr, amd64.Int64, amd64.Ptr, amd64.Ptr, amd64.Int64},
+		[]string{"kc", "a", "lda", "pb", "ldb", "c", "ldc"},
+		[]amd64.Type{amd64.Int64, amd64.Ptr, amd64.Int64, amd64.Ptr, amd64.Int64, amd64.Ptr, amd64.Int64},
 		nil, nil,
 	)
 	name, size, shift, sfx, bcast := fmt.Sprintf("gemmUA%dx8FMA", mr), 8, 3, "PD", "VBROADCASTSD"
@@ -586,12 +590,14 @@ func gemmUAKernel(mr int, single bool) *emit.Function {
 	b.LoadArg("a", "SI")
 	b.LoadArg("lda", "R8")
 	b.LoadArg("pb", "DI")
+	b.LoadArg("ldb", "R13")
 	b.LoadArg("c", "DX")
 	b.LoadArg("ldc", "R9")
-	b.Raw(fmt.Sprintf("SHLQ $%d, R8", shift)) // lda -> bytes
-	b.Raw(fmt.Sprintf("SHLQ $%d, R9", shift)) // ldc -> bytes
-	b.Raw("LEAQ (R8)(R8*2), R11")             // 3*lda
-	b.Raw("LEAQ (R8)(R8*4), R12")             // 5*lda
+	b.Raw(fmt.Sprintf("SHLQ $%d, R8", shift))  // lda -> bytes
+	b.Raw(fmt.Sprintf("SHLQ $%d, R13", shift)) // ldb -> bytes
+	b.Raw(fmt.Sprintf("SHLQ $%d, R9", shift))  // ldc -> bytes
+	b.Raw("LEAQ (R8)(R8*2), R11")              // 3*lda
+	b.Raw("LEAQ (R8)(R8*4), R12")              // 5*lda
 	b.Raw("MOVQ DX, R10")
 	for r := 0; r < mr; r++ {
 		b.Raw("PREFETCHT0 (R10)")
@@ -614,7 +620,7 @@ func gemmUAKernel(mr int, single bool) *emit.Function {
 		b.Raw(fmt.Sprintf("VFMADD231%s Y13, Y14, Y%d", sfx, 2*r+1))
 	}
 	b.Raw(fmt.Sprintf("ADDQ $%d, SI", size))
-	b.Raw("ADDQ $64, DI") // one packed B row: 16 floats or 8 doubles
+	b.Raw("ADDQ R13, DI") // next B row: ldb bytes on
 	b.Raw("DECQ CX")
 	b.Raw("JNZ uakloop")
 	b.Raw("uastore:")
