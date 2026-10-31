@@ -84,17 +84,20 @@ func rowMajor[T gemmFloat](data []T, ld int) MatOf[T] {
 //
 // microUA, where there is one, is the same tile with A read in place: rows
 // lda > 0 elements apart from a[0], k steps along each row, for the top mr
-// (1..mr) rows only. gemmBand then never packs a row-major A.
+// (1..mr) rows only, against B rows ldb elements apart (nr for a packed panel).
+// gemmBand then never packs a row-major A, and the serial path reads the full
+// panels of a row-major B in place too (see packGemmRows).
 type gemmKernel[T gemmFloat] struct {
 	mr, nr         int
 	micro          func(kc int, pa, pb, dst []T, ldc int)
-	microUA        func(kc int, a []T, lda int, pb, dst []T, ldc, mr int)
+	microUA        func(kc int, a []T, lda int, b []T, ldb int, dst []T, ldc, mr int)
 	paPool, pbPool sync.Pool
 }
 
-// unpackA lets the GEMM read a row-major A in place where the kernel can. It
-// is a var so tests can drive the packed path on the same inputs.
-var unpackA = true
+// unpackA lets the GEMM read a row-major A in place where the kernel can, and
+// unpackB a row-major B on the serial path. They are vars so tests can drive
+// the packed paths on the same inputs.
+var unpackA, unpackB = true, true
 
 // gemm64 is the float64 GEMM, on the per-architecture gemmMicro.
 var gemm64 = &gemmKernel[float64]{mr: MR, nr: NR, micro: gemmMicro, microUA: gemmMicroUA}
@@ -159,14 +162,28 @@ func (g *gemmKernel[T]) putPackBuf(b *packBuf[T]) {
 // r0 (the parallel splitter guarantees this) so packed A panels never straddle a
 // band boundary; r1 may be m. This is the single-worker entry: it packs its own
 // B panel. The multi-worker path (gemmBand) shares one packed B across workers.
+//
+// When both operands are row-major and the kernel reads A in place, B's full
+// NR-wide panels are read in place as well (BLIS's sup kernels pack neither
+// operand) and only the partial last panel is packed, for its zero padding.
+// This is the small-product path (below GemmThreshold), where packing B was a
+// measurable share of the time.
 func (g *gemmKernel[T]) packGemmRows(r0, r1 int, dst []T, a, b MatOf[T], k, n int, buf *packBuf[T]) {
 	pa, pb := buf.pa, buf.pb
+	var bIn *MatOf[T]
+	if g.microUA != nil && unpackA && unpackB && a.CS == 1 && a.RS > 0 && b.CS == 1 && b.RS > 0 {
+		bIn = &b
+	}
 	for jc := 0; jc < n; jc += blockNC { // L3 column block of B
 		nc := min(blockNC, n-jc)
 		for pc := 0; pc < k; pc += blockKC { // L2 contraction block
 			kc := min(blockKC, k-pc)
-			g.packB(b, pc, kc, jc, nc, pb) // pack B(kc x nc) -> NR-wide panels
-			g.gemmBand(r0, r1, jc, nc, pc, kc, dst, a, n, pa, pb)
+			if bIn == nil {
+				g.packB(b, pc, kc, jc, nc, pb) // pack B(kc x nc) -> NR-wide panels
+			} else if full := nc - nc%g.nr; full < nc {
+				g.packB(b, pc, kc, jc+full, nc-full, pb[full*kc:]) // the partial last panel only
+			}
+			g.gemmBand(r0, r1, jc, nc, pc, kc, dst, a, n, pa, pb, bIn)
 		}
 	}
 }
@@ -180,11 +197,14 @@ func (g *gemmKernel[T]) packGemmRows(r0, r1 int, dst []T, a, b MatOf[T], k, n in
 // is what lets several workers share one packed B: the redundant full-B repack
 // each worker used to do — 1 MiB copied GOMAXPROCS times per kc block — was the
 // dominant non-scaling cost of the old row-split parallelism.
-func (g *gemmKernel[T]) gemmBand(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T], n int, pa, pb []T) {
+//
+// bIn, when not nil, is a row-major B whose full panels the A-in-place kernel
+// reads directly; pb then holds only the partial last panel (packGemmRows).
+func (g *gemmKernel[T]) gemmBand(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T], n int, pa, pb []T, bIn *MatOf[T]) {
 	mr0, nr0 := g.mr, g.nr
 	tile := pa[len(pa)-mr0*nr0:] // see paCap
 	if g.microUA != nil && unpackA && a.CS == 1 && a.RS > 0 {
-		g.gemmBandUA(r0, r1, jc, nc, pc, kc, dst, a, n, pb, tile)
+		g.gemmBandUA(r0, r1, jc, nc, pc, kc, dst, a, n, pb, tile, bIn)
 		return
 	}
 	for ic := r0; ic < r1; ic += blockMC { // L1 row block of A
@@ -210,22 +230,25 @@ func (g *gemmKernel[T]) gemmBand(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T]
 // pc, a.RS apart. A tile narrower than NR (the last B panel, zero-padded) runs
 // into the scratch tile and only its nr columns are added into dst; a tile
 // shorter than MR uses the kernel for its own height, so no row past A's last
-// is read.
-func (g *gemmKernel[T]) gemmBandUA(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T], n int, pb, tile []T) {
+// is read. With bIn, a full panel's B is read in place, bIn.RS apart.
+func (g *gemmKernel[T]) gemmBandUA(r0, r1, jc, nc, pc, kc int, dst []T, a MatOf[T], n int, pb, tile []T, bIn *MatOf[T]) {
 	mr0, nr0 := g.mr, g.nr
 	for jr := 0; jr < nc; jr += nr0 {
 		nr := min(nr0, nc-jr)
-		bp := pb[jr*kc:]
+		bp, ldb := pb[jr*kc:], nr0
+		if bIn != nil && nr == nr0 {
+			bp, ldb = bIn.Data[bIn.Off+pc*bIn.RS+jc+jr:], bIn.RS
+		}
 		for i := r0; i < r1; i += mr0 {
 			mr := min(mr0, r1-i)
 			ar := a.Data[a.Off+i*a.RS+pc:]
 			c0 := i*n + jc + jr
 			if nr == nr0 {
-				g.microUA(kc, ar, a.RS, bp, dst[c0:], n, mr)
+				g.microUA(kc, ar, a.RS, bp, ldb, dst[c0:], n, mr)
 				continue
 			}
 			clear(tile)
-			g.microUA(kc, ar, a.RS, bp, tile, nr0, mr)
+			g.microUA(kc, ar, a.RS, bp, ldb, tile, nr0, mr)
 			for r := 0; r < mr; r++ {
 				row := dst[c0+r*n : c0+r*n+nr]
 				for c := range row {
@@ -524,7 +547,7 @@ func (g *gemmKernel[T]) matMul(dst []T, a, b MatOf[T], m, k, n int) {
 					break
 				}
 				r0 := bi * bandRows
-				g.gemmBand(r0, min(r0+bandRows, m), bl.jc, bl.nc, bl.pc, bl.kc, dst, a, n, pa, pb)
+				g.gemmBand(r0, min(r0+bandRows, m), bl.jc, bl.nc, bl.pc, bl.kc, dst, a, n, pa, pb, nil)
 				pr.bandDone.Add(1)
 			}
 		}

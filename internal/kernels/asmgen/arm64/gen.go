@@ -498,8 +498,8 @@ func gemmKernel() *emit.Function {
 // Accumulators: float32 row r in V(2r), V(2r+1); float64 row r in V(4r)..V(4r+3).
 func gemmUAKernel(mr int, single bool) *emit.Function {
 	sig := arm64.Layout(
-		[]string{"kc", "a", "lda", "pb", "c", "ldc"},
-		[]arm64.Type{arm64.Int64, arm64.Ptr, arm64.Int64, arm64.Ptr, arm64.Ptr, arm64.Int64},
+		[]string{"kc", "a", "lda", "pb", "ldb", "c", "ldc"},
+		[]arm64.Type{arm64.Int64, arm64.Ptr, arm64.Int64, arm64.Ptr, arm64.Int64, arm64.Ptr, arm64.Int64},
 		nil, nil,
 	)
 	name, shift, arr, vecs := fmt.Sprintf("gemmUA%dx8D", mr), 3, "D2", 4
@@ -517,9 +517,11 @@ func gemmUAKernel(mr int, single bool) *emit.Function {
 		LoadArg("a", "R1").
 		LoadArg("lda", "R2").
 		LoadArg("pb", "R13").
+		LoadArg("ldb", "R16").
 		LoadArg("c", "R3").
 		LoadArg("ldc", "R4").
 		Raw(fmt.Sprintf("LSL $%d, R2, R2", shift)).
+		Raw(fmt.Sprintf("LSL $%d, R16, R16", shift)). // B rows ldb elements apart (BLIS's b += rs_b)
 		Raw(fmt.Sprintf("LSL $%d, R4, R4", shift))
 	for r := 0; r < mr; r++ { // row pointers R5.. = a + r*lda
 		if r == 0 {
@@ -537,7 +539,7 @@ func gemmUAKernel(mr int, single bool) *emit.Function {
 		fmla, scalar = fmlaElemS, "FMOVS"
 	}
 	step := func(lane int) {
-		b.Raw(fmt.Sprintf("VLD1.P %d(R13), %s", 8*size, blist))
+		b.Raw(fmt.Sprintf("VLD1.P (R13)(R16), %s", blist)) // post-increment by ldb
 		for r := 0; r < mr; r++ {
 			for v := 0; v < vecs; v++ {
 				b.Raw(fmla(vecs*r+v, 16+v, 20+r, lane))

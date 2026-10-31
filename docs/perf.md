@@ -1309,8 +1309,30 @@ the float64 GEMM.
 |---|---:|---:|---:|
 | widened to the float64 GEMM → native | **−58%** | **−54%** | **−50%** |
 
+### Reading B in place too, for small products (2026-10-31)
+
+BLIS's sup kernels pack neither operand: the "rv" kernel advances B by its
+row stride (`b += rs_b`) as it advances A by its column stride. v0.29.1 does
+the same on the small-product path (below `GemmThreshold`, one worker). When
+both operands are row-major, the A-in-place kernels read B's full panels in
+place too, advancing B by `ldb` instead of the packed panel's width. Only a
+partial last panel is still packed, for its zero padding. The parallel path,
+used for larger products, still packs B once and shares it across workers.
+
+| `MatMul` vs v0.29.0 (`abbench`, 10 rounds) | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| Zen 3, float32 | **−16%** | ~ | ~ |
+| Zen 3, float64 | **−10%** | ~ | ~ |
+| Neoverse N1, float32 | −7.3% | ~ | ~ |
+| Neoverse N1, float64 | ~ | ~ | ~ |
+
+The N1 host was contended (load 31, rows up to ±39%), so its "~" rows show
+no regression but are not a precise measurement. On Zen 3, float32 64² now
+takes 8.02 µs against NumPy's 8.14: **parity**. float64 takes 16.3 against
+15.8 µs (1.03×).
+
 **Open defect: products are still up to 1.2× slower than OpenBLAS on one
-core.** The exception is float64 at 1024² on Zen 3, where we are 3% faster.
+core** at 256² and 1024² on N1, and float32 1024² on Zen 3 is at 1.04×. The exception is float64 at 1024² on Zen 3, where we are 3% faster.
 The float32 kernels for riscv64 and loong64 are still to write.
 
 **Open: the allocating operations.** `Add` is still 1.5–3.2× slower than

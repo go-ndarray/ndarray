@@ -5,41 +5,42 @@ package kernels
 var gemm32 = &gemmKernel[float32]{mr: 8, nr: 8, micro: gemmMicro32, microUA: gemmMicroUA32}
 
 // gemmUA32 holds the unpacked-A kernels by tile height.
-var gemmUA32 = [...]func(kc int, a *float32, lda int, pb, c *float32, ldc int){
+var gemmUA32 = [...]func(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int){
 	1: gemmUA1x8S, 2: gemmUA2x8S, 3: gemmUA3x8S, 4: gemmUA4x8S,
 	5: gemmUA5x8S, 6: gemmUA6x8S, 7: gemmUA7x8S, 8: gemmUA8x8S,
 }
 
-// gemmMicroUA32 adds the mr x 8 tile sum_p a[r*lda+p]*pb[p*8..] into dst,
-// whose rows are ldc apart, reading A in place (mr in 1..8, lda > 0).
-func gemmMicroUA32(kc int, a []float32, lda int, pb, dst []float32, ldc, mr int) {
-	_, _, _ = a[(mr-1)*lda+kc-1], pb[kc*8-1], dst[(mr-1)*ldc+7] // the kernel's whole reach
-	gemmUA32[mr](kc, &a[0], lda, &pb[0], &dst[0], ldc)
+// gemmMicroUA32 adds the mr x 8 tile sum_p a[r*lda+p]*b[p*ldb..] into dst,
+// whose rows are ldc apart, reading A in place (mr in 1..8, lda > 0) and B
+// rows ldb > 0 apart (8 for a packed panel).
+func gemmMicroUA32(kc int, a []float32, lda int, b []float32, ldb int, dst []float32, ldc, mr int) {
+	_, _, _ = a[(mr-1)*lda+kc-1], b[(kc-1)*ldb+7], dst[(mr-1)*ldc+7] // the kernel's whole reach
+	gemmUA32[mr](kc, &a[0], lda, &b[0], ldb, &dst[0], ldc)
 }
 
 //go:noescape
-func gemmUA1x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA1x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 //go:noescape
-func gemmUA2x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA2x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 //go:noescape
-func gemmUA3x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA3x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 //go:noescape
-func gemmUA4x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA4x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 //go:noescape
-func gemmUA5x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA5x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 //go:noescape
-func gemmUA6x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA6x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 //go:noescape
-func gemmUA7x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA7x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 //go:noescape
-func gemmUA8x8S(kc int, a *float32, lda int, pb, c *float32, ldc int)
+func gemmUA8x8S(kc int, a *float32, lda int, pb *float32, ldb int, c *float32, ldc int)
 
 // gemmMicro32 adds the 8 x 8 tile sum_p pa[p*8..]*pb[p*8..] into the C block at
 // dst[0:], whose rows are ldc apart. pa, pb hold at least kc*8 packed

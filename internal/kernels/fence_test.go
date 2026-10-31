@@ -139,12 +139,14 @@ func TestGemmMicroStaysInsideItsOperands(t *testing.T) {
 	}
 	for kc := 1; kc <= 9; kc++ {
 		for _, ldc := range []int{NR, NR + 3} {
-			pb := fences(t, kc*NR)[1]
-			for mr := 1; mr <= MR; mr++ {
-				for _, lda := range []int{kc, kc + 5} {
-					for _, a := range fences(t, (mr-1)*lda+kc) {
-						for _, dst := range fences(t, (mr-1)*ldc+NR) {
-							gemm64.microUA(kc, a, lda, pb, dst, ldc, mr)
+			for _, ldb := range []int{NR, NR + 5} { // a packed panel, a row-major B in place
+				b := fences(t, (kc-1)*ldb+NR)[1]
+				for mr := 1; mr <= MR; mr++ {
+					for _, lda := range []int{kc, kc + 5} {
+						for _, a := range fences(t, (mr-1)*lda+kc) {
+							for _, dst := range fences(t, (mr-1)*ldc+NR) {
+								gemm64.microUA(kc, a, lda, b, ldb, dst, ldc, mr)
+							}
 						}
 					}
 				}
@@ -161,6 +163,9 @@ func TestGemmMicro32StaysInsideItsOperands(t *testing.T) {
 		t.Skip("no float32 GEMM kernel here")
 	}
 	for kc := 1; kc <= 9; kc++ {
+		// a row-major B read in place by microUA, rows g.nr+5 apart, ending
+		// flush against the guard
+		bs := fences32(t, (kc-1)*(g.nr+5)+g.nr)[1]
 		for _, ldc := range []int{g.nr, g.nr + 3, 64} {
 			for _, pa := range fences32(t, kc*g.mr) {
 				for _, pb := range fences32(t, kc*g.nr) {
@@ -174,7 +179,8 @@ func TestGemmMicro32StaysInsideItsOperands(t *testing.T) {
 						for _, lda := range []int{kc, kc + 5} {
 							for _, a := range fences32(t, (mr-1)*lda+kc) {
 								for _, dst := range fences32(t, (mr-1)*ldc+g.nr) {
-									g.microUA(kc, a, lda, pb, dst, ldc, mr)
+									g.microUA(kc, a, lda, pb, g.nr, dst, ldc, mr)
+									g.microUA(kc, a, lda, bs, g.nr+5, dst, ldc, mr)
 								}
 							}
 						}

@@ -42,10 +42,10 @@ func withBandTiles(bt int, f func()) {
 // that make the ikj order reproduce the oracle exactly.
 func assertGemm(t *testing.T, m, k, n int, a, b []float64) {
 	t.Helper()
-	saved := unpackA
-	defer func() { unpackA = saved }()
-	for _, unpacked := range []bool{saved, false} {
-		unpackA = unpacked
+	savedA, savedB := unpackA, unpackB
+	defer func() { unpackA, unpackB = savedA, savedB }()
+	for _, p := range [][2]bool{{savedA, savedB}, {savedA, false}, {false, false}} {
+		unpackA, unpackB = p[0], p[1]
 		assertGemmPath(t, m, k, n, a, b)
 	}
 	// A in place behind an offset, rows k+3 apart (lda != k).

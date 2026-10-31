@@ -35,18 +35,18 @@ func assertGemm32(t *testing.T, m, k, n int, a, b Mat32) {
 	t.Helper()
 	want := make([]float32, m*n)
 	gemmOracle32(want, a, b, m, k, n)
-	saved := unpackA
-	defer func() { unpackA = saved }()
-	for _, unpacked := range []bool{true, false} {
-		unpackA = unpacked
+	savedA, savedB := unpackA, unpackB
+	defer func() { unpackA, unpackB = savedA, savedB }()
+	for _, p := range [][2]bool{{true, true}, {true, false}, {false, false}} {
+		unpackA, unpackB = p[0], p[1]
 		for _, gemm := range []int{1 << 30, 1} {
 			withThresholds(1<<20, gemm, func() {
 				got := make([]float32, m*n)
 				MatMul32StridedP(got, a, b, m, k, n)
 				for i := range want {
 					if got[i] != want[i] {
-						t.Fatalf("m=%d k=%d n=%d gemm=%d unpackA=%v [%d]: %v != %v",
-							m, k, n, gemm, unpacked, i, got[i], want[i])
+						t.Fatalf("m=%d k=%d n=%d gemm=%d unpackA,B=%v [%d]: %v != %v",
+							m, k, n, gemm, p, i, got[i], want[i])
 					}
 				}
 			})
