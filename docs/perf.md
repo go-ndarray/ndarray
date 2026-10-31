@@ -1295,9 +1295,23 @@ The NumPy 2.5.3 wheel on that host is no reference for products: x @ x takes
 14–31× slower than us, consistent with a BLAS that has no POWER9 kernels. A
 comparison with a tuned POWER9 OpenBLAS remains to be made.
 
+### s390x float32 GEMM (2026-10-27)
+
+`gemmMicro4x16VXE` is the float64 4×8 kernel at twice the lanes: sixteen
+four-lane accumulators, the B row in one `VLM`, each A value replicated with
+`VLREPF`, and the z14 fused multiply-add `VFMASB`. go-asmgen encodes that
+instruction, because Go's assembler has no short-format vector float op. It
+needs the vector-enhancements facility 1, so it is gated on `useVXE`, like
+the other float32 kernels. Without the facility, float32 products widen to
+the float64 GEMM.
+
+| float32 `MatMul` vs v0.28.0 (`abbench`, 8 rounds, IBM Z) | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| widened to the float64 GEMM → native | **−58%** | **−54%** | **−50%** |
+
 **Open defect: products are still up to 1.2× slower than OpenBLAS on one
 core.** The exception is float64 at 1024² on Zen 3, where we are 3% faster.
-The float32 kernels for s390x, riscv64 and loong64 are still to write.
+The float32 kernels for riscv64 and loong64 are still to write.
 
 **Open: the allocating operations.** `Add` is still 1.5–3.2× slower than
 NumPy's `a+b`, for float64 as well. The kernel is no longer the difference,

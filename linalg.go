@@ -53,7 +53,7 @@ func (a *Array) MatMul(b *Array) (*Array, error) {
 // matmulTyped is MatMul for operands of other dtypes, in their common dtype.
 //
 // Float32 runs on the packed float32 GEMM where there is a float32 kernel
-// (arm64, ppc64le, and amd64 with FMA): it accumulates in float32, as NumPy's BLAS
+// (arm64, ppc64le, s390x with VXE, and amd64 with FMA): it accumulates in float32, as NumPy's BLAS
 // sgemm does, at twice the SIMD lanes of float64. Elsewhere it runs on the
 // float64 GEMM: the operands are widened (exact, O(n²)), multiplied and
 // accumulated in float64, and each element is rounded once to float32, which

@@ -18,7 +18,7 @@
   one. Float32 has SIMD `Sum`, `Add`/`Sub`/`Mul`/`Div` and `Sqrt` on every
   64-bit target, and `Max`/`Min` on every 64-bit target, bit-identical to its
   scalar loops. Its `MatMul` runs on a native float32 GEMM on arm64 (NEON),
-  amd64 with FMA (AVX2) and ppc64le (VSX), accumulating in float32 like NumPy's sgemm, and
+  amd64 with FMA (AVX2), ppc64le (VSX) and s390x (z14 vector), accumulating in float32 like NumPy's sgemm, and
   elsewhere on the float64 GEMM (accumulated in float64, rounded once)
   ([docs/design-dtypes.md](docs/design-dtypes.md)).
 - **Creation** — `New`/`Zeros`/`Ones`/`Full`/`FromData`/`Arange`/`Linspace`/
@@ -155,7 +155,7 @@ and `Max` by 92–96% ([docs/perf.md](docs/perf.md), *SIMD coverage*). It is a
 > pair Go supports; v0.1.0 and v0.2.0 were also run on real amd64, arm64,
 > ppc64le, riscv64 and loong64 hardware, v0.3.0 on real amd64, arm64, ppc64le
 > and loong64. See **[docs/plan-ndarray.md](docs/plan-ndarray.md)**
-> for the roadmap (a native float32 GEMM on s390x, riscv64 and loong64;
+> for the roadmap (a native float32 GEMM on riscv64 and loong64;
 > linear algebra decompositions).
 
 ## Why this module?
