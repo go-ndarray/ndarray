@@ -1332,7 +1332,28 @@ takes 8.02 µs against NumPy's 8.14: **parity**. float64 takes 16.3 against
 15.8 µs (1.03×).
 
 **Open defect: products are still up to 1.2× slower than OpenBLAS on one
-core** at 256² and 1024² on N1, and float32 1024² on Zen 3 is at 1.04×. The exception is float64 at 1024² on Zen 3, where we are 3% faster.
+core** at 256² and 1024² on N1, and float32 1024² on Zen 3 is at 1.04×.
+
+**Open defect: on a busy N1 host we slow down and OpenBLAS does not**
+(measured 2026-10-31). The host was at load 21 on 64 cores. Back to back on
+the same pinned core, NumPy's times were the usual ones, but ours were about
+a third slower than on a quiet host. So the ratio to NumPy grew to:
+
+| N1, load 21, ours / NumPy | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| float64 | 1.27 | 1.40 | 1.54 |
+| float32 | 1.39 | 1.25 | 1.27 |
+
+Ruled out on that host, by A/B:
+
+- a regression: v0.26.1, v0.27.0 and v0.29.1 are equally slow there;
+- reading A in place: v0.26.1, which packs A, is no faster;
+- the block sizes: OpenBLAS's `param.h` values (KC 320, MC 240) change
+  nothing, and NC = 128 or 256 (a B block well inside the 1 MiB L2) moves
+  float64 by 4–9% but float32 1024² by +4%.
+
+The cause is not found. The quiet-host ratios above stand for a quiet host,
+and this one for a contended one. The exception is float64 at 1024² on Zen 3, where we are 3% faster.
 The float32 kernels for riscv64 and loong64 are still to write.
 
 **Open: the allocating operations.** `Add` is still 1.5–3.2× slower than
