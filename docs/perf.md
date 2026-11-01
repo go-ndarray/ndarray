@@ -1460,7 +1460,8 @@ caught by its test. A kernel sabotaged to round one ULP up fails 76% of exp
 and 50% of log inputs.
 
 Results, identical on darwin/arm64, linux/amd64 (Zen 3), linux/ppc64le
-(POWER9) and linux/s390x (IBM Z), each run on the real machine:
+(POWER9), linux/s390x (IBM Z) and linux/riscv64 (Spacemit X60), each run on
+the real machine (loong64: CI's sampled run only, no hardware access):
 
 | | inputs | decided by the reference | not correctly rounded |
 |---|---:|---:|---:|
