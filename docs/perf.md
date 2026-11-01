@@ -1352,9 +1352,46 @@ Ruled out on that host, by A/B:
   nothing, and NC = 128 or 256 (a B block well inside the 1 MiB L2) moves
   float64 by 4–9% but float32 1024² by +4%.
 
-The cause is not found. The quiet-host ratios above stand for a quiet host,
-and this one for a contended one. The exception is float64 at 1024² on Zen 3, where we are 3% faster.
-The float32 kernels for riscv64 and loong64 are still to write.
+On the same host quiet again (load 2, 2026-11-01), measured back to back
+with NumPy on the same pinned core, the ratio is:
+
+| N1, load 2, ours / NumPy | 64² | 256² | 1024² |
+|---|---:|---:|---:|
+| float64 | 1.09 | 1.07 | 1.16 |
+| float32 | 1.08 | **1.00** | 1.07 |
+
+Our float64 1024² went from 192 ms busy to 137 ms quiet, and NumPy's from
+124 to 118 ms. So the defect is the sensitivity to a busy host, not the
+quiet-host speed.
+
+Hardware counters (`perf stat`, `perf record -e ll_cache_miss_rd`) locate
+it. Per product, at about the same instruction count, we have 4.5× the
+L1D refills, 1.6× the L2 refills and 1.7× the last-level read misses of
+OpenBLAS (IPC 1.73 against 2.09). The last level is shared, so contention
+there costs us more. The misses fall in the micro-kernel: 36.7M in
+`gemmUA4x8D`, against 23.4M in OpenBLAS's kernel plus 2.1M in its A
+packing and 1.7M in its B packing (about 10 products each).
+
+Six candidate causes were tested by A/B with counters, and none closes the
+gap:
+
+- a regression;
+- reading A in place;
+- block sizes, alone (KC 320, MC 240; NC 128, 256, 4096);
+- writing C (a fresh, zeroed C against a reused one: misses ±1%);
+- software prefetch after `dgemm_kernel_8x4.S` (L2 refills 14.1M → 6.2M,
+  but last-level misses unchanged and the times worse);
+- OpenBLAS's whole structure at once: packed A plus KC 320, MC 240,
+  NC 4096 (last-level misses 56M against OpenBLAS's 31M).
+
+What is left is how the micro-kernel itself touches memory. Closing it
+would mean rewriting the N1 kernel after OpenBLAS's instruction by
+instruction.
+
+On Zen 3, by contrast, float64 at 1024² is 3% faster than NumPy.
+
+The float32 kernels for riscv64 and loong64 are written (PRs #80 and #81)
+but not yet measured on hardware.
 
 **Open: the allocating operations.** `Add` is still 1.5–3.2× slower than
 NumPy's `a+b`, for float64 as well. The kernel is no longer the difference,
