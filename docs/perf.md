@@ -1418,6 +1418,35 @@ What does remove it:
 - **Tune the GC:** `GOGC` or `GOMEMLIMIT` for a program dominated by
   short-lived results.
 
+### float32 `Exp` and `Log` on the float64 kernels (2026-11-01)
+
+float32 `Exp` and `Log` called `math.Exp` and `math.Log` per element: 6–14×
+slower than NumPy's float32 SIMD on one Zen 3 core. They now run this
+package's float64 kernels (the ports of Arm's optimized-routines, 0.504 ULP
+worst case in float64). Elements go 256 at a time through a stack buffer:
+widened (exact), computed in place, rounded once. Nothing is allocated. The
+result is within 0.5 + 2⁻²⁹ float32 ULP, so correctly rounded except
+next to a rounding midpoint. Overflow and underflow come from the rounding:
+exp(89) is finite in float64 and rounds to +Inf.
+
+| float32, one Zen 3 core (`abbench`, 8 rounds) | before | after | NumPy 2.5.4 | after / NumPy |
+|---|---:|---:|---:|---:|
+| `Exp`, 16 Ki | 297 µs | 84 µs | 26 µs | 3.2 |
+| `Log`, 16 Ki | 198 µs | 99 µs | 32 µs | 3.1 |
+| `Exp`, 1 Mi | 18.8 ms | 5.2 ms | 1.73 ms | 3.0 |
+| `Log`, 1 Mi | 12.4 ms | 6.1 ms | 2.02 ms | 3.0 |
+
+The tests hold the results to `float32(math.Exp/Log(x))`, within one ULP and
+equal on at least 99.9% of 100 000 inputs. They also check the edges
+(±0, ±Inf, NaN, overflow, the subnormals, log of a negative), every length
+across the chunk boundaries, in-place use and the parallel split.
+
+**Open defect: still 3× slower than NumPy.** NumPy computes float32 exp and
+log in float32 SIMD (`simd_exp_f32`/`simd_log_f32` in
+`loops_exponent_log.dispatch.c.src`). Porting those kernels per architecture
+is the next step. float64 `Log` is also 1.23× slower than NumPy at 16 Ki on
+Zen 3 (85 µs against 69 µs), while float64 `Exp` is 16% faster.
+
 ## SIMD coverage
 
 - **amd64 (SSE2)** ships hand-vectorized `sum` (4-accumulator `ADDPD`), `sqrt`

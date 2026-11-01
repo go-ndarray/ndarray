@@ -59,6 +59,9 @@ func (a *Array) SqrtInto(out *Array) error {
 // element, and finite up to ln(MaxFloat64) on amd64, where math.Exp returns
 // +Inf from x ~ 709.436 (golang/go#81995; Go 1.26.8 and 1.27.1).
 func (a *Array) Exp() *Array {
+	if a.dtype == Float32 {
+		return a.unary32(kernels.Exp32P)
+	}
 	if a.dtype != Float64 {
 		return a.mathUnary(uExp, (*Array).Exp)
 	}
@@ -76,10 +79,23 @@ func (a *Array) Exp() *Array {
 // correct for subnormal inputs on amd64, where math.Log is not (log(5e-324)
 // gives -709.09 instead of -744.44; golang/go#56600).
 func (a *Array) Log() *Array {
+	if a.dtype == Float32 {
+		return a.unary32(kernels.Log32P)
+	}
 	if a.dtype != Float64 {
 		return a.mathUnary(uLog, (*Array).Log)
 	}
 	return a.unary(kernels.LogP)
+}
+
+// unary32 applies a float32 kernel to a Float32 array: the float64 kernels of
+// Exp and Log, widened and rounded once (kernels.Exp32P, Log32P), at the
+// float64 kernels' speed instead of math.Exp's and math.Log's.
+func (a *Array) unary32(f func(dst, src []float32)) *Array {
+	src := a.contiguousStore().([]float32)
+	dst := make([]float32, len(src))
+	f(dst, src)
+	return a.result(dst, append([]int(nil), a.shape...))
 }
 
 // Log2 returns the elementwise base-2 logarithm, within 2 ULP of numpy's.

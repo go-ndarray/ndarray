@@ -158,7 +158,7 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   SIMD kernels on all six 64-bit targets for `Sum` (v0.14.0–v0.17.0) and for
   `Add`/`Sub`/`Mul`/`Div` (v0.18.0) and `Sqrt` (v0.19.0). Still pure Go
   for float32: nothing in `Max`/`Min` any more (v0.20.0 to v0.25.0
-  vectorised them on all six 64-bit targets, for float32 and float64), and the transcendental ufuncs. `MatMul` runs on the float64
+  vectorised them on all six 64-bit targets, for float32 and float64), and the transcendental ufuncs (float32 `Exp`/`Log` run the float64 kernels since v0.31.0, 2–3.5× faster but still 3× behind NumPy's float32 SIMD). `MatMul` runs on the float64
   GEMM since v0.21.0, 77–90% faster than the triple loop, and since v0.26.0
   on a native float32 GEMM on arm64 (NEON 8×8) and amd64 with FMA (6×16),
   a further 53–61% faster, and since v0.28.0 on ppc64le (VSX 8×16, 37–59%
