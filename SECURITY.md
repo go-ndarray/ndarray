@@ -66,7 +66,7 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
-**2026-11-01 (v0.30.0).** float32 `Exp` and `Log` widen their input 256
+**2026-11-01 (v0.31.0).** float32 `Exp` and `Log` widen their input 256
 elements at a time into a fixed stack buffer and call the float64 kernels in
 place. There is no allocation proportional to the input beyond the result,
 and no index arithmetic beyond slices bounded by `len(dst)`. The source is
