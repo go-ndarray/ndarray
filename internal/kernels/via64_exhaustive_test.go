@@ -202,6 +202,31 @@ func TestLog32CorrectlyRounded(t *testing.T) {
 	runExhaustive(t, exhaustiveCase{"log", Log32, Log, refLog, log32Special}, exhaustiveStride())
 }
 
+// TestLog32Exceptions runs Log32 on every input of the exception table (the
+// sampled run rarely meets one): each result must be the table's, and the
+// table's must be the 300-bit reference rounded to float32. An input outside
+// the table keeps the computed value.
+func TestLog32Exceptions(t *testing.T) {
+	src := make([]float32, len(log32Exceptions))
+	for i, e := range log32Exceptions {
+		src[i] = math.Float32frombits(e[0])
+	}
+	got := make([]float32, len(src))
+	Log32(got, src)
+	for i, e := range log32Exceptions {
+		want, _ := refLog(float64(src[i])).Float32()
+		if math.Float32bits(want) != e[1] {
+			t.Errorf("table entry 0x%s: 0x%s, the reference rounds to 0x%s", hex32(e[0]), hex32(e[1]), hex32(math.Float32bits(want)))
+		}
+		if math.Float32bits(got[i]) != e[1] {
+			t.Errorf("Log32(0x%s) = 0x%s, want the table's 0x%s", hex32(e[0]), hex32(math.Float32bits(got[i])), hex32(e[1]))
+		}
+	}
+	if f := log32Exception(2, 0.5); f != 0.5 {
+		t.Errorf("an input outside the table changed: %v", f)
+	}
+}
+
 // TestCertified32 checks the certifier itself on planted values: a float64
 // exactly on a float32 midpoint, and one ULP from it, must be sent to the
 // reference; a value in the middle of a float32 interval is certified.
