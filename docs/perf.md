@@ -1459,7 +1459,8 @@ one, and at the overflow boundary are not certified; that last one was a bug,
 caught by its test. A kernel sabotaged to round one ULP up fails 76% of exp
 and 50% of log inputs.
 
-Results, on darwin/arm64 and on linux/amd64 (Zen 3):
+Results, identical on darwin/arm64, linux/amd64 (Zen 3), linux/ppc64le
+(POWER9) and linux/s390x (IBM Z), each run on the real machine:
 
 | | inputs | decided by the reference | not correctly rounded |
 |---|---:|---:|---:|
