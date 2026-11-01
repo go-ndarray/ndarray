@@ -56,6 +56,32 @@ func BenchmarkDTypeSqrt(b *testing.B) {
 	}
 }
 
+// BenchmarkDTypeExpLog times Exp and Log on 0.25..24.25 (positive, so Log
+// takes its common path; exp stays finite in float32).
+func BenchmarkDTypeExpLog(b *testing.B) {
+	for _, dt := range []nd.DType{nd.Float64, nd.Float32} {
+		for _, n := range []int{1 << 14, 1 << 20} {
+			d := make([]float64, n)
+			for i := range d {
+				d[i] = 0.25 + float64(i%97)*0.25
+			}
+			x0, _ := nd.FromData(d, n)
+			x := x0.AsType(dt)
+			for _, f := range []struct {
+				name string
+				op   func(*nd.Array) *nd.Array
+			}{{"Exp", (*nd.Array).Exp}, {"Log", (*nd.Array).Log}} {
+				b.Run(fmt.Sprintf("%s/%v/n=%d", f.name, dt, n), func(b *testing.B) {
+					b.SetBytes(int64(n * dt.Size()))
+					for i := 0; i < b.N; i++ {
+						_ = f.op(x)
+					}
+				})
+			}
+		}
+	}
+}
+
 func BenchmarkDTypeMax(b *testing.B) {
 	for _, dt := range []nd.DType{nd.Float64, nd.Float32} {
 		for _, n := range []int{1 << 14, 1 << 20} {
