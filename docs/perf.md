@@ -1441,6 +1441,44 @@ equal on at least 99.9% of 100 000 inputs. They also check the edges
 (±0, ±Inf, NaN, overflow, the subnormals, log of a negative), every length
 across the chunk boundaries, in-place use and the parallel split.
 
+#### Correctly rounded, proven over every float32 (2026-11-01)
+
+A float32 function has 2³² inputs, so correct rounding can be checked
+exhaustively instead of by sampling. `TestExp32CorrectlyRounded` and
+`TestLog32CorrectlyRounded` (set off by `NDARRAY_EXHAUSTIVE=1`; CI samples
+every 65 537th input) run every bit pattern. Each result is certified one of
+three ways:
+
+- the float64 intermediate, within 0.504 float64 ULP of the exact value, is
+  more than 2 float64 ULP from both float32 rounding midpoints;
+- or it is far outside float32's range;
+- or a 300-bit reference decides the rounding.
+
+The certifier is itself tested. Planted values on a midpoint, one ULP from
+one, and at the overflow boundary are not certified; that last one was a bug,
+caught by its test. A kernel sabotaged to round one ULP up fails 76% of exp
+and 50% of log inputs.
+
+Results, on darwin/arm64 and on linux/amd64 (Zen 3):
+
+| | inputs | decided by the reference | not correctly rounded |
+|---|---:|---:|---:|
+| `Exp` | 4 294 967 296 | 2 | **0** |
+| `Log` before the table | 4 294 967 296 | 24 | 5 |
+| `Log` with the table | 4 294 967 296 | 24 | **0** |
+
+`Log`'s double rounding was wrong for 5 inputs, e.g. log(9.47263622):
+`0x400fe5e8` instead of `0x400fe5e7`. The fix is the one correctly-rounded
+libraries use. A result within 8 float64 ULP of a float32 midpoint (the 29
+dropped bits are 0x10000000 ± 8) is looked up in a table of the 24 inputs
+that come within 2 ULP, each with its correctly rounded result from the
+300-bit reference. The check costs nothing measurable (−4%, p = 0.07, on a
+host at load 15).
+
+So float32 `Exp` and `Log` are **correctly rounded**: every result is the
+float32 nearest the exact value. NumPy's float32 SIMD kernels are documented
+at 2.52 and 3.83 ULP in their sources.
+
 **Open defect: still 3× slower than NumPy.** NumPy computes float32 exp and
 log in float32 SIMD (`simd_exp_f32`/`simd_log_f32` in
 `loops_exponent_log.dispatch.c.src`). Porting those kernels per architecture

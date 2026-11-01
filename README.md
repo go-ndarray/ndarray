@@ -19,7 +19,9 @@
   64-bit target, and `Max`/`Min` on every 64-bit target, bit-identical to its
   scalar loops. Its `MatMul` runs on a native float32 GEMM on arm64 (NEON),
   amd64 with FMA (AVX2), ppc64le (VSX) and s390x (z14 vector), accumulating in float32 like NumPy's sgemm, and
-  elsewhere on the float64 GEMM (accumulated in float64, rounded once)
+  elsewhere on the float64 GEMM (accumulated in float64, rounded once).
+  Its `Exp` and `Log` are **correctly rounded**, proven by an exhaustive test
+  over all 2³² float32 inputs
   ([docs/design-dtypes.md](docs/design-dtypes.md)).
 - **Creation** — `New`/`Zeros`/`Ones`/`Full`/`FromData`/`Arange`/`Linspace`/
   `Eye`/`Identity`.
