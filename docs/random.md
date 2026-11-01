@@ -36,6 +36,30 @@ u, _ := random.Rand(3)                // np.random.rand(3)
 | `rand`, `randn`, `randint`, `random_sample`, `normal`, `uniform`, `choice`, `shuffle`, `permutation`, `binomial`, `poisson`, `standard_normal`, `standard_exponential`, `exponential`, `standard_gamma`, `gamma`, `chisquare`, `lognormal`, `multinomial`, `bytes` | `RandomState` methods of the same names |
 | `np.random.seed`, `rand`, `randn`, `randint`, `random_sample`, `normal`, `uniform`, `choice`, `shuffle`, `permutation`, `binomial`, `poisson` | package functions over a shared `RandomState` behind a mutex |
 
+### Allocation-free scalar draws
+
+Every sampler above returns a `*ndarray.Array`. A solver that needs a few draws
+per candidate (differential evolution, basin hopping) would spend its time
+allocating, so `Generator` and `RandomState` both have five methods that draw
+into caller storage or return a Go scalar, allocate nothing, and consume
+exactly the bit-generator output NumPy consumes for the same call:
+
+| NumPy | `Generator` / `RandomState` |
+|---|---|
+| `random()` / `random_sample()`, `size=None` | `Float64() float64` |
+| `uniform(low, high, size=len(dst))` | `FillUniform(dst []float64, low, high float64) error` (Generator: error when `high-low` is negative, NaN or infinite; legacy: only NaN or infinite, `high < low` is accepted) |
+| `integers(0, high)` / `randint(0, high)`, `size=None`, int64 | `IntN(high int64) int64` (Lemire for `Generator`, masked rejection for `RandomState`; panics when `high <= 0`, like `math/rand`) |
+| `integers(0, high, size=len(dst))` / `randint(…)` | `FillIntN(dst []int64, high int64) error` (error when `high <= 0` and `dst` is not empty; nothing is drawn) |
+| `shuffle(x)` of a 1-D int64 array | `ShuffleInt64(d []int64)` (Fisher-Yates from the end, `random_interval`) |
+
+A failing call draws nothing, as in NumPy. A mixed sequence of 32-bit and
+64-bit draws keeps PCG64's buffered half-word exactly as NumPy does.
+`testdata/scalar.py` and `TestScalarDrawsMatchNumPy` compare 7 296 calls on 192
+scripts (48 seeds × Generator over PCG64 and MT19937, `RandomState` over MT19937
+and PCG64) with NumPy 2.5.3, errors included; `TestScalarAllocations` asserts
+zero allocations with `testing.AllocsPerRun`; `FuzzScalarDraws` throws NaN,
+±Inf, negative and zero bounds, `MaxInt64` and `MinInt64` at them.
+
 The size comes last; no size gives a 0-d array holding what NumPy returns as a
 scalar (`size=None`), which draws exactly the same values. `ChoiceOptions`'
 zero value is NumPy's defaults (`NoReplace`, `NoShuffle` are the negations).
@@ -213,6 +237,7 @@ interface. The samplers that call `pow`/`exp` per draw cost about what
 uv run --python cpython-3.12-macos-x86_64 --with numpy==2.5.3 python random/testdata/cases.py > random/testdata/cases.json
 uv run --with mpmath python random/testdata/libm.py > random/testdata/libm.json
 uv run --with mpmath python random/testdata/libm_tables.py > random/zz_libm_tables.go
+GONDARRAY_REGEN=1 go test ./random -run TestRegenerateScalarFixture   # scalar.json: x86-64 NumPy in an amd64 container
 python3 random/testdata/zig2go.py <numpy>/numpy/random/src/distributions/ziggurat_constants.h random/zz_ziggurat.go
 ```
 
