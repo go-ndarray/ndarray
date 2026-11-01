@@ -53,7 +53,9 @@
   PCG64DXSM, MT19937, Philox, SFC64; `Generator` (`DefaultRNG`: uniform,
   integers, ziggurat normal/exponential, gamma, beta, binomial, Poisson,
   choice, shuffle, … 40 samplers) and the legacy `RandomState` behind
-  `random.Seed(0)` / `random.Rand(…)`. Bit-exact against NumPy 2.5.3 on
+  `random.Seed(0)` / `random.Rand(…)`; allocation-free scalar draws for
+  solvers (`Float64`, `FillUniform`, `IntN`, `FillIntN`, `ShuffleInt64` on both,
+  NumPy's stream consumed call for call). Bit-exact against NumPy 2.5.3 on
   x86-64; see [docs/random.md](docs/random.md) for the few ULP-level
   exceptions (C-library `log`/`exp` rounding) and NumPy's own aarch64 drift.
 - **Notebooks and storage** — `Repr` prints what NumPy 2.5.3's `repr` prints

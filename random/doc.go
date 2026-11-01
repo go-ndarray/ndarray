@@ -32,6 +32,10 @@
 //     RandomSample, Normal, Uniform, Choice, Shuffle, Permutation, Binomial
 //     and Poisson over a shared one.
 //
+// For solvers that draw a few values per step, Generator and RandomState also
+// have allocation-free scalar draws that consume NumPy's stream call for call:
+// Float64, FillUniform, IntN, FillIntN and ShuffleInt64.
+//
 // Results are arrays with NumPy's dtypes and shapes: the size arguments come
 // last (numpy's size), and no size gives a 0-d array holding what NumPy
 // returns as a scalar. Parameters are scalars (NumPy also broadcasts array
