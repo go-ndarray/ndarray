@@ -54,6 +54,8 @@ func main() {
 	f.Add(dotFMAKernel())
 	f.Add(gemmSSE2HalfKernel())
 	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
+	f.Add(amd64.FeatureProbe("hasAVX2", amd64.AVX2))
+	f.Add(exp32CRKernel())
 	f.Add(blocks8Kernel())
 	f.Add(bin32Kernel("add32SSE2", "ADDPS", "ADDSS"))
 	f.Add(bin32Kernel("sub32SSE2", "SUBPS", "SUBSS"))
@@ -364,6 +366,82 @@ func sqrt32Kernel() *emit.Function {
 		Raw("MOVSS (SI), X0").Raw("SQRTSS X0, X0").Raw("MOVSS X0, (DI)").
 		Raw("ADDQ $4, SI").Raw("ADDQ $4, DI").Raw("DECQ CX").Raw("JMP qtail").
 		Raw("qdone:")
+	b.Ret()
+	return b.Func()
+}
+
+// exp32CRKernel builds exp32CRAVX2(dst, src *float32, n int, k *expCRConsts)
+// for n a positive multiple of 8: dst[i] = float32(expCR(clamp(src[i]))), the
+// correctly rounded float32 exp, bit for bit the Go expCR (kernels/expcr.go,
+// a transcription of Arm optimized-routines' cr_expf).
+//
+// Eight floats per iteration: clamped to [-512, 512] (exp of the clamped
+// value rounds to the same float32 +Inf or 0 as the input's), widened to two
+// groups of four doubles, and each group run through expCR's operations in
+// the same order and with the same fusing: z = x*invln2 + shift, n = z -
+// shift, r = x - n*ln2hi - n*ln2lo (VFNMADD231PD), the degree-5 polynomial,
+// the scale assembled from the table entry z&63 (VPGATHERQQ) and the
+// exponent bits z<<46, and s*y + s; then rounded once to float32. NaN lanes
+// are restored from the input at the end (the clamp turned them into -512).
+//
+// The constants are 4-lane vectors in the Go block k (offsets below), used as
+// memory operands, so all sixteen YMM registers stay free. Needs AVX2 (the
+// gather) and FMA.
+func exp32CRKernel() *emit.Function {
+	sig := amd64.Layout(
+		[]string{"dst", "src", "n", "k"},
+		[]amd64.Type{amd64.Ptr, amd64.Ptr, amd64.Int64, amd64.Ptr},
+		nil, nil,
+	)
+	const (
+		shift, invLn2, ln2Hi, ln2Lo = 0, 32, 64, 96
+		c0, c1, c2, c3              = 128, 160, 192, 224
+		idxMask, expMask            = 256, 288
+		lo, hi                      = 320, 352
+		table                       = 384
+	)
+	b := amd64.NewFunc("exp32CRAVX2", sig, 0)
+	b.LoadArg("dst", "DI").LoadArg("src", "SI").LoadArg("n", "CX").LoadArg("k", "R8")
+	b.Raw(fmt.Sprintf("LEAQ %d(R8), R9", table)) // the 64 mantissas of 2^(i/64)
+	// half runs expCR on the four doubles in h, leaving the four float32
+	// results in out. Temporaries Y4-Y10.
+	half := func(h, out string) {
+		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y4", shift))
+		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y4", invLn2, h)) // z = x*invln2 + shift
+		b.Raw(fmt.Sprintf("VSUBPD %d(R8), Y4, Y5", shift))          // n = z - shift
+		b.Raw(fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Hi, h)) // r = x - n*ln2hi
+		b.Raw(fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Lo, h)) // r -= n*ln2lo
+		b.Raw(fmt.Sprintf("VMULPD %s, %s, Y6", h, h))               // r2
+		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y7", c0))
+		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y7", c1, h)) // p01 = r*c1 + c0
+		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y8", c2))
+		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y8", c3, h)) // p23 = r*c3 + c2
+		b.Raw("VFMADD231PD Y8, Y6, Y7")                         // p04 = r2*p23 + p01
+		b.Raw(fmt.Sprintf("VFMADD231PD Y7, Y6, %s", h))         // y = r2*p04 + r
+		b.Raw(fmt.Sprintf("VPAND %d(R8), Y4, Y5", idxMask))     // z & 63
+		b.Raw("VPCMPEQQ Y9, Y9, Y9")                            // gather every lane
+		b.Raw("VPGATHERQQ Y9, (R9)(Y5*8), Y10")                 // mantissa of 2^(i/64)
+		b.Raw("VPSLLQ $46, Y4, Y4")
+		b.Raw(fmt.Sprintf("VPAND %d(R8), Y4, Y4", expMask)) // exponent and sign bits
+		b.Raw("VPOR Y10, Y4, Y4")                           // s
+		b.Raw(fmt.Sprintf("VFMADD231PD %s, Y4, Y4", h))     // s*y + s
+		b.Raw(fmt.Sprintf("VCVTPD2PSY Y4, %s", out))        // round once to float32
+	}
+	b.Raw("eloop:")
+	b.Raw("VMOVUPS (SI), Y0")
+	b.Raw("VCMPPS $3, Y0, Y0, Y15") // unordered: the NaN lanes
+	b.Raw(fmt.Sprintf("VMAXPS %d(R8), Y0, Y1", lo))
+	b.Raw(fmt.Sprintf("VMINPS %d(R8), Y1, Y1", hi))
+	b.Raw("VCVTPS2PD X1, Y2")
+	b.Raw("VEXTRACTF128 $1, Y1, X3")
+	b.Raw("VCVTPS2PD X3, Y3")
+	half("Y2", "X11")
+	half("Y3", "X12")
+	b.Raw("VINSERTF128 $1, X12, Y11, Y11")
+	b.Raw("VBLENDVPS Y15, Y0, Y11, Y11") // NaN lanes: the input NaN
+	b.Raw("VMOVUPS Y11, (DI)")
+	b.Raw("ADDQ $32, SI").Raw("ADDQ $32, DI").Raw("SUBQ $8, CX").Raw("JNZ eloop")
+	b.Raw("VZEROUPPER")
 	b.Ret()
 	return b.Func()
 }

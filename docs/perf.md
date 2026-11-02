@@ -1481,11 +1481,45 @@ So float32 `Exp` and `Log` are **correctly rounded**: every result is the
 float32 nearest the exact value. NumPy's float32 SIMD kernels are documented
 at 2.52 and 3.83 ULP in their sources.
 
-**Open defect: still 3× slower than NumPy.** NumPy computes float32 exp and
-log in float32 SIMD (`simd_exp_f32`/`simd_log_f32` in
-`loops_exponent_log.dispatch.c.src`). Porting those kernels per architecture
-is the next step. float64 `Log` is also 1.23× slower than NumPy at 16 Ki on
-Zen 3 (85 µs against 69 µs), while float64 `Exp` is 16% faster.
+#### float32 `Exp` in AVX2, correctly rounded and as fast as NumPy (2026-11-02)
+
+NumPy's float32 exp gets its speed in float32 SIMD and gives up accuracy to
+do it: 2.52 ULP in its source. We wanted both. Arm's optimized-routines has a
+vector `expf` that is correctly rounded (`math/aarch64/advsimd/cr_expf.c`,
+MIT). It widens to float64 and uses a 64-entry table of 2^(i/64) plus a
+degree-5 polynomial, cheap enough for SIMD.
+
+- **`expCR`** transcribes it one operation per line, every fused
+  multiply-add as `math.FMA`, so a kernel can repeat it bit for bit. Its
+  table is re-derived at 300 bits (`TestExpCRTable`). Its float64 error is
+  1.006 ULP, so the exhaustive certifier uses a 4-ULP margin for it.
+  Over all 2³² float32 inputs: 7 decided by the 300-bit reference,
+  **0 incorrectly rounded**, with no exception table needed.
+- **`exp32CRAVX2`** (go-asmgen, amd64 with AVX2 and FMA) runs the same
+  operations eight floats at a time. It widens with `VCVTPS2PD`, gathers the
+  table with `VPGATHERQQ`, assembles the exponent from `z << 46`, and rounds
+  once with `VCVTPD2PS`. Inputs are clamped to [−512, 512], which keeps the
+  float32 result: +Inf above, 0 below. NaN lanes are restored from the input.
+  It is bit-identical to `expCR` on 100 000 inputs, every special value and
+  every length 0–70, it is fenced, and on a Zen 3 the exhaustive test, which
+  runs it, finds **0 incorrectly rounded** of 4 294 967 296.
+- Every architecture now runs `expCR`: the AVX2 kernel where there is one,
+  the Go transcription elsewhere. So the bits are the same everywhere.
+
+| float32 `Exp`, one Zen 3 core | v0.32.0 | AVX2 | NumPy 2.5.4 | AVX2 / NumPy |
+|---|---:|---:|---:|---:|
+| 16 Ki | 90 µs | **26.9 µs** | 27.1 µs | **0.99** |
+| 1 Mi | 5.8 ms | **1.48 ms** | 1.66 ms | **0.89** |
+
+These are +235% and +289% in throughput (`abbench`, 8 rounds, p = 0.000). The
+host was at load 59 on 128 cores; NumPy ran in the same session on the same
+pinned core.
+
+**Open defect: float32 `Log` is still 3× slower than NumPy** (`simd_log_f32`,
+3.83 ULP in its source). The next step is the same treatment for log, and
+the other architectures for exp. float64 `Log` is also 1.23× slower than
+NumPy at 16 Ki on Zen 3 (85 µs against 69 µs), while float64 `Exp` is 16%
+faster.
 
 ## SIMD coverage
 
