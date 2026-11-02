@@ -411,21 +411,21 @@ func exp32CRKernel() *emit.Function {
 		b.Raw(fmt.Sprintf("VSUBPD %d(R8), Y4, Y5", shift))          // n = z - shift
 		b.Raw(fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Hi, h)) // r = x - n*ln2hi
 		b.Raw(fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Lo, h)) // r -= n*ln2lo
-		b.Raw(fmt.Sprintf("VMULPD %s, %s, Y6", h, h))              // r2
+		b.Raw(fmt.Sprintf("VMULPD %s, %s, Y6", h, h))               // r2
 		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y7", c0))
 		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y7", c1, h)) // p01 = r*c1 + c0
 		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y8", c2))
 		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y8", c3, h)) // p23 = r*c3 + c2
-		b.Raw("VFMADD231PD Y8, Y6, Y7")                          // p04 = r2*p23 + p01
-		b.Raw(fmt.Sprintf("VFMADD231PD Y7, Y6, %s", h))          // y = r2*p04 + r
-		b.Raw(fmt.Sprintf("VPAND %d(R8), Y4, Y5", idxMask))      // z & 63
-		b.Raw("VPCMPEQQ Y9, Y9, Y9")                             // gather every lane
-		b.Raw("VPGATHERQQ Y9, (R9)(Y5*8), Y10")                  // mantissa of 2^(i/64)
+		b.Raw("VFMADD231PD Y8, Y6, Y7")                         // p04 = r2*p23 + p01
+		b.Raw(fmt.Sprintf("VFMADD231PD Y7, Y6, %s", h))         // y = r2*p04 + r
+		b.Raw(fmt.Sprintf("VPAND %d(R8), Y4, Y5", idxMask))     // z & 63
+		b.Raw("VPCMPEQQ Y9, Y9, Y9")                            // gather every lane
+		b.Raw("VPGATHERQQ Y9, (R9)(Y5*8), Y10")                 // mantissa of 2^(i/64)
 		b.Raw("VPSLLQ $46, Y4, Y4")
 		b.Raw(fmt.Sprintf("VPAND %d(R8), Y4, Y4", expMask)) // exponent and sign bits
 		b.Raw("VPOR Y10, Y4, Y4")                           // s
-		b.Raw(fmt.Sprintf("VFMADD231PD %s, Y4, Y4", h))      // s*y + s
-		b.Raw(fmt.Sprintf("VCVTPD2PSY Y4, %s", out))         // round once to float32
+		b.Raw(fmt.Sprintf("VFMADD231PD %s, Y4, Y4", h))     // s*y + s
+		b.Raw(fmt.Sprintf("VCVTPD2PSY Y4, %s", out))        // round once to float32
 	}
 	b.Raw("eloop:")
 	b.Raw("VMOVUPS (SI), Y0")
