@@ -206,7 +206,8 @@ func exhaustiveStride() uint64 {
 }
 
 func TestExp32CorrectlyRounded(t *testing.T) {
-	runExhaustive(t, exhaustiveCase{"exp", Exp32, Exp, refExp, exp32Special, 2}, exhaustiveStride())
+	// Exp32 rounds expCR (1.006 float64 ULP): the certifier's margin is 4.
+	runExhaustive(t, exhaustiveCase{"exp", Exp32, expCRSlice, refExp, exp32Special, 4}, exhaustiveStride())
 }
 
 func TestLog32CorrectlyRounded(t *testing.T) {
