@@ -1515,11 +1515,53 @@ These are +235% and +289% in throughput (`abbench`, 8 rounds, p = 0.000). The
 host was at load 59 on 128 cores; NumPy ran in the same session on the same
 pinned core.
 
-**Open defect: float32 `Log` is still 3× slower than NumPy** (`simd_log_f32`,
-3.83 ULP in its source). The next step is the same treatment for log, and
-the other architectures for exp. float64 `Log` is also 1.23× slower than
-NumPy at 16 Ki on Zen 3 (85 µs against 69 µs), while float64 `Exp` is 16%
-faster.
+#### float32 `Log` in AVX2, correctly rounded and as fast as NumPy (2026-11-02)
+
+float32 `Log` was 3× slower than NumPy (`simd_log_f32`, 3.83 ULP in its
+source). optimized-routines has no correctly rounded logf; CORE-MATH has one
+(`src/binary32/log/logf.c`, Alexei Sibidanov and Paul Zimmermann, MIT).
+
+- **`logCR`** transcribes it. A 64-entry table and a degree-3 polynomial in
+  float64 give a lower bound r of log x, with r + 0x1.f06p-33 an upper
+  bound; when both round to the same float32, that is the answer. Otherwise
+  a degree-8 polynomial decides: 762 750 of the 2³¹ positive inputs, about
+  1 in 2800. Every product is converted to float64 explicitly, which Go
+  defines as rounding it, so no architecture fuses it into an FMA.
+- **Proof, two ways, over all 2³² inputs:** `logCR` equals v0.33.0's `log32`
+  (widened float64 `Log` plus a 24-entry exception table, no shared code) on
+  every input, and `Log32` is held to the 300-bit reference by
+  `TestLog32CorrectlyRounded`: **0 incorrectly rounded**, on darwin/arm64
+  (Go) and on Zen 3 (AVX2).
+- **`log32CRAVX2`** (go-asmgen, amd64 with AVX2) runs the fast path on eight
+  floats at a time. The integer part is done in 32-bit lanes, the tables are
+  gathered with `VGATHERDPD`, and the arithmetic is `VMULPD`/`VADDPD` in
+  `logCR`'s order, never fused. A block holding a lane that is not a positive
+  normal float32, or whose bounds round apart, is not stored; it is handed
+  back to `logCR`. x = 1 gives +0 in the vector. The kernel is bit-identical
+  to `logCR` on 300 000 inputs and every length 0–70, in place too, and it
+  is fenced.
+- The old via64 `log32` and its exception table now live in a test file as
+  the oracle; the 24 hardest inputs stay a regression test.
+
+| float32 `Log`, 16 Ki in [0.25, 24.25), one Zen 3 core, load 0.35 | time |
+|---|---:|
+| v0.33.0 (via64) | 91.5 µs |
+| `logCR` in Go | 82 µs |
+| **`log32CRAVX2`** | **31.1 µs** |
+| NumPy 2.5.4, `np.log(a, out=o)` | 31.0 µs |
+
+Through the API (`BenchmarkDTypeExpLog`, allocating), against v0.33.0,
+`abbench` 8 interleaved rounds with load at most 8: −65% at 16 Ki (104.6 →
+37.1 µs) and −68% at 1 Mi (6.74 → 2.16 ms), p = 0.000.
+
+The four gathers per block are not the bottleneck: replacing the `tl` gather
+by a register copy saves at most 8%. Doing better than NumPy needs a
+different algorithm, not a tweak of this one.
+
+**Open defect:** float64 `Log` is 1.23× slower than NumPy at 16 Ki on Zen 3
+(85 µs against 69 µs), while float64 `Exp` is 16% faster. The float32 kernels
+for the other architectures are still to write; there `Exp` and `Log` run
+the Go transcriptions.
 
 ## SIMD coverage
 

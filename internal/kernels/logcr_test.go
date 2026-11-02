@@ -97,7 +97,7 @@ func BenchmarkLog32Kernels(b *testing.B) {
 	for _, k := range []struct {
 		name string
 		f    func(dst, src []float32)
-	}{{"via64", log32}, {"logCR", logCRSlice}} {
+	}{{"via64", log32}, {"logCR", logCRSlice}, {"fast", log32Fast}} {
 		b.Run(k.name, func(b *testing.B) {
 			b.SetBytes(int64(4 * len(src)))
 			for b.Loop() {
