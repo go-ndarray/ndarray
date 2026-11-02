@@ -29,13 +29,17 @@ import (
 
 // certified32 rounds the float64 intermediate y to float32 and reports
 // whether that rounding is provably the correct rounding of the exact value.
-func certified32(y float64) (float32, bool) {
+func certified32(y float64) (float32, bool) { return certified32Margin(y, 2) }
+
+// certified32Margin is certified32 for an intermediate whose error may reach
+// margin/2 float64 ULP (the margin is kept at twice the measured worst).
+func certified32Margin(y float64, margin float64) (float32, bool) {
 	f := float32(y)
 	ay := math.Abs(y)
 	if math.IsNaN(y) || math.IsInf(y, 0) || ay > 0x1p129 || ay < 0x1p-152 {
 		return f, true
 	}
-	eps := 2 * (math.Nextafter(ay, math.Inf(1)) - ay)
+	eps := margin * (math.Nextafter(ay, math.Inf(1)) - ay)
 	if math.IsInf(float64(f), 0) {
 		// y rounded to ±Inf although |y| <= 2^129: the only boundary is
 		// half an ULP past MaxFloat32, where ties-to-even goes to Inf.
@@ -66,6 +70,9 @@ type exhaustiveCase struct {
 	// special returns the expected result for inputs the reference does not
 	// take (NaN, ±Inf, and for log 0 and negatives), and ok=false otherwise.
 	special func(x float32) (want float32, isNaN, ok bool)
+	// margin is the certifier's distance to a midpoint, in float64 ULP
+	// (0 means 2, for the 0.504-ULP kernels).
+	margin float64
 }
 
 func exp32Special(x float32) (float32, bool, bool) {
@@ -140,7 +147,11 @@ func runExhaustive(t *testing.T, c exhaustiveCase, stride uint64) {
 						}
 						want = w
 					} else {
-						f, sure := certified32(y64[i])
+						margin := c.margin
+						if margin == 0 {
+							margin = 2
+						}
+						f, sure := certified32Margin(y64[i], margin)
 						if sure {
 							want = f
 						} else {
@@ -195,11 +206,11 @@ func exhaustiveStride() uint64 {
 }
 
 func TestExp32CorrectlyRounded(t *testing.T) {
-	runExhaustive(t, exhaustiveCase{"exp", Exp32, Exp, refExp, exp32Special}, exhaustiveStride())
+	runExhaustive(t, exhaustiveCase{"exp", Exp32, Exp, refExp, exp32Special, 2}, exhaustiveStride())
 }
 
 func TestLog32CorrectlyRounded(t *testing.T) {
-	runExhaustive(t, exhaustiveCase{"log", Log32, Log, refLog, log32Special}, exhaustiveStride())
+	runExhaustive(t, exhaustiveCase{"log", Log32, Log, refLog, log32Special, 2}, exhaustiveStride())
 }
 
 // TestLog32Exceptions runs Log32 on every input of the exception table (the
