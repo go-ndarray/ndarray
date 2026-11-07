@@ -1558,6 +1558,48 @@ The four gathers per block are not the bottleneck: replacing the `tl` gather
 by a register copy saves at most 8%. Doing better than NumPy needs a
 different algorithm, not a tweak of this one.
 
+#### Through the API, float32 results come from the Workspace (2026-11-07)
+
+The table above compares kernels. Through the API, `Log` on a Float32 array
+was still 1.25× NumPy at 16 Ki and 1.16× at 1 Mi (35.5 µs against 28.3 µs,
+2.07 ms against 1.79 ms; `BenchmarkDTypeExpLog`'s data, 0.25 + (i%97)·0.25,
+allocating on both sides). The difference is the result's allocation:
+`make` alone costs 4.1 µs at 16 Ki and 130 µs at 1 Mi on that core, because Go
+takes a large span from the heap and zeroes it, where NumPy reuses an
+unzeroed buffer. On this data the kernel hands no block back to `logCR`
+(`handed-blocks/op` in `BenchmarkLog32Kernels`).
+
+- **Float32 in a Workspace.** The Workspace used to give only float64
+  memory, so every Float32 result went to the heap even inside one.
+  `Workspace.alloc32` now carves float32 results from the same blocks (two
+  per float64 element, 64-byte aligned, cap = len). It is used for `Exp`,
+  `Log`, the other float32 ufuncs, arithmetic, `Power`, `Clip` and the
+  float32 GEMM (zeroed there, since the GEMM accumulates).
+  `TestWorkspace32MatchesHeap` holds every one of them to the heap result
+  bit for bit, also after the arena is filled with NaN bits; setting the
+  GEMM's allocation to unzeroed makes it fail.
+- **The kernel's range check** moved to the end of the block: one wrapping
+  add and one compare, ux + 0x7f800000 ≤ −0x01000001 as int32, select
+  exactly the positive normals. The separate test and branch before the
+  arithmetic are gone: −2.4% (`abbench`, 8 rounds, p ≤ 0.03 on three of four
+  sizes).
+
+| float32, one Zen 3 core, load ≤ 4.2 | 16 Ki | 1 Mi |
+|---|---:|---:|
+| `Exp`, allocating | 24.2 µs | 1.39 ms |
+| `Exp` in a Workspace | **19.4 µs** | **1.23 ms** |
+| NumPy 2.5.4, `np.exp(a)` | 22.0–22.3 µs | 1.37–1.47 ms |
+| `Log`, allocating | 34.5 µs | 2.06 ms |
+| `Log` in a Workspace | **29.9 µs** | **1.90 ms** |
+| NumPy 2.5.4, `np.log(a)` | 28.1–28.8 µs | 1.77–1.82 ms |
+
+Ours are medians of six runs in two interleaved rounds; NumPy's ranges are
+the medians of nine of every quiet round of the day (one 1 Mi `exp` round at
+2.47 ms and two 16 Ki `log` rounds at 31–34 µs are left out, which favours
+NumPy). In a Workspace, float32 `Exp` is about 12% faster than NumPy and
+`Log` about 5% slower; NumPy computes both in float32, at 2.52 and 3.83 ULP.
+Allocating, Go's zeroing of each result adds 4 µs at 16 Ki.
+
 **Open defect:** float64 `Log` is 1.23× slower than NumPy at 16 Ki on Zen 3
 (85 µs against 69 µs), while float64 `Exp` is 16% faster. The float32 kernels
 for the other architectures are still to write; there `Exp` and `Log` run
