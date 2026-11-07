@@ -21,8 +21,9 @@
   amd64 with FMA (AVX2), ppc64le (VSX) and s390x (z14 vector), accumulating in float32 like NumPy's sgemm, and
   elsewhere on the float64 GEMM (accumulated in float64, rounded once).
   Its `Exp` and `Log` are **correctly rounded**, proven by an exhaustive test
-  over all 2³² float32 inputs, and on amd64 with AVX2 they run as fast as
-  NumPy's float32 SIMD, which is not correctly rounded
+  over all 2³² float32 inputs. On amd64 with AVX2, in a `Workspace`, `Exp`
+  is 12% faster than NumPy's float32 SIMD and `Log` 5% slower; NumPy's are
+  not correctly rounded
   ([docs/design-dtypes.md](docs/design-dtypes.md)).
 - **Creation** — `New`/`Zeros`/`Ones`/`Full`/`FromData`/`Arange`/`Linspace`/
   `Eye`/`Identity`.
