@@ -72,7 +72,7 @@ func (a *Array) arith(b *Array, op binCode, k func(dst, x, y []float64)) (*Array
 	if err != nil {
 		return nil, err
 	}
-	d := makeStore(dt, prod(shape))
+	d := a.ws.store(dt, prod(shape), false) // arithStore writes every element
 	arithStore(op, d, a.operandStore(dt, shape), b.operandStore(dt, shape))
 	return a.result(d, append([]int(nil), shape...)), nil
 }
@@ -223,7 +223,7 @@ func (a *Array) mathUnary(code unaryCode, f64 func(*Array) *Array) *Array {
 		return f64(a.AsType(Float64))
 	}
 	src := a.operandStore(dt, a.shape)
-	d := makeStore(dt, a.Size())
+	d := a.ws.store(dt, a.Size(), false) // every element is written below
 	switch s := src.(type) {
 	case []float32:
 		if code == uSqrt {
@@ -302,7 +302,7 @@ func (a *Array) power(p float64) *Array {
 	src := a.contiguousStore()
 	switch s := src.(type) {
 	case []float32:
-		d := make([]float32, len(s))
+		d := a.ws.alloc32(len(s), false)
 		powFloat32(p, d, s)
 		return a.result(d, append([]int(nil), a.shape...))
 	case []complex64:
@@ -454,7 +454,7 @@ func (a *Array) clipTyped(lo, hi float64) (*Array, error) {
 	case a.dtype != Float32:
 		return a.AsType(Float64).Clip(lo, hi)
 	}
-	d := make([]float32, a.Size())
+	d := a.ws.alloc32(a.Size(), false)
 	clipOrdered(d, a.contiguousStore().([]float32), float32(lo), float32(hi))
 	return a.result(d, append([]int(nil), a.shape...)), nil
 }

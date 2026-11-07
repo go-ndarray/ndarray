@@ -508,14 +508,9 @@ func log32CRKernel() *emit.Function {
 	}
 	b.Raw("lloop:")
 	b.Raw("VMOVDQU (SI), Y0")
-	// Not a positive normal: v = ux - 2^23 outside [0, 0x7effffff].
-	b.Raw(fmt.Sprintf("VPSUBD %d(R8), Y0, Y4", sub))
-	b.Raw(fmt.Sprintf("VPCMPGTD %d(R8), Y4, Y5", maxv)) // v > 0x7effffff
-	b.Raw("VPXOR Y6, Y6, Y6")
-	b.Raw("VPCMPGTD Y4, Y6, Y6") // 0 > v
-	b.Raw("VPOR Y5, Y6, Y6")
-	b.Raw("VPTEST Y6, Y6")
-	b.Raw("JNZ lbail")
+	// Lanes that are not positive normals run through the arithmetic below
+	// on meaningless values (j stays at most 64, so the gathers stay inside
+	// the tables) and are rejected at the end of the block.
 	b.Raw(fmt.Sprintf("VPCMPEQD %d(R8), Y0, Y13", oneBits)) // x == 1
 	b.Raw(fmt.Sprintf("VPAND %d(R8), Y0, Y1", mmask))       // m
 	b.Raw(fmt.Sprintf("VPADDD %d(R8), Y1, Y2", jadd))
@@ -535,6 +530,11 @@ func log32CRKernel() *emit.Function {
 	b.Raw("VINSERTI128 $1, X3, Y15, Y15") // lb
 	b.Raw("VPCMPEQD Y15, Y14, Y15")       // the bounds agree
 	b.Raw("VPOR Y13, Y15, Y15")           // or x == 1
+	// Positive normals, ux in [2^23, 0x7f7fffff], are exactly the lanes with
+	// ux + 0x7f800000 (wrapping) at most -0x01000001 as int32.
+	b.Raw(fmt.Sprintf("VPADDD %d(R8), Y0, Y4", sub))
+	b.Raw(fmt.Sprintf("VPCMPGTD %d(R8), Y4, Y4", maxv)) // not a positive normal
+	b.Raw("VPANDN Y15, Y4, Y15")
 	b.Raw("VMOVMSKPS Y15, DX")
 	b.Raw("CMPL DX, $0xff")
 	b.Raw("JNE lbail")

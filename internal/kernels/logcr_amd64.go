@@ -17,7 +17,8 @@ var logCRK = func() *logCRConsts {
 		k.expOr[i] = 1023 << 23
 	}
 	for i := range 8 {
-		k.sub[i], k.maxv[i], k.mmask[i] = 1<<23, 0x7effffff, 1<<23-1
+		// The kernel's positive-normal test: ux + sub (wrapping) <= maxv as int32.
+		k.sub[i], k.maxv[i], k.mmask[i] = 0x7f800000, 0xfeffffff, 1<<23-1
 		k.jadd[i], k.bias[i], k.oneBits[i] = 1<<16, 127, 0x3f800000
 	}
 	k.tr, k.tl = logCRTr, logCRTl

@@ -1,6 +1,9 @@
 package ndarray
 
-import "sync"
+import (
+	"sync"
+	"unsafe"
+)
 
 // Workspace is an arena for the results of array operations, for loops that
 // compute the same shapes over and over. Bind an input with Use; every result
@@ -22,7 +25,9 @@ import "sync"
 // cycles, no zeroing of memory the kernel overwrites anyway, and the same
 // cache-warm bytes every time. This is the workspace pattern of ND4J, the
 // Java ndarray library, and the scoped counterpart of NumPy's reference-count
-// free-list, which a garbage-collected language does not have. The *Into
+// free-list, which a garbage-collected language does not have. Float64 and
+// Float32 results come from the workspace; results of the other dtypes still
+// come from the heap. The *Into
 // methods (AddInto, SqrtInto, ...) remain the way to reuse one named buffer.
 //
 // ⚠ Reset invalidates every array allocated from the workspace since the
@@ -106,6 +111,27 @@ func (w *Workspace) alloc(n int, zero bool) []float64 {
 // alloc returns n elements for a result computed from a: from a's workspace
 // when it is bound to one, else from the heap (always zeroed there).
 func (a *Array) alloc(n int, zero bool) []float64 { return a.ws.alloc(n, zero) }
+
+// alloc32 is alloc for Float32 storage: n float32 carved from the same
+// blocks, two per float64 element, so Reset recycles a Float32 result like
+// any other. It keeps alloc's 64-byte start and has cap n.
+func (w *Workspace) alloc32(n int, zero bool) []float32 {
+	if w == nil || n == 0 {
+		return make([]float32, n)
+	}
+	s := w.alloc((n+1)/2, zero)
+	return unsafe.Slice((*float32)(unsafe.Pointer(unsafe.SliceData(s))), n)
+}
+
+// store returns storage for n elements of a non-Float64 dtype dt: Float32
+// from w (zeroed only if zero is set, so a caller passes false only when it
+// writes every element), the other dtypes zeroed from the heap.
+func (w *Workspace) store(dt DType, n int, zero bool) any {
+	if dt == Float32 {
+		return w.alloc32(n, zero)
+	}
+	return makeStore(dt, n)
+}
 
 // Detach returns a heap copy of a that is not bound to any workspace: the way
 // a result computed in a workspace outlives its Reset.

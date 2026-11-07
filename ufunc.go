@@ -88,12 +88,11 @@ func (a *Array) Log() *Array {
 	return a.unary(kernels.LogP)
 }
 
-// unary32 applies a float32 kernel to a Float32 array: the float64 kernels of
-// Exp and Log, widened and rounded once (kernels.Exp32P, Log32P), at the
-// float64 kernels' speed instead of math.Exp's and math.Log's.
+// unary32 applies a float32 kernel that writes every element (kernels.Exp32P,
+// Log32P) to a Float32 array; in a Workspace the result is not zeroed first.
 func (a *Array) unary32(f func(dst, src []float32)) *Array {
 	src := a.contiguousStore().([]float32)
-	dst := make([]float32, len(src))
+	dst := a.ws.alloc32(len(src), false)
 	f(dst, src)
 	return a.result(dst, append([]int(nil), a.shape...))
 }

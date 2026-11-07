@@ -1,6 +1,7 @@
 package kernels
 
 import (
+	"fmt"
 	"math"
 	"math/bits"
 	"runtime"
@@ -86,24 +87,46 @@ func logCRTakesSlow(x float32) bool {
 	return float32(r) != float32(r+0x1.f06p-33)
 }
 
-// BenchmarkLog32Kernels compares the float32 log kernels on 16 Ki inputs in
-// [0.25, 24.25), the range of benchmarks/BenchmarkDTypeExpLog.
+// BenchmarkLog32Kernels compares the float32 log kernels on two inputs in
+// [0.25, 24.25] at 16 Ki and 1 Mi: a ramp, and the multiples of 0.25 that
+// benchmarks/BenchmarkDTypeExpLog uses (0.25 + (i%97)*0.25). It reports the
+// blocks of 8 the AVX2 kernel hands back to logCR per call.
 func BenchmarkLog32Kernels(b *testing.B) {
-	src := make([]float32, 16<<10)
-	for i := range src {
-		src[i] = 0.25 + 24*float32(i)/float32(len(src))
-	}
-	dst := make([]float32, len(src))
-	for _, k := range []struct {
+	for _, data := range []struct {
 		name string
-		f    func(dst, src []float32)
-	}{{"via64", log32}, {"logCR", logCRSlice}, {"fast", log32Fast}} {
-		b.Run(k.name, func(b *testing.B) {
-			b.SetBytes(int64(4 * len(src)))
-			for b.Loop() {
-				k.f(dst, src)
+		at   func(i, n int) float32
+	}{
+		{"ramp", func(i, n int) float32 { return 0.25 + 24*float32(i)/float32(n) }},
+		{"steps", func(i, n int) float32 { return float32(0.25 + float64(i%97)*0.25) }},
+	} {
+		for _, n := range []int{16 << 10, 1 << 20} {
+			src := make([]float32, n)
+			for i := range src {
+				src[i] = data.at(i, n)
 			}
-		})
+			handed := 0
+			for i := 0; i+8 <= n; i += 8 {
+				for _, x := range src[i : i+8] {
+					if logCRTakesSlow(x) {
+						handed++
+						break
+					}
+				}
+			}
+			dst := make([]float32, n)
+			for _, k := range []struct {
+				name string
+				f    func(dst, src []float32)
+			}{{"via64", log32}, {"logCR", logCRSlice}, {"fast", log32Fast}} {
+				b.Run(fmt.Sprintf("%s/n=%d/%s", data.name, n, k.name), func(b *testing.B) {
+					b.SetBytes(int64(4 * n))
+					for b.Loop() {
+						k.f(dst, src)
+					}
+					b.ReportMetric(float64(handed), "handed-blocks/op")
+				})
+			}
+		}
 	}
 }
 

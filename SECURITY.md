@@ -66,6 +66,20 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-11-07 (v0.35.0).** `Workspace.alloc32` turns a slice of `(n+1)/2`
+float64 from the arena into `n` float32 with `unsafe.Slice`: the float32
+slice lies inside the float64 one (2·⌈n/2⌉·4 ≥ 4n bytes), its cap is n so an
+append reallocates instead of writing into the next result, and n = 0 takes
+the heap path so no pointer past a block is formed. The blocks hold no
+pointers, so the garbage collector keeps them alive through the interior
+pointer like any other slice. Unzeroed float32 results are requested only by
+code that writes every element; `TestWorkspace32MatchesHeap` fills the arena
+with NaN bits before each pass, so a site that read memory it had not
+written would differ from the heap result. In `log32CRAVX2`, lanes that are
+not positive normals now run through the arithmetic before being rejected;
+their table index is still `(m + 2^16) >> 17` ≤ 64, so the gathers stay in
+the tables.
+
 **2026-11-02 (v0.34.0).** The AVX2 float32 log kernel (`log32CRAVX2`) reads
 and writes at most `n` floats, a positive multiple of 8 chosen by the Go
 wrapper, and returns how many it wrote, a multiple of 8 no larger than `n`;

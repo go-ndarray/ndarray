@@ -85,7 +85,7 @@ var useGemm32 = kernels.HasGemm32()
 // strides, like matView; another dtype is converted first.
 func matmulFloat32(a, b *Array) *Array {
 	m, k, n := a.shape[0], a.shape[1], b.shape[1]
-	dst := make([]float32, m*n) // MatMul32StridedP accumulates into dst
+	dst := a.ws.alloc32(m*n, true) // MatMul32StridedP accumulates into dst
 	kernels.MatMul32StridedP(dst, a.matView32(), b.matView32(), m, k, n)
 	return a.result(dst, []int{m, n})
 }
