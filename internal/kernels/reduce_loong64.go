@@ -29,16 +29,7 @@ func lasxFromAuxv() bool {
 }
 
 // The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
-// sumLASX stays in sum_loong64.s until the loong64 kernels move to go-simd/floats.
-
-func sqrtSIMD(dst, src []float64) {
-	if !useLASX || len(dst) == 0 {
-		sqrtScalar(dst, src)
-		return
-	}
-	_ = src[len(dst)-1] // the kernel reads len(dst) of src
-	sqrtLASX(&dst[0], &src[0], len(dst))
-}
+// The elementwise kernels and sqrt are go-simd/floats' (reduce_floats_elem.go).
 
 // max/min stay on the four-accumulator scalar reducers.
 // maxSIMD / minSIMD reduce whole blocks of 8 with the LSX kernels
@@ -89,57 +80,3 @@ func maxLSX(a *float64, n int, out *[2]int64) int64
 
 //go:noescape
 func minLSX(a *float64, n int, out *[2]int64) int64
-
-func addBin(dst, a, b []float64) {
-	if !useLASX || len(dst) == 0 {
-		Add(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	addLASX(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func subBin(dst, a, b []float64) {
-	if !useLASX || len(dst) == 0 {
-		Sub(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	subLASX(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func mulBin(dst, a, b []float64) {
-	if !useLASX || len(dst) == 0 {
-		Mul(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	mulLASX(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func divBin(dst, a, b []float64) {
-	if !useLASX || len(dst) == 0 {
-		Div(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	divLASX(&dst[0], &a[0], &b[0], len(dst))
-}
-
-//go:noescape
-func sumLASX(a *float64, n int) float64
-
-//go:noescape
-func sqrtLASX(dst, src *float64, n int)
-
-//go:noescape
-func addLASX(dst, a, b *float64, n int)
-
-//go:noescape
-func subLASX(dst, a, b *float64, n int)
-
-//go:noescape
-func mulLASX(dst, a, b *float64, n int)
-
-//go:noescape
-func divLASX(dst, a, b *float64, n int)

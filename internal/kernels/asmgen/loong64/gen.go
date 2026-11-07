@@ -29,15 +29,14 @@ const (
 
 func main() {
 	f := emit.NewFile("loong64")
-	f.Add(sumKernel())
 	f.Add(dotKernel())
-	f.Add(sqrtKernel())
+	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
+	// (lanes_loong64_gen.go there) since floats v0.10.0.
 	for _, k := range []struct{ name, vec, sca string }{
 		{"addLASX", "XVADDD", "ADDD"}, {"subLASX", "XVSUBD", "SUBD"},
 		{"mulLASX", "XVMULD", "MULD"}, {"divLASX", "XVDIVD", "DIVD"},
 	} {
-		f.Add(binKernel(k.name, k.vec, k.sca))
-		// "XVADDD" -> "VADDF", "ADDD" -> "ADDF": the LSX single-precision op.
+		//"XVADDD" -> "VADDF", "ADDD" -> "ADDF": the LSX single-precision op.
 		f.Add(bin32Kernel(k.name[:3]+"32LSX", k.vec[1:len(k.vec)-1]+"F", k.sca[:len(k.sca)-1]+"F"))
 	}
 	f.Add(gemmKernel())
@@ -74,32 +73,6 @@ func zero(b *loong64.Builder, n int) {
 	}
 }
 
-// sumKernel builds sumLASX(a *float64, n int) float64: four LASX accumulators
-// (16 doubles per iteration), folded, plus a scalar tail. A regrouping of the
-// sum, held to a tolerance like the other targets' SIMD sums.
-func sumKernel() *emit.Function {
-	sig := loong64.Layout([]string{"a", "n"}, []loong64.Type{loong64.Ptr, loong64.Int64},
-		[]string{"ret"}, []loong64.Type{loong64.Float64})
-	b := loong64.NewFunc("sumLASX", sig, 0)
-	b.LoadArg("a", "R4").LoadArg("n", "R5")
-	zero(b, 4)
-	b.Label("sloop").Raw("MOVV $16, R12").Raw("BLT R5, R12, sfold")
-	for k := 0; k < 4; k++ {
-		b.Raw("XVMOVQ %d(R4), X%d", 32*k, 4+k)
-	}
-	for k := 0; k < 4; k++ {
-		b.Raw("XVADDD X%d, X%d, X%d", 4+k, k, k)
-	}
-	b.Raw("ADDV $128, R4").Raw("ADDV $-16, R5").Raw("JMP sloop")
-	b.Label("sfold")
-	fold(b)
-	b.Label("stail").Raw("BEQ R5, sdone").
-		Raw("MOVD 0(R4), F1").Raw("ADDD F1, F0").
-		Raw("ADDV $8, R4").Raw("ADDV $-1, R5").Raw("JMP stail")
-	b.Label("sdone").StoreRet("F0", "ret").Ret()
-	return b.Func()
-}
-
 // dotKernel builds dotLASX(a, b *float64, n int) float64: four fused
 // multiply-add accumulators (xvfmadd.d), folded, plus a fused scalar tail.
 func dotKernel() *emit.Function {
@@ -123,59 +96,6 @@ func dotKernel() *emit.Function {
 		Raw("MOVD 0(R4), F1").Raw("MOVD 0(R6), F2").Raw("FMADDD F0, F2, F1, F0"). // F0 = F1*F2 + F0; Go's order is Fa, Fk, Fj, Fd
 		Raw("ADDV $8, R4").Raw("ADDV $8, R6").Raw("ADDV $-1, R5").Raw("JMP dtail")
 	b.Label("ddone").StoreRet("F0", "ret").Ret()
-	return b.Func()
-}
-
-// sqrtKernel builds sqrtLASX(dst, src *float64, n int): XVFSQRTD over 16
-// doubles per iteration, SQRTD for the tail. Both are the correctly rounded
-// IEEE square root, so the result is bit-identical to math.Sqrt.
-func sqrtKernel() *emit.Function {
-	sig := loong64.Layout([]string{"dst", "src", "n"}, []loong64.Type{loong64.Ptr, loong64.Ptr, loong64.Int64}, nil, nil)
-	b := loong64.NewFunc("sqrtLASX", sig, 0)
-	b.LoadArg("dst", "R4").LoadArg("src", "R6").LoadArg("n", "R5")
-	b.Label("qloop").Raw("MOVV $16, R12").Raw("BLT R5, R12, qtail")
-	for k := 0; k < 4; k++ {
-		b.Raw("XVMOVQ %d(R6), X%d", 32*k, k)
-	}
-	for k := 0; k < 4; k++ {
-		b.Raw("XVFSQRTD X%d, X%d", k, 4+k)
-	}
-	for k := 0; k < 4; k++ {
-		b.Raw("XVMOVQ X%d, %d(R4)", 4+k, 32*k)
-	}
-	b.Raw("ADDV $128, R4").Raw("ADDV $128, R6").Raw("ADDV $-16, R5").Raw("JMP qloop")
-	b.Label("qtail").Raw("BEQ R5, qdone").
-		Raw("MOVD 0(R6), F1").Raw("SQRTD F1, F1").Raw("MOVD F1, 0(R4)").
-		Raw("ADDV $8, R4").Raw("ADDV $8, R6").Raw("ADDV $-1, R5").Raw("JMP qtail")
-	b.Label("qdone").Ret()
-	return b.Func()
-}
-
-// binKernel builds name(dst, a, b *float64, n int): dst[i] = a[i] OP b[i], 16
-// doubles per iteration with the LASX op, a scalar tail with sca. Each lane is
-// one correctly rounded IEEE operation, bit-identical to the scalar oracle.
-func binKernel(name, vec, sca string) *emit.Function {
-	sig := loong64.Layout([]string{"dst", "a", "b", "n"},
-		[]loong64.Type{loong64.Ptr, loong64.Ptr, loong64.Ptr, loong64.Int64}, nil, nil)
-	b := loong64.NewFunc(name, sig, 0)
-	b.LoadArg("dst", "R4").LoadArg("a", "R6").LoadArg("b", "R7").LoadArg("n", "R5")
-	l := name[:3]
-	b.Label(l+"loop").Raw("MOVV $16, R12").Raw("BLT R5, R12, %stail", l)
-	for k := 0; k < 4; k++ {
-		b.Raw("XVMOVQ %d(R6), X%d", 32*k, k)
-		b.Raw("XVMOVQ %d(R7), X%d", 32*k, 4+k)
-	}
-	for k := 0; k < 4; k++ {
-		b.Raw("%s X%d, X%d, X%d", vec, 4+k, k, 8+k) // X(8+k) = X(k) OP X(4+k)
-	}
-	for k := 0; k < 4; k++ {
-		b.Raw("XVMOVQ X%d, %d(R4)", 8+k, 32*k)
-	}
-	b.Raw("ADDV $128, R4").Raw("ADDV $128, R6").Raw("ADDV $128, R7").Raw("ADDV $-16, R5").Raw("JMP %sloop", l)
-	b.Label(l+"tail").Raw("BEQ R5, %sdone", l).
-		Raw("MOVD 0(R6), F1").Raw("MOVD 0(R7), F2").Raw("%s F2, F1", sca).Raw("MOVD F1, 0(R4)").
-		Raw("ADDV $8, R4").Raw("ADDV $8, R6").Raw("ADDV $8, R7").Raw("ADDV $-1, R5").Raw("JMP %stail", l)
-	b.Label(l + "done").Ret()
 	return b.Func()
 }
 

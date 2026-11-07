@@ -14,17 +14,7 @@ import "math"
 const HaveReduceSIMD = true
 
 // The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
-// sumVSX stays in sum_ppc64le.s until the ppc64le kernels move to go-simd/floats.
-
-// sqrtSIMD writes sqrt(src[i]) into dst[i] with XVSQRTDP, bit-identical to
-// math.Sqrt (one correctly rounded operation per lane).
-func sqrtSIMD(dst, src []float64) {
-	if len(dst) == 0 {
-		return
-	}
-	_ = src[len(dst)-1] // the kernel reads len(dst) of src
-	sqrtVSX(&dst[0], &src[0], len(dst))
-}
+// The elementwise kernels and sqrt are go-simd/floats' (reduce_floats_elem.go).
 
 // maxSIMD / minSIMD reduce whole blocks of 8 with xvmaxdp/xvmindp
 // (sum_ppc64le.s) and fold the two lanes and the tail with Go's max/min.
@@ -75,51 +65,3 @@ func maxVSX(a *float64, n int, out *[2]float64) int64
 
 //go:noescape
 func minVSX(a *float64, n int, out *[2]float64) int64
-
-// addBin, subBin, mulBin, divBin write dst[i] = a[i] OP b[i] with the VSX
-// kernels, each lane one IEEE operation, bit-identical to the scalar oracle.
-func addBin(dst, a, b []float64) {
-	if len(dst) > 0 {
-		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-		addVSX(&dst[0], &a[0], &b[0], len(dst))
-	}
-}
-
-func subBin(dst, a, b []float64) {
-	if len(dst) > 0 {
-		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-		subVSX(&dst[0], &a[0], &b[0], len(dst))
-	}
-}
-
-func mulBin(dst, a, b []float64) {
-	if len(dst) > 0 {
-		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-		mulVSX(&dst[0], &a[0], &b[0], len(dst))
-	}
-}
-
-func divBin(dst, a, b []float64) {
-	if len(dst) > 0 {
-		_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-		divVSX(&dst[0], &a[0], &b[0], len(dst))
-	}
-}
-
-//go:noescape
-func sumVSX(a *float64, n int) float64
-
-//go:noescape
-func sqrtVSX(dst, src *float64, n int)
-
-//go:noescape
-func addVSX(dst, a, b *float64, n int)
-
-//go:noescape
-func subVSX(dst, a, b *float64, n int)
-
-//go:noescape
-func mulVSX(dst, a, b *float64, n int)
-
-//go:noescape
-func divVSX(dst, a, b *float64, n int)

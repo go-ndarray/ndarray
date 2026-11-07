@@ -26,14 +26,13 @@ import (
 
 func main() {
 	f := emit.NewFile("riscv64")
-	f.Add(reduceKernel("sumRVV", false))
 	f.Add(reduceKernel("dotRVV", true))
-	f.Add(unaryKernel("sqrtRVV", "VFSQRTV V0, V16"))
+	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
+	// (lanes_riscv64_gen.go there) since floats v0.10.0.
 	for _, k := range []struct{ name, op string }{
 		{"addRVV", "VFADDVV"}, {"subRVV", "VFSUBVV"},
 		{"mulRVV", "VFMULVV"}, {"divRVV", "VFDIVVV"},
 	} {
-		f.Add(binKernel(k.name, k.op))
 		f.Add(bin32Kernel(k.name[:3]+"32RVV", k.op))
 	}
 	f.Add(gemmKernel())
@@ -103,40 +102,6 @@ func reduceKernel(name string, dot bool) *emit.Function {
 		Raw("VFMVFS V24, F0").
 		StoreRet("F0", "ret").
 		Ret()
-	return b.Func()
-}
-
-// unaryKernel builds NAME(dst, src *float64, n int) for n >= 1: op reads V0 and
-// writes V16.
-func unaryKernel(name, op string) *emit.Function {
-	sig := riscv64.Layout([]string{"dst", "src", "n"},
-		[]riscv64.Type{riscv64.Ptr, riscv64.Ptr, riscv64.Int64}, nil, nil)
-	b := riscv64.NewFunc(name, sig, 0)
-	b.LoadArg("dst", "X10").LoadArg("src", "X11").LoadArg("n", "X13")
-	b.Raw("loop:").
-		Raw("VSETVLI X13, E64, M8, TA, MA, X14").
-		Raw("VLE64V (X11), V0").
-		Raw(op).
-		Raw("VSE64V V16, (X10)")
-	advance(b, "X14", "X10", "X11")
-	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
-	return b.Func()
-}
-
-// binKernel builds NAME(dst, a, b *float64, n int) for n >= 1: dst = a OP b.
-func binKernel(name, op string) *emit.Function {
-	sig := riscv64.Layout([]string{"dst", "a", "b", "n"},
-		[]riscv64.Type{riscv64.Ptr, riscv64.Ptr, riscv64.Ptr, riscv64.Int64}, nil, nil)
-	b := riscv64.NewFunc(name, sig, 0)
-	b.LoadArg("dst", "X10").LoadArg("a", "X11").LoadArg("b", "X12").LoadArg("n", "X13")
-	b.Raw("loop:").
-		Raw("VSETVLI X13, E64, M8, TA, MA, X14").
-		Raw("VLE64V (X11), V0").
-		Raw("VLE64V (X12), V8").
-		Raw("%s V8, V0, V16", op). // V16 = a OP b
-		Raw("VSE64V V16, (X10)")
-	advance(b, "X14", "X10", "X11", "X12")
-	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
 	return b.Func()
 }
 

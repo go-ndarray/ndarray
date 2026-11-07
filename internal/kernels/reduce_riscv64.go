@@ -32,19 +32,11 @@ func rvvFromAuxv() bool {
 	return err == nil && hwcapFrom(auxv)&hwcapV != 0
 }
 
-// The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
-// sumRVV stays in sum_riscv64.s until the riscv64 kernels move to go-simd/floats
-// (it regrouped [MaxInt64, MinInt64, -3] as float64 on a real SpacemiT X60: the
-// mean was 0, NumPy's -1; SumPairwise adds n < 8 left to right as NumPy does).
-
-func sqrtSIMD(dst, src []float64) {
-	if !useRVV || len(dst) == 0 {
-		sqrtScalar(dst, src)
-		return
-	}
-	_ = src[len(dst)-1] // the kernel reads len(dst) of src
-	sqrtRVV(&dst[0], &src[0], len(dst))
-}
+// The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order
+// (the former sumRVV regrouped [MaxInt64, MinInt64, -3] as float64 on a real
+// SpacemiT X60: the mean was 0, NumPy's -1; SumPairwise adds n < 8 left to right
+// as NumPy does). The elementwise kernels and sqrt are go-simd/floats'
+// (reduce_floats_elem.go).
 
 // maxSIMD / minSIMD are the NaN-propagating extrema of a (non-empty): the RVV
 // kernels (vfmax/vfmin with a vmfne NaN count) when the CPU reports V, the
@@ -69,42 +61,6 @@ func maxRVV(a *float64, n int) float64
 //go:noescape
 func minRVV(a *float64, n int) float64
 
-func addBin(dst, a, b []float64) {
-	if !useRVV || len(dst) == 0 {
-		Add(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	addRVV(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func subBin(dst, a, b []float64) {
-	if !useRVV || len(dst) == 0 {
-		Sub(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	subRVV(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func mulBin(dst, a, b []float64) {
-	if !useRVV || len(dst) == 0 {
-		Mul(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	mulRVV(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func divBin(dst, a, b []float64) {
-	if !useRVV || len(dst) == 0 {
-		Div(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	divRVV(&dst[0], &a[0], &b[0], len(dst))
-}
-
 // dotSIMD is the inner product (RVV kernel, one fused accumulator per lane).
 func dotSIMD(a, b []float64) float64 {
 	if !useRVV || len(a) == 0 {
@@ -115,22 +71,4 @@ func dotSIMD(a, b []float64) float64 {
 }
 
 //go:noescape
-func sumRVV(a *float64, n int) float64
-
-//go:noescape
 func dotRVV(a, b *float64, n int) float64
-
-//go:noescape
-func sqrtRVV(dst, src *float64, n int)
-
-//go:noescape
-func addRVV(dst, a, b *float64, n int)
-
-//go:noescape
-func subRVV(dst, a, b *float64, n int)
-
-//go:noescape
-func mulRVV(dst, a, b *float64, n int)
-
-//go:noescape
-func divRVV(dst, a, b *float64, n int)
