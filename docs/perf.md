@@ -1600,10 +1600,42 @@ NumPy). In a Workspace, float32 `Exp` is about 12% faster than NumPy and
 `Log` about 5% slower; NumPy computes both in float32, at 2.52 and 3.83 ULP.
 Allocating, Go's zeroing of each result adds 4 µs at 16 Ki.
 
-**Open defect:** float64 `Log` is 1.23× slower than NumPy at 16 Ki on Zen 3
-(85 µs against 69 µs), while float64 `Exp` is 16% faster. The float32 kernels
-for the other architectures are still to write; there `Exp` and `Log` run
-the Go transcriptions.
+#### float64 `Log` in AVX2: 1.55× faster than NumPy (2026-11-07)
+
+float64 `Log` was 1.23× slower than NumPy at 16 Ki on Zen 3 (85 µs against
+69 µs). NumPy's 4.2 ns per element is glibc's scalar log, which is
+optimized-routines' log.c, the code ours ports; the gap was our scalar Go.
+
+**`logAVX2`** (go-asmgen, AVX2 and FMA) runs `Log`'s table path on four
+doubles at a time, with `Log`'s operations in its order: the one FMA it has
+(r = z·invc − 1) as `VFMADD231PD`, every other product and sum as a separate
+`VMULPD`/`VADDPD`, which is how Go compiles them on amd64.
+- `invc` and `logc` are gathered from the 16-byte table rows with
+  `VPGATHERQQ`.
+- AVX2 has no 64-bit arithmetic shift and no int64→float64 conversion, so
+  the exponent kd = int64(tmp)>>52 is built exactly from u = tmp>>52:
+  the float64 with bits 0x4330000000000000 | (u ^ 0x800), minus 2^52 + 2048.
+- A block holding a lane that is not a positive normal, or one within 2⁻⁴
+  of 1 (`Log`'s polynomial path), is not stored; it is handed back to the Go
+  loop.
+
+`TestLogAVX2MatchesGo` holds it to the Go loop bit for bit on 300 000 inputs
+covering every exponent and table index, near 1, the special values, every
+length 0–70 and in place. Dropping the `+ kd·ln2lo` term fails it, while
+`TestLogULP` alone (0.5078 ULP worst, unchanged) would not see it. Fenced;
+the constant block's layout is tested.
+
+| float64 `Log`, one Zen 3 core, load ≤ 3.7 | 16 Ki | 1 Mi |
+|---|---:|---:|
+| v0.35.0 | 83.9 µs | 5.06 ms |
+| **AVX2** | **44.4 µs** | **2.59 ms** |
+| NumPy 2.5.4, `np.log(a)` | 68.9–69.4 µs | 4.33–4.41 ms |
+
+−47% and −49% against v0.35.0 (`abbench`, 8 interleaved rounds, p = 0.000),
+both allocating, on `BenchmarkDTypeExpLog`'s data.
+
+The float32 kernels for the other architectures are still to write; there
+`Exp` and `Log` run the Go transcriptions.
 
 ## SIMD coverage
 

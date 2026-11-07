@@ -66,6 +66,15 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-11-07 (v0.36.0).** The AVX2 float64 log kernel (`logAVX2`) reads and
+writes at most `n` doubles, a positive multiple of 4 chosen by the Go
+wrapper, and returns how many it wrote; the wrapper finishes the block it
+stopped at in Go and resumes past it, so the loop always advances, and a
+block it stops at is not written (`dst == src` is safe). Its gather index is
+`2·((ix - off) >> 45 & 127)` into the 128-row table, masked for any input,
+so it cannot leave the table. It is gated on AVX2 and FMA (CPU and OS) and
+fenced with PROT_NONE on both sides of each operand.
+
 **2026-11-07 (v0.35.0).** `Workspace.alloc32` turns a slice of `(n+1)/2`
 float64 from the arena into `n` float32 with `unsafe.Slice`: the float32
 slice lies inside the float64 one (2·⌈n/2⌉·4 ≥ 4n bytes), its cap is n so an

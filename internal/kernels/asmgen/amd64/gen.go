@@ -57,6 +57,7 @@ func main() {
 	f.Add(amd64.FeatureProbe("hasAVX2", amd64.AVX2))
 	f.Add(exp32CRKernel())
 	f.Add(log32CRKernel())
+	f.Add(logKernel())
 	f.Add(blocks8Kernel())
 	f.Add(bin32Kernel("add32SSE2", "ADDPS", "ADDSS"))
 	f.Add(bin32Kernel("sub32SSE2", "SUBPS", "SUBSS"))
@@ -543,6 +544,101 @@ func log32CRKernel() *emit.Function {
 	b.Raw("ADDQ $32, SI").Raw("ADDQ $32, DI").Raw("ADDQ $8, AX")
 	b.Raw("CMPQ AX, CX").Raw("JLT lloop")
 	b.Raw("lbail:")
+	b.Raw("VZEROUPPER")
+	b.StoreRet("AX", "done")
+	b.Ret()
+	return b.Func()
+}
+
+// logKernel builds logAVX2(dst, src *float64, n int, k *logConsts, tab
+// *logEntry) (done int): the table path of Log (log.go, the port of
+// optimized-routines' log) on four doubles at a time, n a positive multiple
+// of 4, with Log's operations in its order and its single FMA
+// (r = z*invc - 1, VFMADD231PD) where it has one; every other product and
+// sum is a separate VMULPD/VADDPD, as Go compiles them on amd64.
+//
+//   - tmp = ix - off; i = (tmp>>45) & 127 indexes the 16-byte table entries
+//     (VPGATHERQQ at 2i, scale 8: invc, then logc 8 bytes on); k =
+//     int64(tmp)>>52 has no AVX2 instruction (no 64-bit arithmetic shift, no
+//     int64 to float64 conversion), so kd is built exactly from u = tmp>>52:
+//     float64 bits 0x4330000000000000 | (u ^ 0x800) is 2^52 + (u ^ 0x800),
+//     and subtracting 2^52 + 2048 leaves the sign-extended k.
+//
+// A block holding a lane that is not a positive normal (ix < 0x0010<<48 or
+// above the largest finite, as int64), or one within 2^-4 of 1 (Log's
+// polynomial path), is not stored: the kernel returns the count it wrote and
+// Log finishes that block in Go. Needs AVX2 (gathers, 64-bit compares) and
+// FMA.
+func logKernel() *emit.Function {
+	sig := amd64.Layout(
+		[]string{"dst", "src", "n", "k", "tab"},
+		[]amd64.Type{amd64.Ptr, amd64.Ptr, amd64.Int64, amd64.Ptr, amd64.Ptr},
+		[]string{"done"}, []amd64.Type{amd64.Int64},
+	)
+	const (
+		lo, hiMax, n1loM1, n1hi = 0, 32, 64, 96
+		off, idxMask, topMask   = 128, 160, 192
+		magic, magicSub, x2048  = 224, 256, 288
+		negOne, ln2hi, ln2lo    = 320, 352, 384
+		a0, a1, a2, a3, a4      = 416, 448, 480, 512, 544
+	)
+	b := amd64.NewFunc("logAVX2", sig, 0)
+	b.LoadArg("dst", "DI").LoadArg("src", "SI").LoadArg("n", "CX").LoadArg("k", "R8").LoadArg("tab", "R9")
+	b.Raw("XORQ AX, AX")
+	b.Raw("dloop:")
+	b.Raw("VMOVDQU (SI), Y0") // ix
+	// The lanes Log's loop sends to log1.
+	b.Raw(fmt.Sprintf("VPCMPGTQ %d(R8), Y0, Y1", hiMax)) // ix > largest finite (as int64)
+	b.Raw(fmt.Sprintf("VMOVDQU %d(R8), Y2", lo))
+	b.Raw("VPCMPGTQ Y0, Y2, Y2") // ix < 0x0010<<48: subnormal, zero or negative
+	b.Raw(fmt.Sprintf("VPCMPGTQ %d(R8), Y0, Y3", n1loM1))
+	b.Raw(fmt.Sprintf("VMOVDQU %d(R8), Y4", n1hi))
+	b.Raw("VPCMPGTQ Y0, Y4, Y4")
+	b.Raw("VPAND Y4, Y3, Y3") // within 2^-4 of 1
+	b.Raw("VPOR Y3, Y2, Y2")
+	b.Raw("VPOR Y1, Y2, Y2")
+	b.Raw("VPTEST Y2, Y2")
+	b.Raw("JNZ dbail")
+	b.Raw(fmt.Sprintf("VPSUBQ %d(R8), Y0, Y1", off)) // tmp
+	b.Raw("VPSRLQ $45, Y1, Y2")
+	b.Raw(fmt.Sprintf("VPAND %d(R8), Y2, Y2", idxMask))
+	b.Raw("VPADDQ Y2, Y2, Y2") // 2i: entries are two float64 wide
+	b.Raw("VPSRLQ $52, Y1, Y3")
+	b.Raw(fmt.Sprintf("VPXOR %d(R8), Y3, Y3", x2048))
+	b.Raw(fmt.Sprintf("VPOR %d(R8), Y3, Y3", magic))
+	b.Raw(fmt.Sprintf("VSUBPD %d(R8), Y3, Y3", magicSub)) // kd
+	b.Raw(fmt.Sprintf("VPAND %d(R8), Y1, Y4", topMask))
+	b.Raw("VPSUBQ Y4, Y0, Y4") // iz = ix - tmp&(0xfff<<52)
+	b.Raw("VPCMPEQQ Y5, Y5, Y5")
+	b.Raw("VPGATHERQQ Y5, (R9)(Y2*8), Y6") // invc
+	b.Raw("VPCMPEQQ Y5, Y5, Y5")
+	b.Raw("VPGATHERQQ Y5, 8(R9)(Y2*8), Y7") // logc
+	b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y8", negOne))
+	b.Raw("VFMADD231PD Y6, Y4, Y8")                    // r = z*invc - 1, one rounding
+	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y3, Y9", ln2hi)) // kd*ln2hi
+	b.Raw("VADDPD Y7, Y9, Y9")                         // w = ... + logc
+	b.Raw("VADDPD Y8, Y9, Y10")                        // hi = w + r
+	b.Raw("VSUBPD Y10, Y9, Y11")                       // w - hi
+	b.Raw("VADDPD Y8, Y11, Y11")                       // + r
+	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y3, Y12", ln2lo))
+	b.Raw("VADDPD Y12, Y11, Y11") // lo = w - hi + r + kd*ln2lo
+	b.Raw("VMULPD Y8, Y8, Y12")   // r2
+	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y8, Y13", a2))
+	b.Raw(fmt.Sprintf("VADDPD %d(R8), Y13, Y13", a1)) // A1 + r*A2
+	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y8, Y14", a4))
+	b.Raw(fmt.Sprintf("VADDPD %d(R8), Y14, Y14", a3)) // A3 + r*A4
+	b.Raw("VMULPD Y14, Y12, Y14")
+	b.Raw("VADDPD Y14, Y13, Y13") // A1 + r*A2 + r2*(A3 + r*A4)
+	b.Raw("VMULPD Y12, Y8, Y14")  // r*r2
+	b.Raw("VMULPD Y13, Y14, Y14") // r*r2*(...)
+	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y12, Y13", a0))
+	b.Raw("VADDPD Y13, Y11, Y11") // lo + r2*A0
+	b.Raw("VADDPD Y14, Y11, Y11") // + r*r2*(...)
+	b.Raw("VADDPD Y10, Y11, Y11") // + hi
+	b.Raw("VMOVUPD Y11, (DI)")
+	b.Raw("ADDQ $32, SI").Raw("ADDQ $32, DI").Raw("ADDQ $4, AX")
+	b.Raw("CMPQ AX, CX").Raw("JLT dloop")
+	b.Raw("dbail:")
 	b.Raw("VZEROUPPER")
 	b.StoreRet("AX", "done")
 	b.Ret()

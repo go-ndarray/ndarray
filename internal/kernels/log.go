@@ -44,7 +44,11 @@ const (
 
 // logTab holds {1/c, log(c)} per subinterval, copied from log_data.c
 // (N == 128); TestLogTable checks every entry against its defining properties.
-var logTab = [logN]struct{ invc, logc float64 }{
+// logEntry is one row of logTab: 1/c and log(c), 16 bytes (logAVX2 gathers
+// invc at 16i and logc at 16i + 8).
+type logEntry struct{ invc, logc float64 }
+
+var logTab = [logN]logEntry{
 	{0x1.734f0c3e0de9fp+0, -0x1.7cc7f79e69000p-2},
 	{0x1.713786a2ce91fp+0, -0x1.76feec20d0000p-2},
 	{0x1.6f26008fab5a0p+0, -0x1.713e31351e000p-2},
@@ -238,10 +242,15 @@ func logReduced(ix uint64) float64 {
 	return lo + r2*logA0 + r*r2*(logA1+r*logA2+r2*(logA3+r*logA4)) + hi
 }
 
-// Log writes log(src[i]) into dst[i]. Positive normal inputs away from 1 take
-// the table path straight from the loop; everything else goes through log1.
+// Log writes log(src[i]) into dst[i]: on the AVX2 kernel where there is one
+// (log_amd64.go), on logScalar otherwise and for the blocks the kernel hands
+// back.
+func Log(dst, src []float64) { logFast(dst[:len(src)], src) }
+
+// logScalar is Log in Go. Positive normal inputs away from 1 take the table
+// path straight from the loop; everything else goes through log1.
 // TestLogLoopMatchesLog1 holds the two to the same bits.
-func Log(dst, src []float64) {
+func logScalar(dst, src []float64) {
 	dst = dst[:len(src)]
 	const lo, span = 0x0010 << 48, (0x7ff0 - 0x0010) << 48
 	near1lo := math.Float64bits(1.0 - 0x1p-4)
