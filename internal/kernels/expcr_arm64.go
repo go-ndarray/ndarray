@@ -39,8 +39,5 @@ func exp32Fast(dst, src []float32) {
 	exp32CR(dst[i:], src[i:])
 }
 
-// log32Fast is the correctly rounded float32 log: logCR in Go here.
-func log32Fast(dst, src []float32) { logCRSlice(dst, src) }
-
 //go:noescape
 func exp32CRNEON(dst, src *float32, n int, k *expCRNEONConsts) (done int)
