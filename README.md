@@ -131,9 +131,9 @@ is wrong on subnormals
   elements (2.4–5.6×), the `*Into` forms of `Add`/`Mul`/`Sqrt` (faster or at
   parity at every size), and `MatMul` against single-threaded OpenBLAS
   (3.7–5.9× from 512²); in a `Workspace`, `x + y` and `sqrt(x*y + x)` match or
-  beat NumPy at every size measured.
-- **At parity:** `SumAxis(0)`, `Inner` against 16-thread OpenBLAS, `Log` on
-  one core.
+  beat NumPy at every size measured; float64 `Log` on one core with AVX2
+  (1.55× at 16 Ki, 1.68× at 1 Mi).
+- **At parity:** `SumAxis(0)`, `Inner` against 16-thread OpenBLAS.
 - **Slower:** `MatMul` against 16-thread OpenBLAS at 512² and up (0.42× at
   512², 0.51× at 1024², measured in one run with OpenBLAS; at 256² ours is
   1.44× faster); `Dot` and mat·vec against NumPy's 16-thread BLAS (0.69× and 0.52× since v0.6.0's helper pool, measured in one run; 0.16× before); `Exp`
