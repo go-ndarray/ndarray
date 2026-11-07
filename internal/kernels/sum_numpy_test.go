@@ -35,3 +35,35 @@ func TestSumMatchesNumPy(t *testing.T) {
 		}
 	}
 }
+
+// TestSumPParallelIsBitIdentical: SumP cuts NumPy's pairwise tree and sums the
+// subtrees on several cores; the result is floats.SumPairwise's bits for every
+// length and core count (a subtree of only -0 included: the final +0 erases it).
+func TestSumPParallelIsBitIdentical(t *testing.T) {
+	negZero := math.Copysign(0, -1)
+	for _, procs := range []int{1, 2, 3, 4, 7, 16} {
+		withMaxProcs(procs, func() {
+			withThresholds(64, 1<<14, func() {
+				for _, n := range []int{64, 129, 1000, 4097, 100000, 1<<20 + 13, 3<<20 - 7} {
+					a := randVec(n, int64(n))
+					for i := range a {
+						a[i] *= 1e8 // wide dynamic range: any regrouping would show
+						if i%97 == 0 {
+							a[i] = 1e-9
+						}
+					}
+					want := sumSIMD(a)
+					if got := SumP(a); math.Float64bits(got) != math.Float64bits(want) {
+						t.Fatalf("procs=%d n=%d: SumP %v (%#x), SumPairwise %v (%#x)", procs, n, got, math.Float64bits(got), want, math.Float64bits(want))
+					}
+					for i := range a {
+						a[i] = negZero
+					}
+					if got := SumP(a); math.Float64bits(got) != math.Float64bits(sumSIMD(a)) {
+						t.Fatalf("procs=%d n=%d all -0: SumP %v", procs, n, got)
+					}
+				}
+			})
+		})
+	}
+}

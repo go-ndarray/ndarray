@@ -266,14 +266,75 @@ func mapReduceP(a []float64, red func([]float64) float64, combine func([]float64
 	return combine(partials)
 }
 
-// SumP returns the sum of all elements of a in NumPy's order: floats.SumPairwise,
-// bit-identical to np.sum of a contiguous 1-D float64 array. It is serial at every
-// size: NumPy's pairwise order is a fixed recursion, and summing chunks on several
-// cores and folding the partials would regroup it (the result would then depend on
-// the core count). An order-preserving parallel split (chunks cut where NumPy's
-// recursion cuts) is possible and not done here. Callers that need the exact
-// sequential left-to-right value use Sum.
-func SumP(a []float64) float64 { return sumSIMD(a) }
+// SumP returns the sum of all elements of a in NumPy's order: bit-identical to
+// floats.SumPairwise (np.sum of a contiguous 1-D float64 array), at every size and
+// whatever the core count. NumPy's pairwise sum is a fixed binary tree (a block of
+// at most 128 elements is the leaf; a longer one splits at n/2 rounded down to a
+// multiple of 8, and the two halves are added), so the parallel form cuts the same
+// tree: it descends the top levels exactly as NumPy does, until there are about
+// four subtrees per worker of at least reduceGrain elements, sums each subtree with
+// floats.SumPairwise on its own core, and adds the results back up the same tree.
+// The only difference from the serial recursion is the sign of a subtree of only
+// -0 values (floats.SumPairwise starts from +0), which the final +0 + result of
+// NumPy's reduction erases. Callers that need the exact sequential left-to-right
+// value use Sum.
+func SumP(a []float64) float64 {
+	n := len(a)
+	if n < ParThreshold {
+		return sumSIMD(a)
+	}
+	w := numWorkers(n)
+	depth := 0
+	for 1<<depth < 4*w && n>>(depth+1) >= reduceGrain {
+		depth++
+	}
+	if depth == 0 {
+		return sumSIMD(a)
+	}
+	var cuts []int // leaf boundaries, in tree order: leaf i is a[cuts[i]:cuts[i+1]]
+	cuts = append(cuts, 0)
+	var leaves func(lo, n, depth int)
+	leaves = func(lo, n, depth int) {
+		if depth == 0 || n <= pairwiseBlock {
+			cuts = append(cuts, lo+n)
+			return
+		}
+		n2 := pairwiseSplit(n)
+		leaves(lo, n2, depth-1)
+		leaves(lo+n2, n-n2, depth-1)
+	}
+	leaves(0, n, depth)
+	vals := make([]float64, len(cuts)-1)
+	parallelFor(len(vals), w, func(lo, hi int) {
+		for i := lo; i < hi; i++ {
+			vals[i] = sumSIMD(a[cuts[i]:cuts[i+1]])
+		}
+	})
+	next := 0
+	var fold func(n, depth int) float64
+	fold = func(n, depth int) float64 {
+		if depth == 0 || n <= pairwiseBlock {
+			v := vals[next]
+			next++
+			return v
+		}
+		n2 := pairwiseSplit(n)
+		l := fold(n2, depth-1)
+		return l + fold(n-n2, depth-1)
+	}
+	return fold(n, depth)
+}
+
+// pairwiseBlock is the longest block NumPy's pairwise sum adds with eight
+// accumulators (PW_BLOCKSIZE); a longer one splits at pairwiseSplit.
+const pairwiseBlock = 128
+
+// pairwiseSplit is where DOUBLE_pairwise_sum cuts a block of n > 128 elements: n/2
+// rounded down to a multiple of 8.
+func pairwiseSplit(n int) int {
+	n2 := n / 2
+	return n2 - n2%8
+}
 
 // reduceP folds per-chunk results of the associative scalar reducer red with
 // red itself, giving a result identical to the serial kernel.

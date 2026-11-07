@@ -183,9 +183,11 @@ which this module imports: on amd64 (AVX2) and arm64 (NEON) the elementwise
 `Exp`, `Log` and the correctly rounded float32 `Exp`/`Log` (the AVX2 and NEON
 kernels were written here and moved down). **`Sum` is NumPy's pairwise sum**
 (`floats.SumPairwise`): bit-identical to `np.sum` of a contiguous 1-D float64
-array, on every architecture, at every size. It replaces lane-parallel sums whose
-last bits differed from NumPy's and from one architecture to the next, and it is
-serial (a multicore split would regroup NumPy's order). The other architectures
+array, on every architecture, at every size and whatever the core count. It
+replaces lane-parallel sums whose last bits differed from NumPy's and from one
+architecture to the next. Large sums still run on several cores: the split cuts
+NumPy's pairwise tree where NumPy cuts it and adds the subtrees back up the same
+tree, so the bits do not depend on the number of workers. The other architectures
 keep their own elementwise kernels here until floats has them.
 
 ## Goroutines
