@@ -11,9 +11,9 @@ import "github.com/go-simd/floats"
 // sqrtScalar, Max, Min of kernels.go) on every input, signed zeros and NaNs
 // included; the tests of this package hold them to it.
 //
-// amd64 needs AVX2+FMA for them (floats' gate); on a CPU without it floats runs
-// its portable loops, which the compiler does not vectorise (the SSE2 kernels
-// this package had before ran there).
+// amd64 needs AVX2+FMA for the AVX2 kernels (floats' gate); on a CPU without it
+// floats runs its SSE2 kernels (floats v0.10.0, floats#31), as this package's
+// own SSE2 kernels did before v0.37.0.
 
 // HaveReduceSIMD reports that this build ships SIMD reduction/elementwise
 // kernels (so the dispatch wrappers route through them rather than the scalar
@@ -24,25 +24,13 @@ const HaveReduceSIMD = true
 func sqrtSIMD(dst, src []float64) { floats.Sqrt(dst, src[:len(dst)]) }
 
 // maxSIMD returns the NaN-propagating maximum of a (non-empty), the serial Max
-// oracle's value (max(-0, +0) = +0, as NumPy). floats.Max leaves the sign of a
-// zero result unspecified (its kernels compare zeros as equal), so a zero result,
-// the one case where it matters, is resolved by the oracle, which costs nothing
-// on any other result.
-func maxSIMD(a []float64) float64 {
-	if r := floats.Max(a); r != 0 {
-		return r
-	}
-	return Max(a)
-}
+// oracle's value (max(-0, +0) = +0, as NumPy). floats.Max has that contract since
+// v0.10.0 (floats#32), so no zero result needs resolving here any more.
+func maxSIMD(a []float64) float64 { return floats.Max(a) }
 
 // minSIMD returns the NaN-propagating minimum of a (non-empty) (min(-0, +0) =
-// -0), resolved like maxSIMD.
-func minSIMD(a []float64) float64 {
-	if r := floats.Min(a); r != 0 {
-		return r
-	}
-	return Min(a)
-}
+// -0), floats.Min's contract since v0.10.0.
+func minSIMD(a []float64) float64 { return floats.Min(a) }
 
 // addBin/subBin/mulBin/divBin write a[i] OP b[i] into dst[i]; len(dst) elements.
 func addBin(dst, a, b []float64) { floats.Add(dst, a[:len(dst)], b[:len(dst)]) }

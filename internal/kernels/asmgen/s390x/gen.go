@@ -27,14 +27,13 @@ import (
 
 func main() {
 	f := emit.NewFile("s390x")
-	f.Add(reduceKernel("sumVX", false))
 	f.Add(reduceKernel("dotVX", true))
-	f.Add(sqrtKernel())
+	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
+	// (lanes_s390x_gen.go there) since floats v0.10.0.
 	for _, k := range []struct{ name, vec, sca string }{
 		{"addVX", "VFADB", "FADD"}, {"subVX", "VFSDB", "FSUB"},
 		{"mulVX", "VFMDB", "FMUL"}, {"divVX", "VFDDB", "FDIV"},
 	} {
-		f.Add(binKernel(k.name, k.vec, k.sca))
 		f.Add(bin32Kernel(k.name[:3]+"32VXE", k.name[:3], k.sca+"S"))
 	}
 	f.Add(gemmKernel())
@@ -100,51 +99,6 @@ func reduceKernel(name string, dot bool) *emit.Function {
 		Raw("done:").
 		StoreRet("F0", "ret").
 		Ret()
-	return b.Func()
-}
-
-// sqrtKernel builds sqrtVX(dst, src *float64, n int).
-func sqrtKernel() *emit.Function {
-	sig := s390x.Layout([]string{"dst", "src", "n"},
-		[]s390x.Type{s390x.Ptr, s390x.Ptr, s390x.Int64}, nil, nil)
-	b := s390x.NewFunc("sqrtVX", sig, 0)
-	b.LoadArg("dst", "R1").LoadArg("src", "R2").LoadArg("n", "R4")
-	b.Raw("loop:").Raw("CMP R4, $8").Raw("BLT tail").
-		Raw("VLM (R2), V0, V3")
-	for r := 0; r < 4; r++ {
-		b.Raw("VFSQDB V%d, V%d", r, r)
-	}
-	b.Raw("VSTM V0, V3, (R1)").
-		Raw("ADD $64, R1").Raw("ADD $64, R2").Raw("SUB $8, R4").Raw("BR loop").
-		Raw("tail:").Raw("CMP R4, $0").Raw("BEQ done").
-		Raw("FMOVD (R2), F0").Raw("FSQRT F0, F0").Raw("FMOVD F0, (R1)").
-		Raw("ADD $8, R1").Raw("ADD $8, R2").Raw("SUB $1, R4").Raw("BR tail").
-		Raw("done:").Ret()
-	return b.Func()
-}
-
-// binKernel builds NAME(dst, a, b *float64, n int): dst = a OP b. vec computes
-// Vd = Vn OP Vm from "vec Vm, Vn, Vd"; sca computes F0 = F0 OP F1 from
-// "sca F1, F0".
-func binKernel(name, vec, sca string) *emit.Function {
-	sig := s390x.Layout([]string{"dst", "a", "b", "n"},
-		[]s390x.Type{s390x.Ptr, s390x.Ptr, s390x.Ptr, s390x.Int64}, nil, nil)
-	b := s390x.NewFunc(name, sig, 0)
-	b.LoadArg("dst", "R1").LoadArg("a", "R2").LoadArg("b", "R3").LoadArg("n", "R4")
-	b.Raw("loop:").Raw("CMP R4, $8").Raw("BLT tail").
-		Raw("VLM (R2), V0, V3"). // a
-		Raw("VLM (R3), V4, V7")  // b
-	for r := 0; r < 4; r++ {
-		b.Raw("%s V%d, V%d, V%d", vec, 4+r, r, r) // V_r = a OP b
-	}
-	b.Raw("VSTM V0, V3, (R1)").
-		Raw("ADD $64, R1").Raw("ADD $64, R2").Raw("ADD $64, R3").Raw("SUB $8, R4").Raw("BR loop").
-		Raw("tail:").Raw("CMP R4, $0").Raw("BEQ done").
-		Raw("FMOVD (R2), F0").Raw("FMOVD (R3), F1").
-		Raw(sca + " F1, F0").
-		Raw("FMOVD F0, (R1)").
-		Raw("ADD $8, R1").Raw("ADD $8, R2").Raw("ADD $8, R3").Raw("SUB $1, R4").Raw("BR tail").
-		Raw("done:").Ret()
 	return b.Func()
 }
 

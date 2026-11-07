@@ -31,16 +31,7 @@ func vxFromAuxv() bool {
 }
 
 // The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
-// sumVX stays in sum_s390x.s until the s390x kernels move to go-simd/floats.
-
-func sqrtSIMD(dst, src []float64) {
-	if !useVX || len(dst) == 0 {
-		sqrtScalar(dst, src)
-		return
-	}
-	_ = src[len(dst)-1] // the kernel reads len(dst) of src
-	sqrtVX(&dst[0], &src[0], len(dst))
-}
+// The elementwise kernels and sqrt are go-simd/floats' (reduce_floats_elem.go).
 
 // hwcapVXE is HWCAP_S390_VXRS_EXT (bit 13), the vector-enhancements facility 1
 // of the z14, which brings VFMAXDB/VFMINDB.
@@ -71,42 +62,6 @@ func minSIMD(a []float64) float64 {
 	return minVXE(&a[0], len(a))
 }
 
-func addBin(dst, a, b []float64) {
-	if !useVX || len(dst) == 0 {
-		Add(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	addVX(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func subBin(dst, a, b []float64) {
-	if !useVX || len(dst) == 0 {
-		Sub(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	subVX(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func mulBin(dst, a, b []float64) {
-	if !useVX || len(dst) == 0 {
-		Mul(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	mulVX(&dst[0], &a[0], &b[0], len(dst))
-}
-
-func divBin(dst, a, b []float64) {
-	if !useVX || len(dst) == 0 {
-		Div(dst, a, b)
-		return
-	}
-	_, _ = a[len(dst)-1], b[len(dst)-1] // the kernel reads len(dst) of each
-	divVX(&dst[0], &a[0], &b[0], len(dst))
-}
-
 // dotSIMD is the inner product (vector kernel, four fused two-lane accumulators).
 func dotSIMD(a, b []float64) float64 {
 	if !useVX || len(a) == 0 {
@@ -117,25 +72,7 @@ func dotSIMD(a, b []float64) float64 {
 }
 
 //go:noescape
-func sumVX(a *float64, n int) float64
-
-//go:noescape
 func dotVX(a, b *float64, n int) float64
-
-//go:noescape
-func sqrtVX(dst, src *float64, n int)
-
-//go:noescape
-func addVX(dst, a, b *float64, n int)
-
-//go:noescape
-func subVX(dst, a, b *float64, n int)
-
-//go:noescape
-func mulVX(dst, a, b *float64, n int)
-
-//go:noescape
-func divVX(dst, a, b *float64, n int)
 
 //go:noescape
 func maxVXE(a *float64, n int) float64
