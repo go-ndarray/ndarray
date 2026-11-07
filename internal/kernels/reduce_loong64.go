@@ -28,12 +28,8 @@ func lasxFromAuxv() bool {
 	return err == nil && hwcapFrom(auxv)&hwcapLASX != 0
 }
 
-func sumSIMD(a []float64) float64 {
-	if !useLASX || len(a) == 0 {
-		return Sum(a)
-	}
-	return sumLASX(&a[0], len(a))
-}
+// The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
+// sumLASX stays in sum_loong64.s until the loong64 kernels move to go-simd/floats.
 
 func sqrtSIMD(dst, src []float64) {
 	if !useLASX || len(dst) == 0 {

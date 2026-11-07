@@ -266,12 +266,14 @@ func mapReduceP(a []float64, red func([]float64) float64, combine func([]float64
 	return combine(partials)
 }
 
-// SumP returns the sum of all elements of a, computed as the SIMD-summed
-// per-chunk partials folded by a final Sum. Floating-point addition is not
-// associative, so this grouping can differ from the strictly-sequential Sum by
-// a few ULP — the same trade-off numpy's pairwise summation makes; callers that
-// need the exact sequential value use Sum.
-func SumP(a []float64) float64 { return mapReduceP(a, sumSIMD, Sum) }
+// SumP returns the sum of all elements of a in NumPy's order: floats.SumPairwise,
+// bit-identical to np.sum of a contiguous 1-D float64 array. It is serial at every
+// size: NumPy's pairwise order is a fixed recursion, and summing chunks on several
+// cores and folding the partials would regroup it (the result would then depend on
+// the core count). An order-preserving parallel split (chunks cut where NumPy's
+// recursion cuts) is possible and not done here. Callers that need the exact
+// sequential left-to-right value use Sum.
+func SumP(a []float64) float64 { return sumSIMD(a) }
 
 // reduceP folds per-chunk results of the associative scalar reducer red with
 // red itself, giving a result identical to the serial kernel.

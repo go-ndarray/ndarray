@@ -41,20 +41,15 @@ func reduceSig() arm64.Signature {
 
 func main() {
 	f := emit.NewFile("arm64")
-	f.Add(sumKernel())
+	// The float64 sum, sqrt, add/sub/mul/div and max/min kernels moved to
+	// go-simd/floats (K1 of the go-scikit performance campaign): sumKernel,
+	// sqrtKernel, binKernel and extremumKernel below are no longer emitted.
 	f.Add(dotKernel())
-	f.Add(sqrtKernel())
-	f.Add(binKernel("addNEON", "VFADD", "FADDD"))
-	f.Add(binKernel("subNEON", "VFSUB", "FSUBD"))
-	f.Add(binKernel("mulNEON", "VFMUL", "FMULD"))
-	f.Add(binKernel("divNEON", "VFDIV", "FDIVD"))
 	f.Add(bin32Kernel("add32NEON", "VFADD", "FADDS"))
 	f.Add(bin32Kernel("sub32NEON", "VFSUB", "FSUBS"))
 	f.Add(bin32Kernel("mul32NEON", "VFMUL", "FMULS"))
 	f.Add(bin32Kernel("div32NEON", "VFDIV", "FDIVS"))
 	f.Add(sqrt32Kernel())
-	f.Add(extremumKernel("maxNEON", "VFMAX", "FMAXD"))
-	f.Add(extremumKernel("minNEON", "VFMIN", "FMIND"))
 	f.Add(extremum32Kernel("max32NEON", "VFMAX", "FMAXS"))
 	f.Add(extremum32Kernel("min32NEON", "VFMIN", "FMINS"))
 	f.Add(gemmKernel())

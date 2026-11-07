@@ -11,7 +11,11 @@
 // a kernel it is already materialised in row-major order.
 package kernels
 
-import "math"
+import (
+	"math"
+
+	"github.com/go-simd/floats"
+)
 
 // Add writes a[i]+b[i] into dst[i] for every element.
 func Add(dst, a, b []float64) {
@@ -326,15 +330,7 @@ func CumProdAxis(dst, src []float64, outer, axisLen, inner int) {
 // numpy.clip. A NaN bound or element follows Go's min/max comparison order;
 // callers pass lo <= hi.
 func Clip(dst, src []float64, lo, hi float64) {
-	for i, v := range src {
-		if v < lo {
-			v = lo
-		}
-		if v > hi {
-			v = hi
-		}
-		dst[i] = v
-	}
+	floats.ClampScalar(dst, src, lo, hi)
 }
 
 // Where writes into dst the value t[i] where cond[i] is non-zero (truthy),

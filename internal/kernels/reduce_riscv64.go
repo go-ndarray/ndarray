@@ -32,19 +32,10 @@ func rvvFromAuxv() bool {
 	return err == nil && hwcapFrom(auxv)&hwcapV != 0
 }
 
-// sumSIMD is the RVV sum from 8 elements up. Below that it is the sequential
-// sum, the order NumPy's pairwise sum and the other targets' kernels (whose
-// scalar tails take n < 8 whole) use there. The strip-mined kernel would take
-// even 3 elements as one vector, and its unordered reduction regrouped
-// [MaxInt64, MinInt64, -3] as float64 so that max + (-3) rounded back to max
-// and cancelled: the mean was 0, NumPy's -1. Seen on a real SpacemiT X60,
-// never under CI's qemu, whose default CPU has no V.
-func sumSIMD(a []float64) float64 {
-	if !useRVV || len(a) < 8 {
-		return Sum(a)
-	}
-	return sumRVV(&a[0], len(a))
-}
+// The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
+// sumRVV stays in sum_riscv64.s until the riscv64 kernels move to go-simd/floats
+// (it regrouped [MaxInt64, MinInt64, -3] as float64 on a real SpacemiT X60: the
+// mean was 0, NumPy's -1; SumPairwise adds n < 8 left to right as NumPy does).
 
 func sqrtSIMD(dst, src []float64) {
 	if !useRVV || len(dst) == 0 {
