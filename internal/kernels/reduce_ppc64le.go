@@ -13,14 +13,8 @@ import "math"
 // kernels.
 const HaveReduceSIMD = true
 
-// sumSIMD returns the VSX sum of a (empty -> 0): four accumulators, a valid
-// regrouping of the sum, like the other targets' SIMD sums.
-func sumSIMD(a []float64) float64 {
-	if len(a) == 0 {
-		return 0
-	}
-	return sumVSX(&a[0], len(a))
-}
+// The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
+// sumVSX stays in sum_ppc64le.s until the ppc64le kernels move to go-simd/floats.
 
 // sqrtSIMD writes sqrt(src[i]) into dst[i] with XVSQRTDP, bit-identical to
 // math.Sqrt (one correctly rounded operation per lane).

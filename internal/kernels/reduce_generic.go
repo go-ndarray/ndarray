@@ -19,7 +19,6 @@ package kernels
 // run states which path it validated.
 const HaveReduceSIMD = false
 
-func sumSIMD(a []float64) float64 { return Sum(a) }
 func sqrtSIMD(dst, src []float64) { sqrtScalar(dst, src) }
 func maxSIMD(a []float64) float64 { return maxUnrolled(a) }
 func minSIMD(a []float64) float64 { return minUnrolled(a) }

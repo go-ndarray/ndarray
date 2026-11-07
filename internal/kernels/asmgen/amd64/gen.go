@@ -37,14 +37,11 @@ import (
 
 func main() {
 	f := emit.NewFile("amd64")
-	f.Add(sumKernel())
-	f.Add(sqrtKernel())
-	f.Add(extremeKernel("maxSSE2", "MAXPD", "MAXSD"))
-	f.Add(extremeKernel("minSSE2", "MINPD", "MINSD"))
-	f.Add(binKernel("addSSE2", "ADDPD", "ADDSD"))
-	f.Add(binKernel("subSSE2", "SUBPD", "SUBSD"))
-	f.Add(binKernel("mulSSE2", "MULPD", "MULSD"))
-	f.Add(binKernel("divSSE2", "DIVPD", "DIVSD"))
+	// The float64 sum, sqrt, max/min and add/sub/mul/div kernels, and the float32
+	// exp/log and float64 log kernels, moved to go-simd/floats (K1 of the
+	// go-scikit performance campaign): sumKernel, sqrtKernel, extremeKernel,
+	// binKernel, exp32CRKernel, log32CRKernel and logKernel below are no longer
+	// emitted.
 	f.Add(gemmFMAKernel())
 	f.Add(gemm32FMAKernel())
 	for mr := 1; mr <= gemmMR; mr++ {
@@ -54,10 +51,6 @@ func main() {
 	f.Add(dotFMAKernel())
 	f.Add(gemmSSE2HalfKernel())
 	f.Add(amd64.FeatureProbe("hasFMA", amd64.FMA))
-	f.Add(amd64.FeatureProbe("hasAVX2", amd64.AVX2))
-	f.Add(exp32CRKernel())
-	f.Add(log32CRKernel())
-	f.Add(logKernel())
 	f.Add(blocks8Kernel())
 	f.Add(bin32Kernel("add32SSE2", "ADDPS", "ADDSS"))
 	f.Add(bin32Kernel("sub32SSE2", "SUBPS", "SUBSS"))

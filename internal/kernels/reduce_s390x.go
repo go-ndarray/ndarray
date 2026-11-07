@@ -30,12 +30,8 @@ func vxFromAuxv() bool {
 	return err == nil && hwcapFrom(auxv)&hwcapVX != 0
 }
 
-func sumSIMD(a []float64) float64 {
-	if !useVX || len(a) == 0 {
-		return Sum(a)
-	}
-	return sumVX(&a[0], len(a))
-}
+// The sum is floats.SumPairwise on every target (reduce_sum.go): NumPy's order.
+// sumVX stays in sum_s390x.s until the s390x kernels move to go-simd/floats.
 
 func sqrtSIMD(dst, src []float64) {
 	if !useVX || len(dst) == 0 {

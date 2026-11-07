@@ -175,6 +175,19 @@ arch is therefore a durable foundation. The numeric loops live in
 on every 64-bit target Go supports (amd64, arm64, ppc64le, loong64, riscv64,
 s390x), behind the same API and held to the same tests.
 
+The one-dimensional float64 kernels that other libraries need too live once, in
+[go-simd/floats](https://github.com/go-simd/floats) (K1 of the go-scikit
+[performance campaign](https://github.com/go-scikit/roadmap/blob/main/docs/performance-campaign.md)),
+which this module imports: on amd64 (AVX2) and arm64 (NEON) the elementwise
+`Add`/`Sub`/`Mul`/`Div`, `Sqrt`, `Max`/`Min` and `Clip` kernels, and everywhere
+`Exp`, `Log` and the correctly rounded float32 `Exp`/`Log` (the AVX2 and NEON
+kernels were written here and moved down). **`Sum` is NumPy's pairwise sum**
+(`floats.SumPairwise`): bit-identical to `np.sum` of a contiguous 1-D float64
+array, on every architecture, at every size. It replaces lane-parallel sums whose
+last bits differed from NumPy's and from one architecture to the next, and it is
+serial (a multicore split would regroup NumPy's order). The other architectures
+keep their own elementwise kernels here until floats has them.
+
 ## Goroutines
 
 Operations on large arrays are spread over `GOMAXPROCS` goroutines. After the
