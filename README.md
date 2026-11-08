@@ -127,8 +127,9 @@ is wrong on subnormals
 (full tables in **[docs/perf.md](docs/perf.md)**):
 
 - **Faster:** whole-array reductions (`Sum`/`Mean`/`Max` at 4 Mi: 2.3–4.5×),
-  row reductions (`SumAxis(1)` 2.2×, `MaxAxis(1)` 1.7×), `Exp` from 256 Ki
-  elements (2.4–5.6×), the `*Into` forms of `Add`/`Mul`/`Sqrt` (faster or at
+  row reductions (`SumAxis(1)` 2.2×, `MaxAxis(1)` 1.7×), float64 `Exp` at
+  every size (on one core 1.2–1.3×; in a `Workspace` on 16 cores 1.3–1.5×
+  up to 16 Ki and 7–17× from 256 Ki), the `*Into` forms of `Add`/`Mul`/`Sqrt` (faster or at
   parity at every size), and `MatMul` against single-threaded OpenBLAS
   (3.7–5.9× from 512²); in a `Workspace`, `x + y` and `sqrt(x*y + x)` match or
   beat NumPy at every size measured; float64 `Log` on one core with AVX2
@@ -136,11 +137,12 @@ is wrong on subnormals
 - **At parity:** `SumAxis(0)`, `Inner` against 16-thread OpenBLAS.
 - **Slower:** `MatMul` against 16-thread OpenBLAS at 512² and up (0.42× at
   512², 0.51× at 1024², measured in one run with OpenBLAS; at 256² ours is
-  1.44× faster); `Dot` and mat·vec against NumPy's 16-thread BLAS (0.69× and 0.52× since v0.6.0's helper pool, measured in one run; 0.16× before); `Exp`
-  below 256 Ki elements (0.82×); the *allocating* forms of elementwise ops up
-  to 256 Ki elements, `Concatenate`/`Stack` and slice copies outside a
-  `Workspace` (0.2–0.5×: Go's allocator and garbage collector, which
-  `Workspace` largely removes).
+  1.44× faster); `Dot` and mat·vec against NumPy's 16-thread BLAS (0.69× and 0.52× since v0.6.0's helper pool, measured in one run; 0.16× before); the
+  *allocating* forms of elementwise ops up to 256 Ki elements (allocating
+  float64 `Exp` with 16 Ps is at parity there, 0.9–1.0×, although its kernel
+  is faster), `Concatenate`/`Stack` and slice copies outside a `Workspace`
+  (0.2–0.5×: Go's allocator and garbage collector, whose cost grows with
+  GOMAXPROCS and which `Workspace` largely removes).
 
 On Apple silicon the GEMM reached parity with tuned BLAS at 1024² (OpenBLAS in
 an arm64 VM, single-threaded vecLib on an M4 Max), and every product beats the

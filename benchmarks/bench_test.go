@@ -79,6 +79,23 @@ func BenchmarkExp(b *testing.B) {
 	}
 }
 
+// BenchmarkExpWS is BenchmarkExp in a Workspace reset every iteration: the
+// kernel without the allocation of each result, whose cost grows with
+// GOMAXPROCS (each garbage-collector cycle involves every P).
+func BenchmarkExpWS(b *testing.B) {
+	for _, n := range elemSizes {
+		ws := nd.NewWorkspace()
+		x := ws.Use(vec(n))
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			b.SetBytes(int64(n * 8))
+			for i := 0; i < b.N; i++ {
+				_ = x.Exp()
+				ws.Reset()
+			}
+		})
+	}
+}
+
 func BenchmarkSqrt(b *testing.B) {
 	for _, n := range elemSizes {
 		x := vec(n)

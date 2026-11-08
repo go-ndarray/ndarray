@@ -1634,8 +1634,38 @@ the constant block's layout is tested.
 −47% and −49% against v0.35.0 (`abbench`, 8 interleaved rounds, p = 0.000),
 both allocating, on `BenchmarkDTypeExpLog`'s data.
 
-The float32 kernels for the other architectures are still to write; there
-`Exp` and `Log` run the Go transcriptions.
+Since v0.37.0 these kernels live in go-simd/floats (`floats.Exp`, `Log`,
+`Float32Exp`, `Float32Log`, go-simd/floats#29), with NEON versions of the
+float32 pair for arm64; ndarray calls them (`internal/kernels/explog.go`).
+The NEON kernels are proven correctly rounded over all 2³² inputs on
+darwin/arm64 but were not benchmarked: every arm64 host available was at
+load 48–100. ppc64le, s390x, riscv64 and loong64 still run the Go
+transcriptions.
+
+#### float64 `Exp` on 16 cores: the allocation, not the kernel (2026-11-08)
+
+The README listed float64 `Exp` below 256 Ki as slower than NumPy (0.82×),
+measured with 16 cores. On one core it is faster at every size. With
+GOMAXPROCS = 16 the same serial code (below `ParThreshold`, 32 Ki, nothing
+is split) got slower than with 1: 89 µs against 73 at 16 Ki. The same holds
+for `Add`, which goes from 14 to 23–26 µs, while `AddInto`, which allocates
+nothing, costs 4.3 µs at both. Each result's allocation costs more with more
+Ps: every garbage-collector cycle starts and stops work on all of them. In a
+`Workspace` (`BenchmarkExpWS`) the difference disappears:
+
+| float64 `Exp`, Zen 3, load ≤ 5 | 1 Ki | 16 Ki | 256 Ki | 4 Mi |
+|---|---:|---:|---:|---:|
+| NumPy 2.5.4, `np.exp(a)` (one thread) | 6.0 µs | 85.5 µs | 1.32 ms | 25.0 ms |
+| ours, 1 P, allocating | 4.9 µs | 73 µs | 1.11 ms | 19.3 ms |
+| ours, 16 P, allocating | 5.8–6.6 µs | 83–95 µs | 0.63–0.78 ms | 4.8–6.7 ms |
+| ours, 16 P, `Workspace` | **4.1 µs** | **64 µs** | **0.18 ms** | **1.47 ms** |
+
+`BenchmarkExp` and `BenchmarkExpWS` (`(i%97)·0.5`, the README's data), two
+rounds each at `-cpu 1` and `-cpu 16` on cores 0–15; NumPy medians of nine
+on one pinned core. In a `Workspace` on 16 cores, float64 `Exp` is 1.3–1.5×
+NumPy up to 16 Ki and 7–17× from 256 Ki. Allocating, it is at parity up to
+16 Ki, and at 4 Mi the allocation of each 32 MB result takes about 3.3 ms of
+the 4.8.
 
 ## SIMD coverage
 
