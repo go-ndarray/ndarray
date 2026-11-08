@@ -1,0 +1,4626 @@
+{
+  "schema": 1,
+  "status": "deferred",
+  "date": "2026-11-08T12:33:21+01:00",
+  "commit": "",
+  "repo": "go-ndarray/ndarray",
+  "go_version": "go1.27.3",
+  "machine": "darwin/arm64, 16 CPUs",
+  "max_load": 8,
+  "load": {
+    "min": 0,
+    "median": 0,
+    "max": 0
+  },
+  "valid": true,
+  "rows": [
+    {
+      "name": "Array.Abs",
+      "func": "Array.Abs",
+      "reference": "numpy np.abs",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Neg",
+      "func": "Array.Neg",
+      "reference": "numpy np.negative",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Sqrt",
+      "func": "Array.Sqrt",
+      "reference": "numpy np.sqrt",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Square",
+      "func": "Array.Square",
+      "reference": "numpy np.square",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Exp",
+      "func": "Array.Exp",
+      "reference": "numpy np.exp",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Log",
+      "func": "Array.Log",
+      "reference": "numpy np.log",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Log2",
+      "func": "Array.Log2",
+      "reference": "numpy np.log2",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Log10",
+      "func": "Array.Log10",
+      "reference": "numpy np.log10",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Sin",
+      "func": "Array.Sin",
+      "reference": "numpy np.sin",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Cos",
+      "func": "Array.Cos",
+      "reference": "numpy np.cos",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Tan",
+      "func": "Array.Tan",
+      "reference": "numpy np.tan",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Ceil",
+      "func": "Array.Ceil",
+      "reference": "numpy np.ceil",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Floor",
+      "func": "Array.Floor",
+      "reference": "numpy np.floor",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Round",
+      "func": "Array.Round",
+      "reference": "numpy np.round",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Conj",
+      "func": "Array.Conj",
+      "reference": "numpy np.conj",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Real",
+      "func": "Array.Real",
+      "reference": "numpy np.real",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Imag",
+      "func": "Array.Imag",
+      "reference": "numpy np.imag",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Angle",
+      "func": "Array.Angle",
+      "reference": "numpy np.angle",
+      "parity": "none",
+      "allocs": 16,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.LogicalNot",
+      "func": "Array.LogicalNot",
+      "reference": "numpy np.logical_not",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Copy",
+      "func": "Array.Copy",
+      "reference": "numpy lambda x: x.copy()",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Flatten",
+      "func": "Array.Flatten",
+      "reference": "numpy lambda x: x.flatten()",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Ravel",
+      "func": "Array.Ravel",
+      "reference": "numpy lambda x: x.ravel()",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Power",
+      "func": "Array.Power",
+      "reference": "numpy lambda x: np.power(x, 2.5)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.CumSumFlat",
+      "func": "Array.CumSumFlat",
+      "reference": "numpy np.cumsum",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Nonzero",
+      "func": "Array.Nonzero",
+      "reference": "numpy np.flatnonzero",
+      "parity": "none",
+      "allocs": 35,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Repr",
+      "func": "Array.Repr",
+      "reference": "numpy repr",
+      "parity": "none",
+      "allocs": 63,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.AsType",
+      "func": "Array.AsType",
+      "reference": "numpy lambda x: x.astype(np.float32)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Add",
+      "func": "Array.Add",
+      "reference": "numpy np.add",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Sub",
+      "func": "Array.Sub",
+      "reference": "numpy np.subtract",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Mul",
+      "func": "Array.Mul",
+      "reference": "numpy np.multiply",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Div",
+      "func": "Array.Div",
+      "reference": "numpy np.divide",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Maximum",
+      "func": "Array.Maximum",
+      "reference": "numpy np.maximum",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Minimum",
+      "func": "Array.Minimum",
+      "reference": "numpy np.minimum",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Equal",
+      "func": "Array.Equal",
+      "reference": "numpy np.equal",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.NotEqual",
+      "func": "Array.NotEqual",
+      "reference": "numpy np.not_equal",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Less",
+      "func": "Array.Less",
+      "reference": "numpy np.less",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.LessEqual",
+      "func": "Array.LessEqual",
+      "reference": "numpy np.less_equal",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Greater",
+      "func": "Array.Greater",
+      "reference": "numpy np.greater",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.GreaterEqual",
+      "func": "Array.GreaterEqual",
+      "reference": "numpy np.greater_equal",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.LogicalAnd",
+      "func": "Array.LogicalAnd",
+      "reference": "numpy np.logical_and",
+      "parity": "none",
+      "allocs": 12,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.LogicalOr",
+      "func": "Array.LogicalOr",
+      "reference": "numpy np.logical_or",
+      "parity": "none",
+      "allocs": 12,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.LogicalXor",
+      "func": "Array.LogicalXor",
+      "reference": "numpy np.logical_xor",
+      "parity": "none",
+      "allocs": 12,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Inner",
+      "func": "Array.Inner",
+      "reference": "numpy np.inner",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.AddInto",
+      "func": "Array.AddInto",
+      "reference": "numpy np.add (out= preallocated)",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.SubInto",
+      "func": "Array.SubInto",
+      "reference": "numpy np.subtract (out= preallocated)",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MulInto",
+      "func": "Array.MulInto",
+      "reference": "numpy np.multiply (out= preallocated)",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.DivInto",
+      "func": "Array.DivInto",
+      "reference": "numpy np.divide (out= preallocated)",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.AddScalar",
+      "func": "Array.AddScalar",
+      "reference": "numpy x + 1.5",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.SubScalar",
+      "func": "Array.SubScalar",
+      "reference": "numpy x - 1.5",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MulScalar",
+      "func": "Array.MulScalar",
+      "reference": "numpy x * 1.5",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.DivScalar",
+      "func": "Array.DivScalar",
+      "reference": "numpy x / 1.5",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.SqrtInto",
+      "func": "Array.SqrtInto",
+      "reference": "numpy np.sqrt (out= preallocated)",
+      "parity": "none",
+      "allocs": 1,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Clip",
+      "func": "Array.Clip",
+      "reference": "numpy np.clip",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Dot",
+      "func": "Array.Dot",
+      "reference": "numpy np.dot, 128 x 128 (OpenBLAS, one thread)",
+      "parity": "none",
+      "allocs": 13,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MatMul",
+      "func": "Array.MatMul",
+      "reference": "numpy np.matmul, 128 x 128 (OpenBLAS, one thread)",
+      "parity": "none",
+      "allocs": 13,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Outer",
+      "func": "Array.Outer",
+      "reference": "numpy np.outer, 1000 x 1000",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Transpose",
+      "func": "Array.Transpose",
+      "reference": "numpy x.T (a view; Go may copy)",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Reshape",
+      "func": "Array.Reshape",
+      "reference": "numpy x.reshape (a view)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ExpandDims",
+      "func": "Array.ExpandDims",
+      "reference": "numpy np.expand_dims",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Squeeze",
+      "func": "Array.Squeeze",
+      "reference": "numpy np.squeeze",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Slice",
+      "func": "Array.Slice",
+      "reference": "numpy x[0:n:2] (a view)",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Take",
+      "func": "Array.Take",
+      "reference": "numpy np.take, 1000 indices",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MaskSelect",
+      "func": "Array.MaskSelect",
+      "reference": "numpy x[mask] (mask x \u003e 2 built outside the call)",
+      "parity": "none",
+      "allocs": 30,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Where",
+      "func": "Where",
+      "reference": "numpy np.where (mask x \u003e 2 built outside the call)",
+      "parity": "none",
+      "allocs": 9,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Concatenate",
+      "func": "Concatenate",
+      "reference": "numpy np.concatenate",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Stack",
+      "func": "Stack",
+      "reference": "numpy np.stack",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "HStack",
+      "func": "HStack",
+      "reference": "numpy np.hstack",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "VStack",
+      "func": "VStack",
+      "reference": "numpy np.vstack",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Sum",
+      "func": "Array.Sum",
+      "reference": "numpy np.sum",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.SumAll",
+      "func": "Array.SumAll",
+      "reference": "numpy np.sum",
+      "parity": "none",
+      "allocs": 9,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Prod",
+      "func": "Array.Prod",
+      "reference": "numpy np.prod",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ProdAll",
+      "func": "Array.ProdAll",
+      "reference": "numpy np.prod",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Mean",
+      "func": "Array.Mean",
+      "reference": "numpy np.mean",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Max",
+      "func": "Array.Max",
+      "reference": "numpy np.max",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Min",
+      "func": "Array.Min",
+      "reference": "numpy np.min",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ArgMax",
+      "func": "Array.ArgMax",
+      "reference": "numpy np.argmax",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ArgMin",
+      "func": "Array.ArgMin",
+      "reference": "numpy np.argmin",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.All",
+      "func": "Array.All",
+      "reference": "numpy np.all",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.Any",
+      "func": "Array.Any",
+      "reference": "numpy np.any",
+      "parity": "none",
+      "allocs": 3,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.CumProdFlat",
+      "func": "Array.CumProdFlat",
+      "reference": "numpy np.cumprod",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.SumAxis/axis0",
+      "func": "Array.SumAxis",
+      "reference": "numpy np.sum(axis=0)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.SumAxis/axis1",
+      "func": "Array.SumAxis",
+      "reference": "numpy np.sum(axis=1)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ProdAxis/axis0",
+      "func": "Array.ProdAxis",
+      "reference": "numpy np.prod(axis=0)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ProdAxis/axis1",
+      "func": "Array.ProdAxis",
+      "reference": "numpy np.prod(axis=1)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MeanAxis/axis0",
+      "func": "Array.MeanAxis",
+      "reference": "numpy np.mean(axis=0)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MeanAxis/axis1",
+      "func": "Array.MeanAxis",
+      "reference": "numpy np.mean(axis=1)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MaxAxis/axis0",
+      "func": "Array.MaxAxis",
+      "reference": "numpy np.max(axis=0)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MaxAxis/axis1",
+      "func": "Array.MaxAxis",
+      "reference": "numpy np.max(axis=1)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MinAxis/axis0",
+      "func": "Array.MinAxis",
+      "reference": "numpy np.min(axis=0)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.MinAxis/axis1",
+      "func": "Array.MinAxis",
+      "reference": "numpy np.min(axis=1)",
+      "parity": "none",
+      "allocs": 4,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ArgMaxAxis/axis0",
+      "func": "Array.ArgMaxAxis",
+      "reference": "numpy np.argmax(axis=0)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ArgMaxAxis/axis1",
+      "func": "Array.ArgMaxAxis",
+      "reference": "numpy np.argmax(axis=1)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ArgMinAxis/axis0",
+      "func": "Array.ArgMinAxis",
+      "reference": "numpy np.argmin(axis=0)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.ArgMinAxis/axis1",
+      "func": "Array.ArgMinAxis",
+      "reference": "numpy np.argmin(axis=1)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.CumSum/axis0",
+      "func": "Array.CumSum",
+      "reference": "numpy np.cumsum(axis=0)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.CumProd/axis0",
+      "func": "Array.CumProd",
+      "reference": "numpy np.cumprod(axis=0)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.CumSum/axis1",
+      "func": "Array.CumSum",
+      "reference": "numpy np.cumsum(axis=1)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Array.CumProd/axis1",
+      "func": "Array.CumProd",
+      "reference": "numpy np.cumprod(axis=1)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Arange",
+      "func": "Arange",
+      "reference": "numpy np.arange(0.0, 100000.0, 1.0)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Eye",
+      "func": "Eye",
+      "reference": "numpy np.eye(512)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Identity",
+      "func": "Identity",
+      "reference": "numpy np.identity(512)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Full",
+      "func": "Full",
+      "reference": "numpy np.full(100000, 1.5)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "FullOf",
+      "func": "FullOf",
+      "reference": "numpy np.full(100000, 1.5, dtype=np.float32)",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Linspace",
+      "func": "Linspace",
+      "reference": "numpy np.linspace(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "New",
+      "func": "New",
+      "reference": "numpy np.zeros(100000)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Zeros",
+      "func": "Zeros",
+      "reference": "numpy np.zeros(100000)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Ones",
+      "func": "Ones",
+      "reference": "numpy np.ones(100000)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "OnesOf",
+      "func": "OnesOf",
+      "reference": "numpy np.ones(100000, dtype=np.float32)",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "ZerosOf",
+      "func": "ZerosOf",
+      "reference": "numpy np.zeros(100000, dtype=np.float32)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "Scalar",
+      "func": "Scalar",
+      "reference": "numpy np.array(1.5)",
+      "parity": "none",
+      "allocs": 2,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "FromData",
+      "func": "FromData",
+      "reference": "numpy np.asarray (wraps, no copy)",
+      "parity": "none",
+      "allocs": 5,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "FromSlice",
+      "func": "FromSlice",
+      "reference": "numpy np.asarray (wraps, no copy)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFT",
+      "func": "fft.FFT",
+      "reference": "numpy np.fft.fft",
+      "parity": "none",
+      "allocs": 19,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFTWith",
+      "func": "fft.FFTWith",
+      "reference": "numpy np.fft.fft(norm='ortho')",
+      "parity": "none",
+      "allocs": 19,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IFFT",
+      "func": "fft.IFFT",
+      "reference": "numpy np.fft.ifft",
+      "parity": "none",
+      "allocs": 19,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IFFTWith",
+      "func": "fft.IFFTWith",
+      "reference": "numpy np.fft.ifft(norm='ortho')",
+      "parity": "none",
+      "allocs": 19,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.RFFT",
+      "func": "fft.RFFT",
+      "reference": "numpy np.fft.rfft",
+      "parity": "none",
+      "allocs": 30,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.RFFTWith",
+      "func": "fft.RFFTWith",
+      "reference": "numpy np.fft.rfft(norm='ortho')",
+      "parity": "none",
+      "allocs": 30,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IRFFT",
+      "func": "fft.IRFFT",
+      "reference": "numpy np.fft.irfft",
+      "parity": "none",
+      "allocs": 24,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IRFFTWith",
+      "func": "fft.IRFFTWith",
+      "reference": "numpy np.fft.irfft(norm='ortho')",
+      "parity": "none",
+      "allocs": 24,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.HFFT",
+      "func": "fft.HFFT",
+      "reference": "numpy np.fft.hfft",
+      "parity": "none",
+      "allocs": 29,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.HFFTWith",
+      "func": "fft.HFFTWith",
+      "reference": "numpy np.fft.hfft(norm='ortho')",
+      "parity": "none",
+      "allocs": 29,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IHFFT",
+      "func": "fft.IHFFT",
+      "reference": "numpy np.fft.ihfft",
+      "parity": "none",
+      "allocs": 35,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IHFFTWith",
+      "func": "fft.IHFFTWith",
+      "reference": "numpy np.fft.ihfft(norm='ortho')",
+      "parity": "none",
+      "allocs": 35,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFT2",
+      "func": "fft.FFT2",
+      "reference": "numpy np.fft.fft2",
+      "parity": "none",
+      "allocs": 20,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFT2With",
+      "func": "fft.FFT2With",
+      "reference": "numpy np.fft.fft2(norm='ortho')",
+      "parity": "none",
+      "allocs": 20,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IFFT2",
+      "func": "fft.IFFT2",
+      "reference": "numpy np.fft.ifft2",
+      "parity": "none",
+      "allocs": 20,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IFFT2With",
+      "func": "fft.IFFT2With",
+      "reference": "numpy np.fft.ifft2(norm='ortho')",
+      "parity": "none",
+      "allocs": 20,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.RFFT2",
+      "func": "fft.RFFT2",
+      "reference": "numpy np.fft.rfft2",
+      "parity": "none",
+      "allocs": 31,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.RFFT2With",
+      "func": "fft.RFFT2With",
+      "reference": "numpy np.fft.rfft2(norm='ortho')",
+      "parity": "none",
+      "allocs": 31,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IRFFT2",
+      "func": "fft.IRFFT2",
+      "reference": "numpy np.fft.irfft2",
+      "parity": "none",
+      "allocs": 25,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IRFFT2With",
+      "func": "fft.IRFFT2With",
+      "reference": "numpy np.fft.irfft2(norm='ortho')",
+      "parity": "none",
+      "allocs": 25,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFTN",
+      "func": "fft.FFTN",
+      "reference": "numpy np.fft.fftn",
+      "parity": "none",
+      "allocs": 21,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFTNWith",
+      "func": "fft.FFTNWith",
+      "reference": "numpy np.fft.fftn(norm='ortho')",
+      "parity": "none",
+      "allocs": 21,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IFFTN",
+      "func": "fft.IFFTN",
+      "reference": "numpy np.fft.ifftn",
+      "parity": "none",
+      "allocs": 21,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IFFTNWith",
+      "func": "fft.IFFTNWith",
+      "reference": "numpy np.fft.ifftn(norm='ortho')",
+      "parity": "none",
+      "allocs": 21,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.RFFTN",
+      "func": "fft.RFFTN",
+      "reference": "numpy np.fft.rfftn",
+      "parity": "none",
+      "allocs": 32,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.RFFTNWith",
+      "func": "fft.RFFTNWith",
+      "reference": "numpy np.fft.rfftn(norm='ortho')",
+      "parity": "none",
+      "allocs": 32,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IRFFTN",
+      "func": "fft.IRFFTN",
+      "reference": "numpy np.fft.irfftn",
+      "parity": "none",
+      "allocs": 26,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IRFFTNWith",
+      "func": "fft.IRFFTNWith",
+      "reference": "numpy np.fft.irfftn(norm='ortho')",
+      "parity": "none",
+      "allocs": 26,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFTShift",
+      "func": "fft.FFTShift",
+      "reference": "numpy np.fft.fftshift",
+      "parity": "none",
+      "allocs": 29,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.IFFTShift",
+      "func": "fft.IFFTShift",
+      "reference": "numpy np.fft.ifftshift",
+      "parity": "none",
+      "allocs": 29,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.FFTFreq",
+      "func": "fft.FFTFreq",
+      "reference": "numpy np.fft.fftfreq",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "fft.RFFTFreq",
+      "func": "fft.RFFTFreq",
+      "reference": "numpy np.fft.rfftfreq",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Det",
+      "func": "linalg.Det",
+      "reference": "numpy np.linalg.det(a)",
+      "parity": "none",
+      "allocs": 25,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Inv",
+      "func": "linalg.Inv",
+      "reference": "numpy np.linalg.inv(a)",
+      "parity": "none",
+      "allocs": 30,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Eigvals",
+      "func": "linalg.Eigvals",
+      "reference": "numpy np.linalg.eigvals(a)",
+      "parity": "none",
+      "allocs": 25,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Pinv",
+      "func": "linalg.Pinv",
+      "reference": "numpy np.linalg.pinv(a)",
+      "parity": "none",
+      "allocs": 255,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.SVDVals",
+      "func": "linalg.SVDVals",
+      "reference": "numpy np.linalg.svd(a, compute_uv=False)",
+      "parity": "none",
+      "allocs": 23,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.MatrixRank",
+      "func": "linalg.MatrixRank",
+      "reference": "numpy np.linalg.matrix_rank(a)",
+      "parity": "none",
+      "allocs": 34,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Cholesky",
+      "func": "linalg.Cholesky",
+      "reference": "numpy np.linalg.cholesky(a)",
+      "parity": "none",
+      "allocs": 20,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Eigvalsh",
+      "func": "linalg.Eigvalsh",
+      "reference": "numpy np.linalg.eigvalsh(a)",
+      "parity": "none",
+      "allocs": 22,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Cond",
+      "func": "linalg.Cond",
+      "reference": "numpy np.linalg.cond(a)",
+      "parity": "none",
+      "allocs": 39,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Norm",
+      "func": "linalg.Norm",
+      "reference": "numpy np.linalg.norm(a)",
+      "parity": "none",
+      "allocs": 11,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.MatrixRankTol",
+      "func": "linalg.MatrixRankTol",
+      "reference": "numpy np.linalg.matrix_rank(a, tol=1e-8)",
+      "parity": "none",
+      "allocs": 34,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.PinvRcond",
+      "func": "linalg.PinvRcond",
+      "reference": "numpy np.linalg.pinv(a, rcond=1e-10)",
+      "parity": "none",
+      "allocs": 255,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.MatrixPower",
+      "func": "linalg.MatrixPower",
+      "reference": "numpy np.linalg.matrix_power(a, 5)",
+      "parity": "none",
+      "allocs": 28,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Eig",
+      "func": "linalg.Eig",
+      "reference": "numpy np.linalg.eig(a)",
+      "parity": "none",
+      "allocs": 89,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Eigh",
+      "func": "linalg.Eigh",
+      "reference": "numpy np.linalg.eigh(a)",
+      "parity": "none",
+      "allocs": 166,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.QR",
+      "func": "linalg.QR",
+      "reference": "numpy np.linalg.qr(a)",
+      "parity": "none",
+      "allocs": 93,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.SVD",
+      "func": "linalg.SVD",
+      "reference": "numpy np.linalg.svd(a, full_matrices=False)",
+      "parity": "none",
+      "allocs": 265,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Slogdet",
+      "func": "linalg.Slogdet",
+      "reference": "numpy np.linalg.slogdet(a)",
+      "parity": "none",
+      "allocs": 29,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Solve",
+      "func": "linalg.Solve",
+      "reference": "numpy np.linalg.solve(a, b)",
+      "parity": "none",
+      "allocs": 40,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.Lstsq",
+      "func": "linalg.Lstsq",
+      "reference": "numpy np.linalg.lstsq(a, b, rcond=None)",
+      "parity": "none",
+      "allocs": 276,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.LstsqRcond",
+      "func": "linalg.LstsqRcond",
+      "reference": "numpy np.linalg.lstsq(a, b, rcond=1e-10)",
+      "parity": "none",
+      "allocs": 276,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "linalg.MultiDot",
+      "func": "linalg.MultiDot",
+      "reference": "numpy np.linalg.multi_dot([a, b, c])",
+      "parity": "none",
+      "allocs": 25,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Beta",
+      "func": "random.Generator.Beta",
+      "reference": "numpy Generator.beta(2.0, 3.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Binomial",
+      "func": "random.Generator.Binomial",
+      "reference": "numpy Generator.binomial(100, 0.3, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.ChiSquare",
+      "func": "random.Generator.ChiSquare",
+      "reference": "numpy Generator.chisquare(3.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.ChoiceN",
+      "func": "random.Generator.ChoiceN",
+      "reference": "numpy Generator.choice(1000, 100000)",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Dirichlet",
+      "func": "random.Generator.Dirichlet",
+      "reference": "numpy Generator.dirichlet([1.0, 2.0, 3.0], 20000)",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Exponential",
+      "func": "random.Generator.Exponential",
+      "reference": "numpy Generator.exponential(1.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.F",
+      "func": "random.Generator.F",
+      "reference": "numpy Generator.f(5.0, 10.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Gamma",
+      "func": "random.Generator.Gamma",
+      "reference": "numpy Generator.gamma(2.0, 1.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Geometric",
+      "func": "random.Generator.Geometric",
+      "reference": "numpy Generator.geometric(0.2, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Gumbel",
+      "func": "random.Generator.Gumbel",
+      "reference": "numpy Generator.gumbel(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Integers",
+      "func": "random.Generator.Integers",
+      "reference": "numpy Generator.integers(0, 1000, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.IntegersOf",
+      "func": "random.Generator.IntegersOf",
+      "reference": "numpy Generator.integers(0, 1000, 100000, dtype=np.int32)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.IntegersUint64",
+      "func": "random.Generator.IntegersUint64",
+      "reference": "numpy Generator.integers(0, 1000, 100000, dtype=np.uint64)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Laplace",
+      "func": "random.Generator.Laplace",
+      "reference": "numpy Generator.laplace(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Logistic",
+      "func": "random.Generator.Logistic",
+      "reference": "numpy Generator.logistic(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Lognormal",
+      "func": "random.Generator.Lognormal",
+      "reference": "numpy Generator.lognormal(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Logseries",
+      "func": "random.Generator.Logseries",
+      "reference": "numpy Generator.logseries(0.6, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Multinomial",
+      "func": "random.Generator.Multinomial",
+      "reference": "numpy Generator.multinomial(100, [0.2, 0.3, 0.5], 20000)",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.NegativeBinomial",
+      "func": "random.Generator.NegativeBinomial",
+      "reference": "numpy Generator.negative_binomial(5.0, 0.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.NoncentralChiSquare",
+      "func": "random.Generator.NoncentralChiSquare",
+      "reference": "numpy Generator.noncentral_chisquare(3.0, 2.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.NoncentralF",
+      "func": "random.Generator.NoncentralF",
+      "reference": "numpy Generator.noncentral_f(5.0, 10.0, 2.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Normal",
+      "func": "random.Generator.Normal",
+      "reference": "numpy Generator.normal(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Pareto",
+      "func": "random.Generator.Pareto",
+      "reference": "numpy Generator.pareto(3.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Permutation",
+      "func": "random.Generator.Permutation",
+      "reference": "numpy Generator.permutation(100000)",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Poisson",
+      "func": "random.Generator.Poisson",
+      "reference": "numpy Generator.poisson(5.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Power",
+      "func": "random.Generator.Power",
+      "reference": "numpy Generator.power(3.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Random",
+      "func": "random.Generator.Random",
+      "reference": "numpy Generator.random(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.RandomOf",
+      "func": "random.Generator.RandomOf",
+      "reference": "numpy Generator.random(100000, dtype=np.float32)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Rayleigh",
+      "func": "random.Generator.Rayleigh",
+      "reference": "numpy Generator.rayleigh(1.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardCauchy",
+      "func": "random.Generator.StandardCauchy",
+      "reference": "numpy Generator.standard_cauchy(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardExponential",
+      "func": "random.Generator.StandardExponential",
+      "reference": "numpy Generator.standard_exponential(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardExponentialOf",
+      "func": "random.Generator.StandardExponentialOf",
+      "reference": "numpy Generator.standard_exponential(100000, dtype=np.float32, method='zig')",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardGamma",
+      "func": "random.Generator.StandardGamma",
+      "reference": "numpy Generator.standard_gamma(2.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardGammaOf",
+      "func": "random.Generator.StandardGammaOf",
+      "reference": "numpy Generator.standard_gamma(2.0, 100000, dtype=np.float32)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardNormal",
+      "func": "random.Generator.StandardNormal",
+      "reference": "numpy Generator.standard_normal(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardNormalOf",
+      "func": "random.Generator.StandardNormalOf",
+      "reference": "numpy Generator.standard_normal(100000, dtype=np.float32)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.StandardT",
+      "func": "random.Generator.StandardT",
+      "reference": "numpy Generator.standard_t(5.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Triangular",
+      "func": "random.Generator.Triangular",
+      "reference": "numpy Generator.triangular(0.0, 1.0, 3.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Uniform",
+      "func": "random.Generator.Uniform",
+      "reference": "numpy Generator.uniform(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.VonMises",
+      "func": "random.Generator.VonMises",
+      "reference": "numpy Generator.vonmises(0.0, 2.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Wald",
+      "func": "random.Generator.Wald",
+      "reference": "numpy Generator.wald(1.0, 2.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Weibull",
+      "func": "random.Generator.Weibull",
+      "reference": "numpy Generator.weibull(1.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Zipf",
+      "func": "random.Generator.Zipf",
+      "reference": "numpy Generator.zipf(2.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Choice",
+      "func": "random.Generator.Choice",
+      "reference": "numpy Generator.choice(x, 100000)",
+      "parity": "none",
+      "allocs": 200013,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.PermutationOf",
+      "func": "random.Generator.PermutationOf",
+      "reference": "numpy Generator.permutation(x, axis=0)",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Permuted",
+      "func": "random.Generator.Permuted",
+      "reference": "numpy Generator.permuted(x)",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.PermutedAxis",
+      "func": "random.Generator.PermutedAxis",
+      "reference": "numpy Generator.permuted(x, axis=0)",
+      "parity": "none",
+      "allocs": 8,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Shuffle",
+      "func": "random.Generator.Shuffle",
+      "reference": "numpy Generator.shuffle (in place)",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.ShuffleInt64",
+      "func": "random.Generator.ShuffleInt64",
+      "reference": "numpy Generator.shuffle of 100000 int64 (in place)",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.FillIntN",
+      "func": "random.Generator.FillIntN",
+      "reference": "numpy Generator.integers(0, 1000, 100000) (allocates; Go fills dst)",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.FillUniform",
+      "func": "random.Generator.FillUniform",
+      "reference": "numpy Generator.uniform(0, 1, 100000) (allocates; Go fills dst)",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Generator.Bytes",
+      "func": "random.Generator.Bytes",
+      "reference": "numpy Generator.bytes(1000000)",
+      "parity": "none",
+      "allocs": 1,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Binomial",
+      "func": "random.RandomState.Binomial",
+      "reference": "numpy RandomState.binomial(100, 0.3, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.ChiSquare",
+      "func": "random.RandomState.ChiSquare",
+      "reference": "numpy RandomState.chisquare(3.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.ChoiceN",
+      "func": "random.RandomState.ChoiceN",
+      "reference": "numpy RandomState.choice(1000, 100000)",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Exponential",
+      "func": "random.RandomState.Exponential",
+      "reference": "numpy RandomState.exponential(1.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Gamma",
+      "func": "random.RandomState.Gamma",
+      "reference": "numpy RandomState.gamma(2.0, 1.5, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Lognormal",
+      "func": "random.RandomState.Lognormal",
+      "reference": "numpy RandomState.lognormal(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Multinomial",
+      "func": "random.RandomState.Multinomial",
+      "reference": "numpy RandomState.multinomial(100, [0.2, 0.3, 0.5], 20000)",
+      "parity": "none",
+      "allocs": 7,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Normal",
+      "func": "random.RandomState.Normal",
+      "reference": "numpy RandomState.normal(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Permutation",
+      "func": "random.RandomState.Permutation",
+      "reference": "numpy RandomState.permutation(100000)",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Poisson",
+      "func": "random.RandomState.Poisson",
+      "reference": "numpy RandomState.poisson(5.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Rand",
+      "func": "random.RandomState.Rand",
+      "reference": "numpy RandomState.rand(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Randint",
+      "func": "random.RandomState.Randint",
+      "reference": "numpy RandomState.randint(0, 1000, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.RandintOf",
+      "func": "random.RandomState.RandintOf",
+      "reference": "numpy RandomState.randint(0, 1000, 100000, dtype=np.int32)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Randn",
+      "func": "random.RandomState.Randn",
+      "reference": "numpy RandomState.randn(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.RandomSample",
+      "func": "random.RandomState.RandomSample",
+      "reference": "numpy RandomState.random_sample(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.StandardExponential",
+      "func": "random.RandomState.StandardExponential",
+      "reference": "numpy RandomState.standard_exponential(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.StandardGamma",
+      "func": "random.RandomState.StandardGamma",
+      "reference": "numpy RandomState.standard_gamma(2.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.StandardNormal",
+      "func": "random.RandomState.StandardNormal",
+      "reference": "numpy RandomState.standard_normal(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Uniform",
+      "func": "random.RandomState.Uniform",
+      "reference": "numpy RandomState.uniform(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Choice",
+      "func": "random.RandomState.Choice",
+      "reference": "numpy RandomState.choice(x, 100000)",
+      "parity": "none",
+      "allocs": 200012,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.PermutationOf",
+      "func": "random.RandomState.PermutationOf",
+      "reference": "numpy RandomState.permutation(x)",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Shuffle",
+      "func": "random.RandomState.Shuffle",
+      "reference": "numpy RandomState.shuffle (in place, on a copy)",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.ShuffleInt64",
+      "func": "random.RandomState.ShuffleInt64",
+      "reference": "numpy RandomState.shuffle of 100000 int64 (in place)",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.FillIntN",
+      "func": "random.RandomState.FillIntN",
+      "reference": "numpy RandomState.randint(0, 1000, 100000) (allocates; Go fills dst)",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.FillUniform",
+      "func": "random.RandomState.FillUniform",
+      "reference": "numpy RandomState.uniform(0, 1, 100000) (allocates; Go fills dst)",
+      "parity": "none",
+      "allocs": 0,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomState.Bytes",
+      "func": "random.RandomState.Bytes",
+      "reference": "numpy RandomState.bytes(1000000)",
+      "parity": "none",
+      "allocs": 1,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Binomial",
+      "func": "random.Binomial",
+      "reference": "numpy np.random.binomial(100, 0.3, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Normal",
+      "func": "random.Normal",
+      "reference": "numpy np.random.normal(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Permutation",
+      "func": "random.Permutation",
+      "reference": "numpy np.random.permutation(100000)",
+      "parity": "none",
+      "allocs": 10,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Poisson",
+      "func": "random.Poisson",
+      "reference": "numpy np.random.poisson(5.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Rand",
+      "func": "random.Rand",
+      "reference": "numpy np.random.rand(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Randint",
+      "func": "random.Randint",
+      "reference": "numpy np.random.randint(0, 1000, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Randn",
+      "func": "random.Randn",
+      "reference": "numpy np.random.randn(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomSample",
+      "func": "random.RandomSample",
+      "reference": "numpy np.random.random_sample(100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Uniform",
+      "func": "random.Uniform",
+      "reference": "numpy np.random.uniform(0.0, 1.0, 100000)",
+      "parity": "none",
+      "allocs": 6,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Choice",
+      "func": "random.Choice",
+      "reference": "numpy np.random.choice(x, 100000)",
+      "parity": "none",
+      "allocs": 200012,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.Shuffle",
+      "func": "random.Shuffle",
+      "reference": "numpy np.random.shuffle (in place, on a copy)",
+      "parity": "none",
+      "allocs": 11,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    },
+    {
+      "name": "random.RandomRaw",
+      "func": "random.RandomRaw",
+      "reference": "numpy PCG64.random_raw(100000)",
+      "parity": "none",
+      "allocs": 1,
+      "go": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ref": {
+        "median": 0,
+        "q1": 0,
+        "q3": 0
+      },
+      "ratio": 0
+    }
+  ]
+}

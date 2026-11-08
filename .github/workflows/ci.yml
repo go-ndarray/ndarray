@@ -75,6 +75,26 @@ jobs:
           # statements never run.
           go run github.com/go-fleettools/fleettools/cmd/covblocks@v0.27.0 cover.out
 
+  # The refbench inventory (docs/perf.md): the allocation count of every case
+  # equals docs/perf.json, docs/perf-table.md is what perf.json generates, and
+  # every public function has a case or an entry in docs/perf-exempt.md. No
+  # Python, no timing: timing runs by hand at a 1-minute load below 8,
+  #   cd bench && GOMAXPROCS=1 go test -run TestPerf -cpu 1 -perf.run .
+  # GOMAXPROCS=1 is in the environment because go-fft/fft reads it once at init.
+  perf:
+    name: perf (refbench CI mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.3
+      - name: Allocation counts, table, public-function inventory
+        working-directory: bench
+        env:
+          GOMAXPROCS: "1"
+        run: go test -count=1 -run TestPerf -cpu 1 .
+
   # Native per-arch execution. amd64/arm64 have GitHub-hosted runners, so the
   # generated assembly runs natively. Each regenerates the committed .s via
   # go-asmgen and fails if it is stale, then vets/builds/runs the suite —
