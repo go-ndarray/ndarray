@@ -123,26 +123,16 @@ and they are correct where amd64's `math.Exp` returns +Inf
 is wrong on subnormals
 ([golang/go#56600](https://github.com/golang/go/issues/56600)).
 
-**Measured against NumPy 2.5.3 (OpenBLAS 0.3.34) on an AMD Zen 3, 16 cores**
-(full tables in **[docs/perf.md](docs/perf.md)**):
-
-- **Faster:** whole-array reductions (`Sum`/`Mean`/`Max` at 4 Mi: 2.3–4.5×),
-  row reductions (`SumAxis(1)` 2.2×, `MaxAxis(1)` 1.7×), float64 `Exp` at
-  every size (on one core 1.2–1.3×; in a `Workspace` on 16 cores 1.3–1.5×
-  up to 16 Ki and 7–17× from 256 Ki), the `*Into` forms of `Add`/`Mul`/`Sqrt` (faster or at
-  parity at every size), and `MatMul` against single-threaded OpenBLAS
-  (3.7–5.9× from 512²); in a `Workspace`, `x + y` and `sqrt(x*y + x)` match or
-  beat NumPy at every size measured; float64 `Log` on one core with AVX2
-  (1.55× at 16 Ki, 1.68× at 1 Mi).
-- **At parity:** `SumAxis(0)`, `Inner` against 16-thread OpenBLAS.
-- **Slower:** `MatMul` against 16-thread OpenBLAS at 512² and up (0.42× at
-  512², 0.51× at 1024², measured in one run with OpenBLAS; at 256² ours is
-  1.44× faster); `Dot` and mat·vec against NumPy's 16-thread BLAS (0.69× and 0.52× since v0.6.0's helper pool, measured in one run; 0.16× before); the
-  *allocating* forms of elementwise ops up to 256 Ki elements (allocating
-  float64 `Exp` with 16 Ps is at parity there, 0.9–1.0×, although its kernel
-  is faster), `Concatenate`/`Stack` and slice copies outside a `Workspace`
-  (0.2–0.5×: Go's allocator and garbage collector, whose cost grows with
-  GOMAXPROCS and which `Workspace` largely removes).
+**Speed against NumPy is measured on one core, both sides**
+([docs/perf.md](docs/perf.md), table in **[docs/perf-table.md](docs/perf-table.md)**):
+one row per public function (or a named exemption in
+[docs/perf-exempt.md](docs/perf-exempt.md)), against the pinned NumPy 2.5.4,
+`GOMAXPROCS=1` and one BLAS thread, interleaved rounds, refused at a 1-minute
+load of 8 or more, with the allocation count of every row checked in CI. The
+earlier page compared multicore Go with single-threaded NumPy 2.2.4, which the
+one-core rule does not allow; it is kept as
+[docs/perf-history.md](docs/perf-history.md) for its kernel-level analysis, and
+its ratios are not a verdict.
 
 On Apple silicon the GEMM reached parity with tuned BLAS at 1024² (OpenBLAS in
 an arm64 VM, single-threaded vecLib on an M4 Max), and every product beats the
@@ -150,7 +140,7 @@ pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). On the other
 targets, against go-ndarray's own scalar code on one core: on a RISC-V
 SpacemiT X60 the RVV kernels cut `Sum` by up to 5.8× and `MatMul` time by
 31–45%; on an IBM z17 the s390x kernels cut `MatMul` 1024² from 340 to 70 ms
-and `Max` by 92–96% ([docs/perf.md](docs/perf.md), *SIMD coverage*). It is a
+and `Max` by 92–96% ([docs/perf-history.md](docs/perf-history.md), *SIMD coverage*). It is a
 **standalone, reusable** module and the cgo-free ndarray backend behind
 [go-embedded-ruby](https://github.com/go-embedded-ruby/ruby)'s `NDArray` class.
 

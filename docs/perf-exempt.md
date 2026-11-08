@@ -1,0 +1,121 @@
+# Public functions without a refbench case
+
+Each is named with the reason it has no case (refbench's coverage rule). Every other public function has a row in `perf-table.md`.
+
+- `A`: builds an Index value (a few words); NumPy has no counterpart
+- `All`: builds an Index value (a few words); NumPy has no counterpart
+- `Array.AtComplex`: one scalar element access, a few ns; the NumPy counterpart is dominated by the Python interpreter, not a kernel
+- `Array.At`: one scalar element access, a few ns; the NumPy counterpart is dominated by the Python interpreter, not a kernel
+- `Array.DType`: attribute read
+- `Array.Detach`: leaves a Workspace; NumPy has no counterpart
+- `Array.Display`: builds a Jupyter MIME bundle; NumPy has no counterpart
+- `Array.Map`: takes a Go callback per element; the NumPy counterpart (np.vectorize) is a Python loop, not a kernel
+- `Array.Ndim`: attribute read
+- `Array.SetComplex`: one scalar element access, a few ns; the NumPy counterpart is dominated by the Python interpreter, not a kernel
+- `Array.Set`: one scalar element access, a few ns; the NumPy counterpart is dominated by the Python interpreter, not a kernel
+- `Array.Shape`: attribute read
+- `Array.Size`: attribute read
+- `DType.IsBool`: a one-instruction property of a DType; no NumPy call to compare
+- `DType.IsComplex`: a one-instruction property of a DType; no NumPy call to compare
+- `DType.IsFloat`: a one-instruction property of a DType; no NumPy call to compare
+- `DType.IsInteger`: a one-instruction property of a DType; no NumPy call to compare
+- `DType.IsSigned`: a one-instruction property of a DType; no NumPy call to compare
+- `DType.Size`: a one-instruction property of a DType; no NumPy call to compare
+- `Data`: accessor or dtype lookup, no array work (ResultType is checked cell by cell against numpy.result_type in the tests)
+- `From`: builds an Index value (a few words); NumPy has no counterpart
+- `Item`: accessor or dtype lookup, no array work (ResultType is checked cell by cell against numpy.result_type in the tests)
+- `NewWorkspace`: the Go arena for results (no NumPy counterpart); its effect shows in the allocation counts of the other rows
+- `ParseDType`: accessor or dtype lookup, no array work (ResultType is checked cell by cell against numpy.result_type in the tests)
+- `R`: builds an Index value (a few words); NumPy has no counterpart
+- `ResultType`: accessor or dtype lookup, no array work (ResultType is checked cell by cell against numpy.result_type in the tests)
+- `Rng`: builds an Index value (a few words); NumPy has no counterpart
+- `Step`: builds an Index value (a few words); NumPy has no counterpart
+- `To`: builds an Index value (a few words); NumPy has no counterpart
+- `Workspace.Reset`: the Go arena for results (no NumPy counterpart); its effect shows in the allocation counts of the other rows
+- `Workspace.Use`: the Go arena for results (no NumPy counterpart); its effect shows in the allocation counts of the other rows
+- `linalg.P`: builds an Ord value
+- `random.DefaultRNG`: constructor, one-off cost paid once per generator, not per draw
+- `random.Generator.BitGenerator`: accessor
+- `random.Generator.Float64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.Generator.IntN`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.Generator.Spawn`: derives a new generator, once per stream; no draw loop
+- `random.MT19937.Float64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.MT19937.Jumped`: derives a new generator, once per stream; no draw loop
+- `random.MT19937.Raw`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.MT19937.SeedLegacyArray`: seeding or state transfer, once per generator; no draw loop
+- `random.MT19937.SeedLegacy`: seeding or state transfer, once per generator; no draw loop
+- `random.MT19937.SeedSeq`: seeding or state transfer, once per generator; no draw loop
+- `random.MT19937.SetState`: seeding or state transfer, once per generator; no draw loop
+- `random.MT19937.Spawn`: derives a new generator, once per stream; no draw loop
+- `random.MT19937.State`: seeding or state transfer, once per generator; no draw loop
+- `random.MT19937.Uint32`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.MT19937.Uint64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.NewGenerator`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewMT19937FromSeedSequence`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewMT19937Legacy`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewMT19937`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewPCG64DXSMFromSeedSequence`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewPCG64DXSM`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewPCG64FromSeedSequence`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewPCG64`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewPhiloxFromSeedSequence`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewPhiloxKey`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewPhilox`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewRandomStateArray`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewRandomStateEntropy`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewRandomStateFrom`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewRandomState`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewSFC64FromSeedSequence`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewSFC64`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewSeedSequenceBig`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewSeedSequenceWith`: constructor, one-off cost paid once per generator, not per draw
+- `random.NewSeedSequence`: constructor, one-off cost paid once per generator, not per draw
+- `random.PCG64.Advance`: derives a new generator, once per stream; no draw loop
+- `random.PCG64.Float64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.PCG64.Jumped`: derives a new generator, once per stream; no draw loop
+- `random.PCG64.Raw`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.PCG64.Spawn`: derives a new generator, once per stream; no draw loop
+- `random.PCG64.Uint32`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.PCG64.Uint64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.PCG64DXSM.Advance`: derives a new generator, once per stream; no draw loop
+- `random.PCG64DXSM.Float64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.PCG64DXSM.Jumped`: derives a new generator, once per stream; no draw loop
+- `random.PCG64DXSM.Raw`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.PCG64DXSM.Spawn`: derives a new generator, once per stream; no draw loop
+- `random.PCG64DXSM.Uint32`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.PCG64DXSM.Uint64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.Philox.Advance`: derives a new generator, once per stream; no draw loop
+- `random.Philox.Float64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.Philox.Jumped`: derives a new generator, once per stream; no draw loop
+- `random.Philox.Raw`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.Philox.SeedSeq`: seeding or state transfer, once per generator; no draw loop
+- `random.Philox.SetState`: seeding or state transfer, once per generator; no draw loop
+- `random.Philox.Spawn`: derives a new generator, once per stream; no draw loop
+- `random.Philox.State`: seeding or state transfer, once per generator; no draw loop
+- `random.Philox.Uint32`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.Philox.Uint64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.RandomState.BitGenerator`: seeding or state transfer, once per generator; no draw loop
+- `random.RandomState.Float64`: seeding or state transfer, once per generator; no draw loop
+- `random.RandomState.GetState`: seeding or state transfer, once per generator; no draw loop
+- `random.RandomState.IntN`: seeding or state transfer, once per generator; no draw loop
+- `random.RandomState.SeedArray`: seeding or state transfer, once per generator; no draw loop
+- `random.RandomState.Seed`: seeding or state transfer, once per generator; no draw loop
+- `random.RandomState.SetState`: seeding or state transfer, once per generator; no draw loop
+- `random.SFC64.Float64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.SFC64.Raw`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.SFC64.SeedSeq`: seeding or state transfer, once per generator; no draw loop
+- `random.SFC64.SetState`: seeding or state transfer, once per generator; no draw loop
+- `random.SFC64.Spawn`: derives a new generator, once per stream; no draw loop
+- `random.SFC64.State`: seeding or state transfer, once per generator; no draw loop
+- `random.SFC64.Uint32`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.SFC64.Uint64`: one draw per call, a few ns; the bulk rows (random.RandomRaw, Generator.Random, ...) measure the same generator over 100 000 draws
+- `random.SeedSequence.EntropyInt`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.Entropy`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.GenerateState64`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.GenerateState`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.NChildrenSpawned`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.PoolSize`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.Pool`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.SpawnKey`: seeding or state transfer, once per generator; no draw loop
+- `random.SeedSequence.Spawn`: seeding or state transfer, once per generator; no draw loop
+- `random.Seed`: seeding or state transfer, once per generator; no draw loop
