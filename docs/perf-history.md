@@ -1731,6 +1731,27 @@ the 4.8.
   | `DivInto` | 2.27× | 2.30× | 2.28× |
   | `SqrtInto` | 2.43× | 2.44× | 2.47× |
 
+  **float32 GEMM on RVV (2026-11-08).** float32 `MatMul` used to go through the
+  float64 GEMM (widened, accumulated in float64, rounded once). It now has its
+  own 6×16 RVV micro-kernel (`gemmMicro6x16RVV`, go-asmgen), accumulating in
+  float32 like NumPy's sgemm, behind the same `AT_HWCAP` V check. On the X60
+  (cfarm95), one pinned core, `abbench` 8 interleaved rounds, load 4.1–4.9 of
+  8, `BenchmarkDTypeMatMul/float32`:
+
+  | float32 `MatMul` | 64² | 256² | 1024² |
+  |---|---:|---:|---:|
+  | through the float64 GEMM | 546 µs | 15.9 ms | 944 ms |
+  | **RVV float32 GEMM** | **172 µs** | **7.1 ms** | **462 ms** |
+  | OpenBLAS 0.3.34 `cblas_sgemm`, `riscv64_zvl256b`, 1 thread | 102 µs | 5.4 ms | 368 ms |
+
+  −69%, −55%, −51% against the float64 path (p = 0.000), and still 1.69×,
+  1.33×, 1.26× slower than OpenBLAS: an open defect. OpenBLAS is the
+  scipy-openblas32 wheel called through ctypes on preallocated arrays (median
+  of 5). NumPy itself is no reference on this host: pip built 2.5.4 from
+  source without a BLAS, and its fallback loop takes 1.40 ms at 64² and
+  169 ms at 256². `TestGemm32Accuracy` and `TestGemm32Specials` pass on the
+  X60, as does the whole kernels and root suite.
+
   `MatVec` 1024² is 2.02× faster and `Dot` 2^20 1.29×. On a riscv64 CPU without V
   (cfarm94, SiFive U74), the same build runs the scalar path and passes the same
   tests.
