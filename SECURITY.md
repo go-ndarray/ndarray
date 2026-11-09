@@ -66,6 +66,17 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
+**2026-11-09 (v0.38.0).** The riscv64 float32 GEMM kernel
+(`gemmMicro6x16RVV`) reads `kc·6` and `kc·16` packed floats and one 6×16
+tile of C, `ldc` floats apart. Its wrapper (`gemmMicro32` in
+`gemm32_riscv64.go`) bounds-checks all three before the call, behind the
+`useRVV` gate (V reported in `AT_HWCAP`); without V there is no float32 kernel
+and products go through the float64 GEMM. It passed the kernel suite (the
+`PROT_NONE` fence of `TestGemmMicroStaysInsideItsOperands` included, which
+runs whichever `gemm32` the CPU selects) and the root suite on a real
+SpacemiT X60, and CI's riscv64 lane runs it with V enabled. This entry was
+written after the v0.38.0 tag; the code it describes is that release's.
+
 **2026-11-07 (v0.36.0).** The AVX2 float64 log kernel (`logAVX2`) reads and
 writes at most `n` doubles, a positive multiple of 4 chosen by the Go
 wrapper, and returns how many it wrote; the wrapper finishes the block it
