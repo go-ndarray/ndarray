@@ -151,6 +151,37 @@ func TestFloat32ExtremaMatchTheFloat64Path(t *testing.T) {
 	}
 }
 
+// TestFloat32ExtremaEveryLengthAndPosition pins what Array.Max/Min promise on a
+// float32 array now that the kernel is go-simd/floats' (Float32Max/Float32Min):
+// numpy.max semantics, NaN (either sign) anywhere gives NaN, -0 below +0, at every
+// length around the vector blocks and every position.
+func TestFloat32ExtremaEveryLengthAndPosition(t *testing.T) {
+	nz := float32(math.Copysign(0, -1))
+	nan := float32(math.NaN())
+	negNaN := math.Float32frombits(0xffc00000)
+	for n := 1; n <= 70; n++ {
+		for pos := 0; pos < n; pos++ {
+			for _, fill := range []float32{nz, 0, -1, 1} {
+				for _, v := range []float32{nz, 0, nan, negNaN, float32(math.Inf(1)), float32(math.Inf(-1))} {
+					d := make([]float32, n)
+					for i := range d {
+						d[i] = fill
+					}
+					d[pos] = v
+					a := mustArr(t, ok(FromSlice(d, n)))
+					mx, _ := a.Max()
+					mn, _ := a.Min()
+					wmx, _ := a.AsType(Float64).Max()
+					wmn, _ := a.AsType(Float64).Min()
+					if !sameFloat(mx, wmx) || !sameFloat(mn, wmn) {
+						t.Fatalf("n=%d fill=%v a[%d]=%v: Max=%v Min=%v, float64 path %v %v", n, fill, pos, v, mx, mn, wmx, wmn)
+					}
+				}
+			}
+		}
+	}
+}
+
 // sameFloat is bit equality, any NaN matching any NaN.
 func sameFloat(a, b float64) bool {
 	if a != a && b != b {

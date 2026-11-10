@@ -45,7 +45,8 @@ func main() {
 		vop, rd string
 	}{
 		{"maxRVV", 64, "VFMAXVV", "VFREDMAXVS"}, {"minRVV", 64, "VFMINVV", "VFREDMINVS"},
-		{"max32RVV", 32, "VFMAXVV", "VFREDMAXVS"}, {"min32RVV", 32, "VFMINVV", "VFREDMINVS"},
+		// max32RVV/min32RVV moved to go-simd/floats (Float32Max, Float32Min;
+		// go-ndarray/ndarray#98).
 	} {
 		f.Add(extremumKernel(k.name, k.bits, k.vop, k.rd))
 	}

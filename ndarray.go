@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/go-ndarray/ndarray/internal/kernels"
+	"github.com/go-simd/floats"
 )
 
 // Array is an N-dimensional, row-major array. Its element type is a runtime
@@ -878,7 +879,7 @@ func (a *Array) Mean() (float64, error) {
 // On a complex array it panics; use MaxAxis.
 func (a *Array) Max() (float64, error) {
 	if a.dtype == Float32 && a.Size() > 0 {
-		return float64(kernels.Max32(a.contiguousStore().([]float32))), nil
+		return float64(floats.Float32Max(a.contiguousStore().([]float32))), nil
 	}
 	if a.dtype != Float64 {
 		a.realOnly("Max", "MaxAxis")
@@ -894,7 +895,7 @@ func (a *Array) Max() (float64, error) {
 // On a complex array it panics; use MinAxis.
 func (a *Array) Min() (float64, error) {
 	if a.dtype == Float32 && a.Size() > 0 {
-		return float64(kernels.Min32(a.contiguousStore().([]float32))), nil
+		return float64(floats.Float32Min(a.contiguousStore().([]float32))), nil
 	}
 	if a.dtype != Float64 {
 		a.realOnly("Min", "MinAxis")
