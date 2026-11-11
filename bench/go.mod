@@ -10,7 +10,7 @@ require (
 require (
 	github.com/go-fft/fft v0.28.11 // indirect
 	github.com/go-fleettools/fleettools v0.81.0 // indirect
-	github.com/go-simd/floats v0.14.0 // indirect
+	github.com/go-simd/floats v0.15.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 )
 
