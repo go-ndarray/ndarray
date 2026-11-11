@@ -44,12 +44,10 @@ func main() {
 	f.Add(sqrt32Kernel())
 	abs64 := f.Data("abs64", lanes(8, 0x7fffffffffffffff))
 	inf64 := f.Data("inf64", lanes(8, 0x7ff0000000000000))
-	abs32 := f.Data("abs32", lanes(4, 0x7fffffff))
-	inf32 := f.Data("inf32", lanes(4, 0x7f800000))
+	// max32VSX/min32VSX moved to go-simd/floats (Float32Max, Float32Min;
+	// go-ndarray/ndarray#98).
 	f.Add(extremumKernel("maxVSX", 64, true, abs64, inf64))
 	f.Add(extremumKernel("minVSX", 64, false, abs64, inf64))
-	f.Add(extremumKernel("max32VSX", 32, true, abs32, inf32))
-	f.Add(extremumKernel("min32VSX", 32, false, abs32, inf32))
 	f.Add(gemm32Kernel(f.Data("oddw", words(1, 3)), f.Data("highw", words(2, 3))))
 	if err := os.WriteFile("sum_ppc64le.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -178,7 +176,7 @@ func extremumKernel(name string, bits int, isMax bool, abs, inf string) *emit.Fu
 	for k := 0; k < 4; k++ {
 		b.Raw("XXLOR VS%d, VS%d, VS%d", 36+k, 36+k, k)
 	}
-	b.Label(name + "loop").Raw("CMP R4, $0").Raw("BEQ %sfold", name)
+	b.Label(name+"loop").Raw("CMP R4, $0").Raw("BEQ %sfold", name)
 	loadAndScan()
 	for k := 0; k < 4; k++ {
 		op(k, k, 36+k)
@@ -385,7 +383,7 @@ func gemm32Kernel(odd, high string) *emit.Function {
 		b.Raw("XXLXOR VS%d, VS%d, VS%d", r, r, r)
 	}
 	b.Raw("CMP R3, $0").Raw("BEQ %sstore", name)
-	b.Label(name+"loop").
+	b.Label(name + "loop").
 		Raw("LXVW4X (R4)(R0), VS32").Raw("LXVW4X (R4)(R14), VS36")
 	for k := 0; k < 4; k++ {
 		b.Raw("LXVW4X (R5)(%s), VS%d", vidx(k), 40+k)

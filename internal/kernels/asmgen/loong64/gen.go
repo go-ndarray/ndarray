@@ -44,12 +44,10 @@ func main() {
 	f.Add(sqrt32Kernel())
 	abs64 := f.Data("abs64", lanes(8, 0x7fffffffffffffff))
 	inf64 := f.Data("inf64", lanes(8, 0x7ff0000000000000))
-	abs32 := f.Data("abs32", lanes(4, 0x7fffffff))
-	inf32 := f.Data("inf32", lanes(4, 0x7f800000))
+	// max32LSX/min32LSX moved to go-simd/floats (Float32Max, Float32Min;
+	// go-ndarray/ndarray#98).
 	f.Add(extremumKernel("maxLSX", 64, true, abs64, inf64))
 	f.Add(extremumKernel("minLSX", 64, false, abs64, inf64))
-	f.Add(extremumKernel("max32LSX", 32, true, abs32, inf32))
-	f.Add(extremumKernel("min32LSX", 32, false, abs32, inf32))
 	if err := os.WriteFile("sum_loong64.s", []byte(f.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
