@@ -1752,6 +1752,10 @@ the 4.8.
   169 ms at 256². `TestGemm32Accuracy` and `TestGemm32Specials` pass on the
   X60, as does the whole kernels and root suite.
 
+  `MatVec` 1024² is 2.02× faster and `Dot` 2^20 1.29×. On a riscv64 CPU without V
+  (cfarm94, SiFive U74), the same build runs the scalar path and passes the same
+  tests.
+
   **float32 GEMM on RVV, 8×16 tile (2026-11-11, #107).** OpenBLAS's
   `riscv64_zvl256b` SGEMM (v0.3.34, `param.h`, `sgemm_kernel_16x8_zvl256b.c`) is
   a 16×8 tile, LMUL=2 (vl = 16, a full register pair at VLEN 256), eight
@@ -1783,8 +1787,9 @@ the 4.8.
   | OpenBLAS 0.3.34, 1 thread, preallocated (`sgemm.py` through the scipy-openblas32 venv, `~/nd-bench/venv`) | 105 µs | 5.34 ms | 380 ms |
   | after / OpenBLAS | 1.35× | 0.84× | 0.94× |
 
-  256² and 1024² (final `abbench`, 8 rounds, −41% and −24%, p = 0.000) are now
-  faster than OpenBLAS. The 64² figure is from the quiet runs (the final
+  256² and 1024² are now faster than OpenBLAS: −38% and −23% against the
+  6×16 kernel in the table above. The final 8-round `abbench`, a separate run
+  at higher load, read −41% and −24% (p = 0.000). The 64² figure is from the quiet runs (the final
   8-round run, at higher load, read 283 → 207 µs, ±25%); about 20 µs of the
   remaining gap is the result allocation the OpenBLAS reference does not pay.
 
@@ -1800,10 +1805,6 @@ the 4.8.
 
   At 1M elements the timing is memory-bound and NumPy varied from 64 to 113 µs
   across runs, so no ranking is claimed at that size (go-simd/floats#46).
-
-  `MatVec` 1024² is 2.02× faster and `Dot` 2^20 1.29×. On a riscv64 CPU without V
-  (cfarm94, SiFive U74), the same build runs the scalar path and passes the same
-  tests.
 
   **GEMM micro-kernel (v0.7.1).** NR is fixed by the packing, while VLEN varies
   between RISC-V cores. The V extension guarantees VLEN ≥ 128, so a group of

@@ -23,6 +23,9 @@ func testPackRows8[T gemmFloat](t *testing.T) {
 		{0, 16, 0, k}, {0, 21, 2, 9}, {5, 16, 1, 1}, {8, 13, 0, 12},
 	} {
 		pa := make([]T, roundUp(c.mc, 8)*c.kc)
+		for i := range pa {
+			pa[i] = -1 // a sentinel no packed value takes, so a missing zero-fill fails
+		}
 		g.packA(a, c.ic, c.mc, c.pc, c.kc, pa)
 		for ir := 0; ir < roundUp(c.mc, 8); ir += 8 {
 			for p := 0; p < c.kc; p++ {
