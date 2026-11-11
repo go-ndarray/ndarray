@@ -323,6 +323,28 @@ func packRowsWhole[T gemmFloat](dst, src []T, s, rs, kc, nr int) bool {
 	return true
 }
 
+// packRows8 packs a full 8-row panel of a row-major A: dst[p*8+r] = a[s+r*rs+p]
+// for p < kc, r < 8. It reads the eight rows as eight sequential streams and
+// writes the panel in order, eight elements per step, where the row-by-row
+// scatter walks the whole panel eight times with a stride of eight elements
+// (4 ns per element on an in-order core, the cost of 64² float32 packing).
+func packRows8[T gemmFloat](dst, a []T, s, rs, kc int) {
+	r0 := a[s : s+kc]
+	r1 := a[s+rs : s+rs+kc]
+	r2 := a[s+2*rs : s+2*rs+kc]
+	r3 := a[s+3*rs : s+3*rs+kc]
+	r4 := a[s+4*rs : s+4*rs+kc]
+	r5 := a[s+5*rs : s+5*rs+kc]
+	r6 := a[s+6*rs : s+6*rs+kc]
+	r7 := a[s+7*rs : s+7*rs+kc]
+	dst = dst[:kc*8]
+	for p := range r0 {
+		d := (*[8]T)(dst[p*8:])
+		d[0], d[1], d[2], d[3] = r0[p], r1[p], r2[p], r3[p]
+		d[4], d[5], d[6], d[7] = r4[p], r5[p], r6[p], r7[p]
+	}
+}
+
 // packA copies A[ic:ic+mc][pc:pc+kc] into MR-tall row panels: for each panel ir
 // the layout is pa[ir*kc + p*MR + r] = A(ic+ir+r, pc+p), with the r >= mr rows
 // of an edge panel zero-filled so the micro-kernel reads a full MR.
@@ -332,6 +354,10 @@ func (g *gemmKernel[T]) packA(a MatOf[T], ic, mc, pc, kc int, pa []T) {
 		mr := min(MR, mc-ir)
 		dst := pa[ir*kc:]
 		src := a.Off + (ic+ir)*a.RS + pc*a.CS
+		if a.CS == 1 && MR == 8 && mr == 8 {
+			packRows8(dst, a.Data, src, a.RS, kc)
+			continue
+		}
 		if a.CS == 1 {
 			// Row-major A: read each row as one contiguous run and scatter it
 			// into its lane of the panel. The column-wise walk below spends
