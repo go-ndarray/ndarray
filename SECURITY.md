@@ -66,7 +66,13 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
-**2026-11-10 (unreleased).** The float32 extremum kernels (`max32SSE2`,
+**2026-11-11 (v0.39.0).** go-simd/floats v0.15.0 adds an AVX2 path to
+`Float32Max`/`Float32Min` on amd64 (four YMM accumulators, from 32 elements, SSE2
+kept below that and on CPUs without AVX2+FMA), with both paths run through the
+same tests and fences there (go-simd/floats#47). Nothing in this package reads
+memory differently: the kernels' bounds stay audited in that repository.
+
+**2026-11-10 (v0.39.0).** The float32 extremum kernels (`max32SSE2`,
 `min32SSE2`, `max32NEON`, `min32NEON`, `max32LSX`, `min32LSX`, `max32VSX`,
 `min32VSX`, `max32RVV`, `min32RVV`, `max32VXE`, `min32VXE`) left this package:
 `Array.Max` and `Array.Min` on a float32 array call go-simd/floats'
