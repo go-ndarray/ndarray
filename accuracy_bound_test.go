@@ -13,9 +13,10 @@ import (
 // oracle: math/big at 1024 bits, wide enough that every sum and dot product of
 // these inputs is exact before its final rounding. The bounds are the rigorous
 // worst-case bounds of the algorithm (Higham, "Accuracy and Stability of
-// Numerical Algorithms", 2nd ed., §3.1 and §4.2), so they hold for any
-// summation order and with or without FMA: a faster default that reorders or
-// fuses is accepted as long as these tests pass.
+// Numerical Algorithms", 2nd ed., §3.1 and §4.2). The MatMul bound holds for
+// any summation order, with or without FMA; the Sum bound holds for any tree at
+// most sumDepth(n) deep. A faster default that reorders or fuses is accepted as
+// long as these tests pass.
 
 const oraclePrec = 1024
 
