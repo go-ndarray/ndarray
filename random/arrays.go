@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"unsafe"
 
 	"github.com/go-ndarray/ndarray"
 )
@@ -136,15 +137,29 @@ func takeAxis(a *ndarray.Array, idx []int64, idxShape []int, axis int) (*ndarray
 	if err != nil {
 		return nil, err
 	}
+	// The gather runs on the bytes: every dtype is a pointer-free fixed-size
+	// value, so a slab is a run of inner·size bytes. reflect.Value.Slice cost
+	// two allocations per index (#103); this costs none.
+	size := int(src.Type().Elem().Size())
+	sb := bytesOf(src, size)
+	db := bytesOf(dst, size)
+	slab := inner * size
 	pos := 0
 	for o := range outer {
 		for _, k := range idx {
-			from := (o*n + int(k)) * inner
-			reflect.Copy(dst.Slice(pos, pos+inner), src.Slice(from, from+inner))
-			pos += inner
+			from := (o*n + int(k)) * slab
+			copy(db[pos:pos+slab], sb[from:from+slab])
+			pos += slab
 		}
 	}
 	return r, nil
+}
+
+// bytesOf views the backing array of the slice s (elements of size bytes) as
+// bytes. The caller keeps s alive for as long as the view is used. An empty s
+// gives an empty view (unsafe.Slice accepts a nil pointer with length 0).
+func bytesOf(s reflect.Value, size int) []byte {
+	return unsafe.Slice((*byte)(s.UnsafePointer()), s.Len()*size)
 }
 
 // swapSlabs swaps positions i and j along the middle axis of the (outer, n,
