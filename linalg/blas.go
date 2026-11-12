@@ -204,7 +204,9 @@ func gemm[T scalar](m, n, k int, alpha T, a, b mview[T], beta T, c []T, ldc int)
 // fastGemm adds alpha*A*B to C through the float64 packed GEMM: directly
 // for real operands, as four real products for complex ones.
 func fastGemm[T scalar](m, n, k int, alpha T, a, b mview[T], c []T, ldc int) {
-	tmp := make([]float64, m*n)
+	tp := getScratch(m * n)
+	defer putScratch(tp)
+	tmp := *tp
 	if cf, ok := any(c).([]float64); ok {
 		av, bv := any(a).(mview[float64]), any(b).(mview[float64])
 		kernels.MatMulStridedP(tmp, kmat(av), kmat(bv), m, k, n)
