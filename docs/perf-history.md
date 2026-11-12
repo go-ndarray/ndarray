@@ -1756,6 +1756,56 @@ the 4.8.
   (cfarm94, SiFive U74), the same build runs the scalar path and passes the same
   tests.
 
+  **float32 GEMM on RVV, 8×16 tile (2026-11-11, #107).** OpenBLAS's
+  `riscv64_zvl256b` SGEMM (v0.3.34, `param.h`, `sgemm_kernel_16x8_zvl256b.c`) is
+  a 16×8 tile, LMUL=2 (vl = 16, a full register pair at VLEN 256), eight
+  accumulator pairs fed by eight scalar loads and one vector load per k step,
+  blocking P = Q = 128, R = 16384, with a separate tail pass per edge size. Ours
+  ran LMUL=4 with vl = 16: half of each register group idle on a 256-bit core,
+  and 6 rows, so every 256-row block ended in a 4-row edge tile. Attribution,
+  one change at a time (`abbench`, cfarm95, core 0, load 5.3–5.8 of 8):
+  - **8×16 tile at LMUL=2** (`gemmMicro8x16RVV`, chosen when `vlenb ≥ 32`; the
+    6×16 kernel stays for VLEN 128): 64² 184.6 → 147.0 µs (−20%, p = 0.011),
+    256² 7.19 → 5.25 ms (−27%, p = 0.002). 64, 256 and 1024 are multiples of 8,
+    so no edge tile is left.
+  - **k unrolled 4× instead of 2×**: no change (142.0 vs 141.8 µs, p = 0.63;
+    5.09 vs 4.81 ms, p = 0.09): the loads are hidden, so the loop is bound by
+    the FMAs (about 8.5 GFLOPS per core). Kept at 2.
+  - **blocking** (MC, KC, NC from 64 to 512 around the 256/256/512 default,
+    OpenBLAS's 128/128 included): within 5% except KC = 128, +20% at 1024², so
+    unchanged.
+  - **packing A** (`packRows8`, eight sequential row streams, one 32-byte store
+    per step instead of eight strided scatters): 64² packing 33 → 11.7 µs,
+    256² 561 → ~220 µs.
+  - Left over at 64²: allocating and zeroing the 16 KiB result is 17–27 µs of
+    the 142 (OpenBLAS's figure is on a preallocated array), packing B 12 µs.
+
+  | float32 `MatMul` | 64² | 256² | 1024² |
+  |---|---:|---:|---:|
+  | before (6×16, LMUL=4) | 184.6 µs | 7.19 ms | 462 ms |
+  | **8×16, LMUL=2, packRows8** | **~142 µs** | **4.49 ms** | **356 ms** |
+  | OpenBLAS 0.3.34, 1 thread, preallocated (`sgemm.py` through the scipy-openblas32 venv, `~/nd-bench/venv`) | 105 µs | 5.34 ms | 380 ms |
+  | after / OpenBLAS | 1.35× | 0.84× | 0.94× |
+
+  256² and 1024² are now faster than OpenBLAS: −38% and −23% against the
+  6×16 kernel in the table above. The final 8-round `abbench`, a separate run
+  at higher load, read −41% and −24% (p = 0.000). The 64² figure is from the quiet runs (the final
+  8-round run, at higher load, read 283 → 207 µs, ±25%); about 20 µs of the
+  remaining gap is the result allocation the OpenBLAS reference does not pay.
+
+  **float32 `Max`/`Min` (v0.39.0).** They come from go-simd/floats since v0.15.0
+  (AVX2 `Float32Max`/`Float32Min`). cfarm420 (EPYC 7773X), one core,
+  interleaved, medians:
+
+  | n = 16384 | `Max` | `Min` |
+  |---|---:|---:|
+  | floats v0.14.0 (SSE2) | 1.40 µs | 1.32 µs |
+  | floats v0.15.0 (AVX2) | 0.77 µs | 0.74 µs |
+  | NumPy 2.5.4 | 2.61–3.32 µs | 2.61–2.82 µs |
+
+  At 1M elements the timing is memory-bound and NumPy varied from 64 to 113 µs
+  across runs, so no ranking is claimed at that size (go-simd/floats#46).
+
   **GEMM micro-kernel (v0.7.1).** NR is fixed by the packing, while VLEN varies
   between RISC-V cores. The V extension guarantees VLEN ≥ 128, so a group of
   four registers (LMUL=4) holds at least eight float64, and `VSETIVLI $8`

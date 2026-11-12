@@ -95,6 +95,18 @@ runs whichever `gemm32` the CPU selects) and the root suite on a real
 SpacemiT X60, and CI's riscv64 lane runs it with V enabled. This entry was
 written after the v0.38.0 tag; the code it describes is that release's.
 
+**2026-11-11 (go-ndarray/ndarray#107).** A second riscv64 float32 kernel,
+`gemmMicro8x16RVV`, runs where the vector registers are at least 256 bits
+(`gemmVLENB`, a `VSETVLI` with AVL = VLMAX, read once at start-up; E32 with
+LMUL=2 only yields vl = 16 from VLEN 256). It reads `kc·8` and `kc·16` packed
+floats and one 8×16 tile of C; its wrapper `gemmMicro32x8` bounds-checks
+`pa[kc*8-1]`, `pb[kc*16-1]` and `dst[7*ldc+15]` before the call, like
+`gemmMicro32`, which still serves narrower cores. The kernel loads no step past
+`kc` (the unrolled pass is preceded by a `kc mod 2` single-step loop). The
+shared 8-row A packer `packRows8` slices every row to `kc` elements (checked)
+and is covered by `TestPackRows8`. Both kernels run through the float32 suite on
+the X60 (`TestGemm32NarrowKernel`, `TestGemm32WideKernel`, the fence test).
+
 **2026-11-07 (v0.36.0).** The AVX2 float64 log kernel (`logAVX2`) reads and
 writes at most `n` doubles, a positive multiple of 4 chosen by the Go
 wrapper, and returns how many it wrote; the wrapper finishes the block it
