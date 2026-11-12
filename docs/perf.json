@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "status": "deferred",
-  "date": "2026-11-12T12:08:39+01:00",
+  "date": "2026-11-12T21:55:30+01:00",
   "commit": "",
   "repo": "go-ndarray/ndarray",
   "go_version": "go1.27.4",
@@ -973,7 +973,7 @@
       "func": "Array.Dot",
       "reference": "numpy np.dot, 128 x 128 (OpenBLAS, one thread)",
       "parity": "none",
-      "allocs": 13,
+      "allocs": 8,
       "go": {
         "median": 0,
         "q1": 0,
@@ -991,7 +991,7 @@
       "func": "Array.MatMul",
       "reference": "numpy np.matmul, 128 x 128 (OpenBLAS, one thread)",
       "parity": "none",
-      "allocs": 13,
+      "allocs": 8,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2611,7 +2611,7 @@
       "func": "linalg.Det",
       "reference": "numpy np.linalg.det(a)",
       "parity": "none",
-      "allocs": 25,
+      "allocs": 24,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2629,7 +2629,7 @@
       "func": "linalg.Inv",
       "reference": "numpy np.linalg.inv(a)",
       "parity": "none",
-      "allocs": 30,
+      "allocs": 27,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2665,7 +2665,7 @@
       "func": "linalg.Pinv",
       "reference": "numpy np.linalg.pinv(a)",
       "parity": "none",
-      "allocs": 255,
+      "allocs": 230,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2719,7 +2719,7 @@
       "func": "linalg.Cholesky",
       "reference": "numpy np.linalg.cholesky(a)",
       "parity": "none",
-      "allocs": 20,
+      "allocs": 19,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2809,7 +2809,7 @@
       "func": "linalg.PinvRcond",
       "reference": "numpy np.linalg.pinv(a, rcond=1e-10)",
       "parity": "none",
-      "allocs": 255,
+      "allocs": 230,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2845,7 +2845,7 @@
       "func": "linalg.Eig",
       "reference": "numpy np.linalg.eig(a)",
       "parity": "none",
-      "allocs": 89,
+      "allocs": 80,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2863,7 +2863,7 @@
       "func": "linalg.Eigh",
       "reference": "numpy np.linalg.eigh(a)",
       "parity": "none",
-      "allocs": 166,
+      "allocs": 154,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2881,7 +2881,7 @@
       "func": "linalg.QR",
       "reference": "numpy np.linalg.qr(a)",
       "parity": "none",
-      "allocs": 93,
+      "allocs": 81,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2899,7 +2899,7 @@
       "func": "linalg.SVD",
       "reference": "numpy np.linalg.svd(a, full_matrices=False)",
       "parity": "none",
-      "allocs": 265,
+      "allocs": 241,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2917,7 +2917,7 @@
       "func": "linalg.Slogdet",
       "reference": "numpy np.linalg.slogdet(a)",
       "parity": "none",
-      "allocs": 29,
+      "allocs": 28,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2935,7 +2935,7 @@
       "func": "linalg.Solve",
       "reference": "numpy np.linalg.solve(a, b)",
       "parity": "none",
-      "allocs": 40,
+      "allocs": 37,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2953,7 +2953,7 @@
       "func": "linalg.Lstsq",
       "reference": "numpy np.linalg.lstsq(a, b, rcond=None)",
       "parity": "none",
-      "allocs": 276,
+      "allocs": 250,
       "go": {
         "median": 0,
         "q1": 0,
@@ -2971,7 +2971,7 @@
       "func": "linalg.LstsqRcond",
       "reference": "numpy np.linalg.lstsq(a, b, rcond=1e-10)",
       "parity": "none",
-      "allocs": 276,
+      "allocs": 250,
       "go": {
         "median": 0,
         "q1": 0,

@@ -491,6 +491,15 @@ func (g *gemmKernel[T]) matMul(dst []T, a, b MatOf[T], m, k, n int) {
 	if w > m {
 		w = m
 	}
+	if w == 1 {
+		// One worker: the serial path, without the block list, the progress
+		// counters and the worker closure, which cost four allocations per call
+		// and linalg's blocked factorizations make one call per panel (#104).
+		buf := g.getPackBuf()
+		g.packGemmRows(0, m, dst, a, b, k, n, buf)
+		g.putPackBuf(buf)
+		return
+	}
 	// Dice the m rows into MR-aligned bands a few rows of micro-tiles tall, so
 	// there are several bands per worker. That oversubscription is what lets the
 	// dynamic counter balance the M-series big.LITTLE cores: fast P-cores grab

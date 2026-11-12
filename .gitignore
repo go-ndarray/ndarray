@@ -1,2 +1,5 @@
 /cover.out
 *.out
+# go test -c / -memprofile leave the package's test binary beside its sources;
+# a 9.5 MB linalg.test was committed with #46.
+*.test
