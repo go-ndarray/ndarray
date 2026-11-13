@@ -6,22 +6,57 @@ import (
 	"math/cmplx"
 	"testing"
 
+	gofft "github.com/go-fft/fft"
 	"github.com/go-ndarray/ndarray"
 )
+
+// TestArithmeticReachesGoFFT: Exact and FMA arrive in the go-fft Options of
+// every kind of transform (c2c, r2c, c2r, herm, iherm) and of the repeated-axis
+// path, read from what is actually handed to go-fft. Today Exact equals the
+// default and FMA acts only on amd64 with FMA3, so the results alone could not
+// show a dropped field.
+func TestArithmeticReachesGoFFT(t *testing.T) {
+	var got []gofft.Options
+	defer func(h func(gofft.Options)) { handed = h }(handed)
+	handed = func(o gofft.Options) { got = append(got, o) }
+	x, err := ndarray.Arange(0, 16, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := x.Reshape(4, 4)
+	for _, o := range []Options{{Exact: true}, {FMA: true}} {
+		for _, c := range []struct {
+			name string
+			f    func(*ndarray.Array, Options) (*ndarray.Array, error)
+			a    *ndarray.Array
+			axes []int
+		}{
+			{"FFT", FFTWith, x, nil}, {"RFFT", RFFTWith, x, nil}, {"IRFFT", IRFFTWith, x, nil},
+			{"HFFT", HFFTWith, x, nil}, {"IHFFT", IHFFTWith, x, nil},
+			{"FFTN repeated axis", FFTNWith, m, []int{1, 1}},
+		} {
+			got = got[:0]
+			o.Axes = c.axes
+			if _, err := c.f(c.a, o); err != nil {
+				t.Fatal(err)
+			}
+			if len(got) == 0 {
+				t.Fatalf("%s %+v: nothing reached go-fft", c.name, o)
+			}
+			for _, g := range got {
+				if g.Exact != o.Exact || g.FMA != o.FMA {
+					t.Fatalf("%s %+v: go-fft got Exact=%v FMA=%v", c.name, o, g.Exact, g.FMA)
+				}
+			}
+		}
+	}
+}
 
 // TestArithmeticOptions: Exact and FMA reach go-fft. Exact gives today's
 // default bits (go-fft's default is its reference arithmetic); FMA stays
 // within the transform's error bound of the default; asking for both is
 // refused; and a repeated axis (the sequential path) carries them too.
 func TestArithmeticOptions(t *testing.T) {
-	// Today Exact and FMA rarely change bits that a test can see (Exact is
-	// the default, and FMA acts only on amd64 with FMA3), so the hand-over to
-	// go-fft is asserted on the Options it builds.
-	for _, o := range []Options{{Exact: true}, {FMA: true}} {
-		if g := o.engine([]int{0}, Ortho); g.Exact != o.Exact || g.FMA != o.FMA || g.Norm != Ortho || len(g.Axes) != 1 {
-			t.Fatalf("engine(%+v) = %+v", o, g)
-		}
-	}
 	x, err := ndarray.Arange(0, 48, 1)
 	if err != nil {
 		t.Fatal(err)

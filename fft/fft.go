@@ -63,8 +63,9 @@ type Options struct {
 	Exact bool
 
 	// FMA lets go-fft fuse its twiddle products (go-fft Options.FMA): faster on
-	// amd64 CPUs with FMA3 and as accurate, but not the default's bits. Exact
-	// and FMA together are refused with ErrArgs.
+	// amd64 CPUs with FMA3 and as accurate, but not the default's bits. The
+	// float32 and complex64 transforms ignore it. Exact and FMA together are
+	// refused with ErrArgs.
 	FMA bool
 }
 
@@ -73,6 +74,10 @@ type Options struct {
 func (o Options) engine(axes []int, norm Norm) gofft.Options {
 	return gofft.Options{Axes: axes, Norm: norm, Exact: o.Exact, FMA: o.FMA}
 }
+
+// handed sees every go-fft Options right before the call it is passed to; a
+// test replaces it to check what actually reaches go-fft.
+var handed = func(gofft.Options) {}
 
 // kind is the family of a transform.
 type kind uint8
@@ -399,6 +404,7 @@ func resize(a *ndarray.Array, ax, n int) *ndarray.Array {
 
 // complexTransform runs FFTN/IFFTN along axes.
 func complexTransform(x *ndarray.Array, shape []int, o gofft.Options, inverse, single bool) *ndarray.Array {
+	handed(o)
 	if single {
 		d, _ := ndarray.Data[complex64](x.AsType(ndarray.Complex64))
 		var r []complex64
@@ -422,6 +428,7 @@ func complexTransform(x *ndarray.Array, shape []int, o gofft.Options, inverse, s
 // realForward runs RFFTN along axes; the last axis of the result holds
 // n/2+1 bins.
 func realForward(x *ndarray.Array, shape []int, o gofft.Options, single bool) *ndarray.Array {
+	handed(o)
 	outShape := append([]int(nil), shape...)
 	last := o.Axes[len(o.Axes)-1]
 	outShape[last] = shape[last]/2 + 1
@@ -435,6 +442,7 @@ func realForward(x *ndarray.Array, shape []int, o gofft.Options, single bool) *n
 
 // realInverse runs IRFFTN along axes into a real array of the given shape.
 func realInverse(x *ndarray.Array, shape []int, o gofft.Options, single bool) *ndarray.Array {
+	handed(o)
 	if single {
 		d, _ := ndarray.Data[complex64](x.AsType(ndarray.Complex64))
 		return wrap(gofft.IRFFTN32With(d, shape, o), shape)

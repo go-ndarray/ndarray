@@ -18,8 +18,8 @@
 //	  tight relative tolerance against the oracle and against numpy.
 //
 // (No max-reduction kernel is generated here: Max and Min come from
-// go-simd/floats, whose NEON extrema kernels (extrema_arm64.s there) handle a
-// NaN anywhere with their own mask.)
+// go-simd/floats, whose NEON extrema kernels (extrema_arm64.s there) use
+// FMAX/FMIN, which propagate NaN and order -0 below +0 as Go's max/min do.)
 package main
 
 import (
