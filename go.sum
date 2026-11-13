@@ -1,6 +1,6 @@
-github.com/go-fft/fft v0.29.0 h1:WtJb5K3dmbLWREvvZ50od0fxtjIBiXrg7mVybz/nPoA=
-github.com/go-fft/fft v0.29.0/go.mod h1:GN5V4TWCjV05ECqH1ONfjFM6Z1m2shqCdssxKGqQ41s=
-github.com/go-simd/floats v0.17.0 h1:Dv0ZmZ3k0IavvHwQgstpUz+TeIf/gGJ9HEGQ/UART8Q=
-github.com/go-simd/floats v0.17.0/go.mod h1:Aq5a6oY5pUqm9Hpi+iV2nrNmaaUb0rwHvUHIerXWSvA=
+github.com/go-fft/fft v0.30.1 h1:a7EgK40nbjyFVuNGyLSF/1z7gWeDw14hQBgzHxPYK0I=
+github.com/go-fft/fft v0.30.1/go.mod h1:ED10lho90MeXLe4Iz4WX+rrbfFv68DtSx02z28/M2mU=
+github.com/go-simd/floats v0.20.0 h1:4N/hJzjd+qwtIvKHN/Jr7xjt2KH8aLFfUG1YwXGt1Kg=
+github.com/go-simd/floats v0.20.0/go.mod h1:Aq5a6oY5pUqm9Hpi+iV2nrNmaaUb0rwHvUHIerXWSvA=
 golang.org/x/sys v0.49.0 h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=
 golang.org/x/sys v0.49.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=

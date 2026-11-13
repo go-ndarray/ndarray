@@ -3,8 +3,8 @@ module github.com/go-ndarray/ndarray/bench
 go 1.27.3
 
 require (
-	github.com/go-ndarray/ndarray v0.0.0
-	github.com/go-scikit/refbench v0.3.0
+	github.com/go-ndarray/ndarray v0.41.0
+	github.com/go-scikit/refbench v0.4.0
 )
 
 require (
