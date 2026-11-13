@@ -195,7 +195,7 @@ Bound: elementwise `+ − × ÷` and `Sqrt` are correctly rounded (one IEEE oper
 
 Every element of `MatMul`/`Dot` satisfies |Ĉᵢⱼ − Cᵢⱼ| ≤ γ_k·(|A|·|B|)ᵢⱼ, whatever the summation order, with or without FMA. Both bounds are from Higham, *Accuracy and Stability of Numerical Algorithms*, §3.1 and §4.2.
 Oracle: `math/big` at 1024 bits for sums and inner products. `TestSumDepth`, `TestAccuracyBoundSum` and `TestAccuracyBoundMatMul` check them; the difference is taken in `big.Float`, so the oracle is never rounded. `Exp`/`Log` are checked against a 300-bit reference in go-simd/floats.
-Exact: the defaults are still the exact ports, NumPy's pairwise order for `Sum` included, so results match NumPy bit for bit where they did before. When a faster default lands, that arithmetic stays available behind an explicit option.
+Exact: the defaults are still the exact ports, NumPy's pairwise order for `Sum` included, so results match NumPy bit for bit where they did before. When a faster default lands, that arithmetic stays available behind an explicit option. For `fft`, that option exists already: `fft.Options{Exact: true}` asks go-fft for its reference arithmetic, and `FMA: true` for its fused twiddles.
 
 ## Goroutines
 

@@ -17,10 +17,9 @@
 //	  bit-identical to the scalar oracle; the kernels package validates it to a
 //	  tight relative tolerance against the oracle and against numpy.
 //
-// (A max-reduction SIMD kernel is intentionally not shipped: NEON FMAX's NaN
-// propagation differs from the scalar `if v > m` oracle, so a bit-identical
-// vector max is not expressible without a NaN pre-scan; Max stays on the
-// associative scalar parallel path.)
+// (No max-reduction kernel is generated here: Max and Min come from
+// go-simd/floats, whose NEON extrema kernels (extrema_arm64.s there) handle a
+// NaN anywhere with their own mask.)
 package main
 
 import (
