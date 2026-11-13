@@ -55,7 +55,29 @@ type Options struct {
 
 	// Norm scales the result.
 	Norm Norm
+
+	// Exact asks go-fft for its reference arithmetic (go-fft Options.Exact):
+	// the bits the transforms computed up to go-fft v0.28.16, whatever a later
+	// default becomes inside the stated error bound. Today the default is that
+	// arithmetic, so Exact changes nothing yet.
+	Exact bool
+
+	// FMA lets go-fft fuse its twiddle products (go-fft Options.FMA): faster on
+	// amd64 CPUs with FMA3 and as accurate, but not the default's bits. The
+	// float32 and complex64 transforms ignore it. Exact and FMA together are
+	// refused with ErrArgs.
+	FMA bool
 }
+
+// engine is the go-fft Options of a transform along axes, scaled by norm,
+// with the arithmetic o asks for.
+func (o Options) engine(axes []int, norm Norm) gofft.Options {
+	return gofft.Options{Axes: axes, Norm: norm, Exact: o.Exact, FMA: o.FMA}
+}
+
+// handed sees every go-fft Options right before the call it is passed to; a
+// test replaces it to check what actually reaches go-fft.
+var handed = func(gofft.Options) {}
 
 // kind is the family of a transform.
 type kind uint8
@@ -196,6 +218,9 @@ const (
 
 // run resolves the arguments, pads or truncates the input, and calls go-fft.
 func run(a *ndarray.Array, o Options, k kind, inverse bool, r rank) (*ndarray.Array, error) {
+	if o.Exact && o.FMA {
+		return nil, fmt.Errorf("%w: Exact and FMA ask for two arithmetics", ErrArgs)
+	}
 	if (k == r2c || k == iherm) && a.DType().IsComplex() {
 		return nil, fmt.Errorf("%w: a real transform of a %v array", ErrArgs, a.DType())
 	}
@@ -208,7 +233,7 @@ func run(a *ndarray.Array, o Options, k kind, inverse bool, r rank) (*ndarray.Ar
 		return nil, err
 	}
 	if dup {
-		return sequential(a, axes, out, o.Norm, k, inverse)
+		return sequential(a, axes, out, o, k, inverse)
 	}
 	// The input is cut or padded to the lengths the transform reads: for the
 	// half-spectrum inverses the last axis holds out/2+1 bins.
@@ -222,21 +247,22 @@ func run(a *ndarray.Array, o Options, k kind, inverse bool, r rank) (*ndarray.Ar
 	}
 	single := a.DType() == ndarray.Float32 || a.DType() == ndarray.Complex64
 	shape := x.Shape()
+	g := o.engine(axes, o.Norm)
 	switch k {
 	case c2c:
-		return complexTransform(x, shape, axes, o.Norm, inverse, single), nil
+		return complexTransform(x, shape, g, inverse, single), nil
 	case r2c:
-		return realForward(x, shape, axes, o.Norm, single), nil
+		return realForward(x, shape, g, single), nil
 	case c2r:
 		shape[axes[len(axes)-1]] = out[len(out)-1]
-		return realInverse(x, shape, axes, o.Norm, single), nil
+		return realInverse(x, shape, g, single), nil
 	case herm:
 		// numpy: hfft(a, n) = irfft(conj(a), n) scaled as a forward transform.
 		shape[axes[len(axes)-1]] = out[len(out)-1]
-		return realInverse(x.Conj(), shape, axes, opposite(o.Norm), single), nil
+		return realInverse(x.Conj(), shape, o.engine(axes, opposite(o.Norm)), single), nil
 	}
 	// iherm: ihfft(a, n) = conj(rfft(a, n)) scaled as an inverse transform.
-	return realForward(x, shape, axes, opposite(o.Norm), single).Conj(), nil
+	return realForward(x, shape, o.engine(axes, opposite(o.Norm)), single).Conj(), nil
 }
 
 // sequential runs a multi-axis transform one axis at a time, in the order
@@ -245,9 +271,9 @@ func run(a *ndarray.Array, o Options, k kind, inverse bool, r rank) (*ndarray.Ar
 // refuses a repeated axis.) fftn goes from the last axis to the first; rfftn
 // does the real transform along the last axis first, then the others; irfftn
 // does the others first and the real inverse last.
-func sequential(a *ndarray.Array, axes, out []int, norm Norm, k kind, inverse bool) (*ndarray.Array, error) {
+func sequential(a *ndarray.Array, axes, out []int, o Options, k kind, inverse bool) (*ndarray.Array, error) {
 	one := func(x *ndarray.Array, i int, k kind) (*ndarray.Array, error) {
-		return run(x, Options{S: []int{out[i]}, Axes: []int{axes[i]}, Norm: norm}, k, inverse, oneD)
+		return run(x, Options{S: []int{out[i]}, Axes: []int{axes[i]}, Norm: o.Norm, Exact: o.Exact, FMA: o.FMA}, k, inverse, oneD)
 	}
 	last := len(axes) - 1
 	x := a
@@ -377,8 +403,8 @@ func resize(a *ndarray.Array, ax, n int) *ndarray.Array {
 }
 
 // complexTransform runs FFTN/IFFTN along axes.
-func complexTransform(x *ndarray.Array, shape, axes []int, norm Norm, inverse, single bool) *ndarray.Array {
-	o := gofft.Options{Axes: axes, Norm: norm}
+func complexTransform(x *ndarray.Array, shape []int, o gofft.Options, inverse, single bool) *ndarray.Array {
+	handed(o)
 	if single {
 		d, _ := ndarray.Data[complex64](x.AsType(ndarray.Complex64))
 		var r []complex64
@@ -401,10 +427,10 @@ func complexTransform(x *ndarray.Array, shape, axes []int, norm Norm, inverse, s
 
 // realForward runs RFFTN along axes; the last axis of the result holds
 // n/2+1 bins.
-func realForward(x *ndarray.Array, shape, axes []int, norm Norm, single bool) *ndarray.Array {
-	o := gofft.Options{Axes: axes, Norm: norm}
+func realForward(x *ndarray.Array, shape []int, o gofft.Options, single bool) *ndarray.Array {
+	handed(o)
 	outShape := append([]int(nil), shape...)
-	last := axes[len(axes)-1]
+	last := o.Axes[len(o.Axes)-1]
 	outShape[last] = shape[last]/2 + 1
 	if single {
 		d, _ := ndarray.Data[float32](x.Real().AsType(ndarray.Float32))
@@ -415,8 +441,8 @@ func realForward(x *ndarray.Array, shape, axes []int, norm Norm, single bool) *n
 }
 
 // realInverse runs IRFFTN along axes into a real array of the given shape.
-func realInverse(x *ndarray.Array, shape, axes []int, norm Norm, single bool) *ndarray.Array {
-	o := gofft.Options{Axes: axes, Norm: norm}
+func realInverse(x *ndarray.Array, shape []int, o gofft.Options, single bool) *ndarray.Array {
+	handed(o)
 	if single {
 		d, _ := ndarray.Data[complex64](x.AsType(ndarray.Complex64))
 		return wrap(gofft.IRFFTN32With(d, shape, o), shape)
