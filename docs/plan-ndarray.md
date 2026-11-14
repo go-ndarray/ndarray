@@ -99,8 +99,11 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   GEMM/dot kernels live in `internal/kernels` for the Phase 1 SIMD path. Matches
   numpy 2.2.4. Blocked/transpose-aware and decomposition variants remain in
   Phase 4.
-- **Performance — DONE (beats NumPy on its core ops; matmul at tuned-BLAS
-  parity).** Several levers behind the kernel seam, measured honestly vs NumPy
+- **Performance — OPEN.** The first single-core measurement against NumPy 2.5.4
+  (v0.41.0, #118) has 188 of 256 rows slower and 54 faster. The earlier
+  "beats NumPy on its core ops" compared multicore Go with single-threaded
+  NumPy. What follows is the history of the levers behind the kernel seam,
+  measured then against NumPy
   2.2.4 (see [docs/perf.md](perf.md) and the repo's
   [BENCHMARKS.md](../BENCHMARKS.md)):
   - **Multicore.** `Add/Sub/Mul/Div/Map`, `Sum/Max/Min`, the axis reductions,

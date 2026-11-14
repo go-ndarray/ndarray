@@ -70,14 +70,14 @@ and all 256 rows are valid.
 open defect. They are tracked by cause in
 [#118](https://github.com/go-ndarray/ndarray/issues/118) rather than in one
 issue per row:
-- result allocation: the allocating `Add` is 3.1× slower, while `AddInto` is 1.06×;
+- result allocation: the allocating `Add` is 3.1× slower, while `AddInto` ties (1.03);
 - elementwise operations without a vector kernel: `Ceil` is 20× slower, `Abs` 12×;
 - copies where NumPy returns a view or wraps the buffer;
 - `linalg` at 64 × 64 (1.4–4×);
 - the `fft` shifts;
 - the `random` draws built on `log`/`exp`.
 
-Faster, for example: `SqrtInto` (0.51), `fft.FFT` (0.55), `Sum` (0.69), `Exp` (0.89).
+Faster, for example: `SqrtInto` (0.51), `fft.FFT` (0.54), `Sum` (0.70), `Exp` (0.89).
 
 The run was made from the release's own code. The test binary was
 cross-compiled from a clean v0.41.0 worktree, the tag was shipped to the host
