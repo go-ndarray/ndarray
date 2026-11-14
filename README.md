@@ -100,8 +100,11 @@ for step := 0; step < steps; step++ {
 
 After the first pass nothing is allocated, nothing is zeroed that the kernel
 overwrites anyway, and the memory stays warm in cache: `x + y` on 1 024
-elements goes from 2.6 µs to 0.38 µs (2.1× NumPy), `sqrt(x*y + x)` on 256 Ki
-from 1.18 ms to 0.39 ms (7.5× NumPy). ⚠ An array allocated from the workspace
+elements goes from 2.6 µs to 0.38 µs, and `sqrt(x*y + x)` on 256 Ki from
+1.18 ms to 0.39 ms. Those two figures compare Go with Go. The NumPy figures once
+quoted beside them came from multicore runs. On one core, the allocating
+forms are about 3× slower than NumPy, while the preallocated `*Into` forms tie
+with it ([docs/perf.md](docs/perf.md), #118). ⚠ An array allocated from the workspace
 is invalid after `Reset`; `Detach` is how a result leaves it. The `*Into`
 methods (`AddInto`, `SqrtInto`, …) remain the way to reuse one named buffer.
 
