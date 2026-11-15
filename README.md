@@ -149,6 +149,11 @@ keep NaN bits exactly; for the others a signalling NaN may come back quieted):
 on 10⁵ float64 on one core of cfarm420 they went from 243–464 µs to 70–81 µs
 ([docs/perf.md](docs/perf.md), *Since the table*).
 
+Float64 `Maximum` and `Minimum` run on the go-simd/floats (v0.26.0) kernels,
+the builtin `max` and `min` bit for bit for numbers and zeros (a NaN gives a
+NaN; which one is target-dependent): on 10⁵ float64 on one core of cfarm420
+they went from 139–151 µs to 76–82 µs.
+
 **Behaviour change in the next release (a MINOR): `Ravel` and `Real` return
 views, as NumPy does.** `Ravel` of an array whose elements are one row-major
 run (a contiguous array, or a contiguous slice of one) shares its storage

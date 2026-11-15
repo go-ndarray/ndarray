@@ -188,6 +188,18 @@ rounds:
   ns and `Real` from 84–91 µs to 101–104 ns, 803 kB to 128 B per call. The
   new table measures them against NumPy at 63 ns and 97 ns against 174 ns and
   168 ns (ratios 0.36 and 0.58). This is a behaviour change (see the README).
+- Float64 `Maximum` and `Minimum` run on the go-simd/floats v0.26.0 kernels
+  instead of the scalar builtin loop, in every path that calls them (same
+  shape, scalar and repeated operands, broadcast). The results are bit for bit
+  those of the builtin `max` and `min` for numbers and zeros; a NaN gives a NaN,
+  as before, and which NaN is target-dependent
+  (`TestMaximumMinimumFloats`). On 10⁵ float64 including the result
+  allocation, cfarm420, one pinned core, a test binary of main against one of
+  this change, four interleaved rounds of 1 s at load 3.6 to 4.0
+  (`benchmarks/maxmin_bench_test.go`): `Maximum` went from 139–150 µs to
+  76–82 µs and `Minimum` from 141–151 µs to 76–81 µs. The allocation is
+  unchanged, 2 per call and 803 kB. No NumPy ratio is claimed for these
+  numbers: the new table has not been run on this change.
 
 What remains of the allocation cause is Go's own cost. A CPU profile of a bare
 `make([]float64, 100000)` shows about 60% garbage-collector marking (assists
