@@ -430,6 +430,8 @@ func RunAxisP(k axisKernel, dst, src []float64, outer, axisLen, inner int) {
 	}
 }
 
+func roundUp(x, m int) int { return (x + m - 1) / m * m }
+
 // reduceGrain is the fewest elements a reduction partial covers (64 KiB).
 const reduceGrain = 8192
 

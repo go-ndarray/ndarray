@@ -15,15 +15,19 @@ bounds checks do not cover, so they are held to the following:
 
 - **Every wrapper checks the reach of its kernel.** Before an assembly call, the
   Go wrapper indexes the last element of every operand the kernel reads or
-  writes (`internal/kernels/{reduce,gemm}_<arch>.go`). A caller's mistake is an
-  index-out-of-range panic in Go, never an access outside a slice.
+  writes (`internal/kernels/{reduce,dot}_<arch>.go`). A caller's mistake is an
+  index-out-of-range panic in Go, never an access outside a slice. The GEMM
+  micro-kernels, their wrappers and their fence tests live in
+  [go-blas/blas](https://github.com/go-blas/blas), which owns that audit; the
+  entries below about GEMM kernels (v0.26.0 to v0.38.0) are history of code now
+  there.
   `TestWrappersRefuseShortOperands` passes each wrapper an operand one element
   short and requires the panic.
 - **The kernels stay inside their slices.** `TestKernelsStayInsideTheirSlices`
-  and `TestGemmMicroStaysInsideItsOperands` (`internal/kernels/fence_test.go`,
-  Linux and macOS) map each operand flush against a `PROT_NONE` page, once
-  ending at it and once starting after one, for every length from 1 to 70 and
-  every GEMM depth from 1 to 9. A read or write one element past either end is a
+  (`internal/kernels/fence_test.go`, Linux and macOS) maps each operand flush
+  against a `PROT_NONE` page, once ending at it and once starting after one, for
+  every length from 1 to 70 (go-blas/blas fences its GEMM micro-kernels at every
+  depth from 1 to 9 the same way). A read or write one element past either end is a
   fault. The fence itself was checked by a kernel deliberately reading one
   element too far, which faults on amd64 (4 KiB pages), arm64 (16 KiB), loong64
   (16 KiB) and ppc64le (64 KiB). Prefetch instructions may point past the end:
@@ -65,6 +69,18 @@ The minimum Go version (`go` in `go.mod`) is kept on a release that fixes the
 standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
+
+**2026-11-15 (unreleased).** The GEMM moved to
+[go-blas/blas](https://github.com/go-blas/blas) v0.2.0 (the micro-kernels, their
+wrappers, the packing and their fence tests, byte for byte; the audit of that
+code is that repository's). What ndarray adds is `internal/blasmm`, which hands
+an operand's row and column strides to `DgemmStrided`/`SgemmStrided`. go-blas
+checks every stride and slice length (overflow-safe, `*ArgError` on refusal), so
+a view ndarray builds wrongly is an error there, which `blasmm` turns into a
+panic naming the package, not a read outside a slice. A zero or negative stride
+on an axis longer than one (a broadcast or reversed view) is copied to a
+contiguous matrix first. ndarray keeps the dot kernels (`dot_<arch>.go`), the
+mat-vec and the thread pool, with their wrappers and fences.
 
 **2026-11-12 (unreleased, #103).** The gather of `random`'s `Choice`
 (`takeAxis`, random/arrays.go) now copies bytes through `bytesOf`, an

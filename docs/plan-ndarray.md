@@ -34,7 +34,8 @@ ndarray/
   internal/kernels/     portable scalar inner loops over flat []float64
                         (Add/Sub/Mul/Div, Map, comparisons, Maximum/Minimum,
                         Sum/Prod/Max/Min, Abs, {Sum,Prod,Max,Min}Axis over
-                        [outer][axisLen][inner], MatMul GEMM, Dot1D)
+                        [outer][axisLen][inner], mat-vec, Dot1D; the GEMM is
+                        github.com/go-blas/blas, through internal/blasmm)
   docs/plan-ndarray.md  this roadmap
 ```
 

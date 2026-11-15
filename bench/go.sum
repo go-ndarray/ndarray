@@ -1,3 +1,5 @@
+github.com/go-blas/blas v0.2.0 h1:kLWNy4ZKhUEHz8vXWIC7n6CP0ytNuEWTYBuASdF+Sxo=
+github.com/go-blas/blas v0.2.0/go.mod h1:WjhlqzQ+RA8tS473f18QtcJl5Q0GonPs3RJIxT5G7Bk=
 github.com/go-fft/fft v0.29.0 h1:WtJb5K3dmbLWREvvZ50od0fxtjIBiXrg7mVybz/nPoA=
 github.com/go-fft/fft v0.29.0/go.mod h1:GN5V4TWCjV05ECqH1ONfjFM6Z1m2shqCdssxKGqQ41s=
 github.com/go-fleettools/fleettools v0.81.0 h1:UnMflmNw5b82Z+7Ums7UVaW5RrGuACCVmSwytwT1hxw=

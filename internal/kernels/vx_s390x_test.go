@@ -12,20 +12,7 @@ func TestVXDetected(t *testing.T) {
 	t.Run("scalar", func(t *testing.T) {
 		TestBinSIMD(t)
 		TestSumSIMD(t)
-		TestGemmParallelYielding(t) // gemmMicroGo against the oracle
-
 	})
-}
-
-// TestGemm32NeedsVXE: without the vector-enhancements facility 1 there is no
-// float32 kernel, and HasGemm32 sends float32 products to the float64 GEMM.
-func TestGemm32NeedsVXE(t *testing.T) {
-	if newGemm32(false) != nil {
-		t.Fatal("a float32 GEMM without VXE")
-	}
-	if g := newGemm32(true); g == nil || g.mr != 4 || g.nr != 16 {
-		t.Fatalf("newGemm32(true) = %+v", g)
-	}
 }
 
 // TestVXEDetected runs the max/min checks with the vector kernel forced off

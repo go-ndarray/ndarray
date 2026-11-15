@@ -3,6 +3,7 @@ package ndarray
 import (
 	"fmt"
 
+	"github.com/go-ndarray/ndarray/internal/blasmm"
 	"github.com/go-ndarray/ndarray/internal/kernels"
 )
 
@@ -15,8 +16,8 @@ var ErrLinalg = fmt.Errorf("ndarray: incompatible shapes for linear algebra")
 // array. Either operand may be any 2-D view: the GEMM packs it through its
 // strides (matView), so nothing is materialised first.
 func matmul2D(a, b *Array, m, k, n int) *Array {
-	dst := a.ws.alloc(m*n, true) // MatMulStridedP accumulates into dst
-	kernels.MatMulStridedP(dst, a.matView(), b.matView(), m, k, n)
+	dst := a.ws.alloc(m*n, false) // blasmm.MatMul overwrites dst
+	blasmm.MatMul(dst, a.matView(), b.matView(), m, k, n)
 	shape := []int{m, n}
 	return &Array{data: dst, shape: shape, strides: rowMajorStrides(shape), ws: a.ws}
 }
@@ -24,8 +25,8 @@ func matmul2D(a, b *Array, m, k, n int) *Array {
 // matView is a 2-D array as the GEMM's strided operand view. The packing
 // reads it in place, so a transposed or sliced operand (Inner's bᵀ, a[:, ::2])
 // is never materialised into a contiguous copy first.
-func (a *Array) matView() kernels.Mat {
-	return kernels.Mat{Data: a.data, Off: a.offset, RS: a.strides[0], CS: a.strides[1]}
+func (a *Array) matView() blasmm.Mat[float64] {
+	return blasmm.Mat[float64]{Data: a.data, Off: a.offset, RS: a.strides[0], CS: a.strides[1]}
 }
 
 // MatMul returns the matrix product of two 2-D arrays, matching numpy.matmul
@@ -78,24 +79,24 @@ func matmulTyped(a, b *Array) *Array {
 
 // useGemm32 selects the float32 GEMM. It is a var so tests can force the
 // widening path on hardware that has the kernel (never the reverse).
-var useGemm32 = kernels.HasGemm32()
+var useGemm32 = blasmm.HasGemm32()
 
 // matmulFloat32 multiplies two validated 2-D operands whose common dtype is
 // Float32 on the float32 GEMM. A Float32 operand is read in place through its
 // strides, like matView; another dtype is converted first.
 func matmulFloat32(a, b *Array) *Array {
 	m, k, n := a.shape[0], a.shape[1], b.shape[1]
-	dst := a.ws.alloc32(m*n, true) // MatMul32StridedP accumulates into dst
-	kernels.MatMul32StridedP(dst, a.matView32(), b.matView32(), m, k, n)
+	dst := a.ws.alloc32(m*n, false) // blasmm.MatMul32 overwrites dst
+	blasmm.MatMul32(dst, a.matView32(), b.matView32(), m, k, n)
 	return a.result(dst, []int{m, n})
 }
 
 // matView32 is matView for an operand of the float32 GEMM.
-func (a *Array) matView32() kernels.Mat32 {
+func (a *Array) matView32() blasmm.Mat[float32] {
 	if a.dtype != Float32 {
-		return kernels.Mat32{Data: a.operandStore(Float32, a.shape).([]float32), RS: a.shape[1], CS: 1}
+		return blasmm.Mat[float32]{Data: a.operandStore(Float32, a.shape).([]float32), RS: a.shape[1], CS: 1}
 	}
-	return kernels.Mat32{Data: typed[float32](a), Off: a.offset, RS: a.strides[0], CS: a.strides[1]}
+	return blasmm.Mat[float32]{Data: typed[float32](a), Off: a.offset, RS: a.strides[0], CS: a.strides[1]}
 }
 
 // matmulFloat64 is matmul2D on two validated 2-D Float64 arrays.

@@ -129,6 +129,34 @@ func benchMat(n int) *Array {
 	return a
 }
 
+// BenchmarkMatMulVariants covers what BenchmarkMatMul does not: float32
+// operands, a transposed operand (read in place by the GEMM) and a strided one
+// (a[:, ::2], which the GEMM entry copies first).
+func BenchmarkMatMulVariants(b *testing.B) {
+	for _, n := range []int{64, 256, 1024} {
+		x, y := benchMat(n), benchMat(n)
+		x32, y32 := x.AsType(Float32), y.AsType(Float32)
+		wide, _ := FromData(make([]float64, 2*n*n), n, 2*n)
+		half, _ := wide.Slice(All(), Step(2))
+		xt := x.Transpose()
+		b.Run(fmt.Sprintf("f32/n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = x32.MatMul(y32)
+			}
+		})
+		b.Run(fmt.Sprintf("transA/n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = xt.MatMul(y)
+			}
+		})
+		b.Run(fmt.Sprintf("strided/n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = half.MatMul(y)
+			}
+		})
+	}
+}
+
 func BenchmarkMatMul(b *testing.B) {
 	for _, n := range []int{64, 128, 256, 512, 1024} {
 		x, y := benchMat(n), benchMat(n)

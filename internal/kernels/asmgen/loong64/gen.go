@@ -39,7 +39,6 @@ func main() {
 		//"XVADDD" -> "VADDF", "ADDD" -> "ADDF": the LSX single-precision op.
 		f.Add(bin32Kernel(k.name[:3]+"32LSX", k.vec[1:len(k.vec)-1]+"F", k.sca[:len(k.sca)-1]+"F"))
 	}
-	f.Add(gemmKernel())
 	f.Add(blocks8Kernel())
 	f.Add(sqrt32Kernel())
 	abs64 := f.Data("abs64", lanes(8, 0x7fffffffffffffff))
@@ -239,46 +238,6 @@ func bin32Kernel(name, vec, sca string) *emit.Function {
 		Raw("MOVF 0(R6), F1").Raw("MOVF 0(R7), F2").Raw("%s F2, F1", sca).Raw("MOVF F1, 0(R4)").
 		Raw("ADDV $4, R4").Raw("ADDV $4, R6").Raw("ADDV $4, R7").Raw("ADDV $-1, R5").Raw("JMP ftail")
 	b.Label("fdone").Ret()
-	return b.Func()
-}
-
-// gemmKernel builds gemmMicro8x8LASX(kc int, pa, pb, c *float64, ldc int):
-//
-//	for p in [0,kc):  C[r][col] += pa[p*8+r] * pb[p*8+col]   (r<8, col<8)
-//
-// 16 accumulators X0..X15 (row r in X(2r), X(2r+1), four columns each), the B
-// row in X16, X17, and each A value broadcast (XVMOVQ .V4, xvldrepl.d) into X18..X25,
-// then xvfmadd.d: 16 fused multiply-adds per k step against 10 loads. Fused,
-// like the other FMA kernels; on integer-valued data it equals the scalar
-// ikj oracle exactly.
-func gemmKernel() *emit.Function {
-	sig := loong64.Layout([]string{"kc", "pa", "pb", "c", "ldc"},
-		[]loong64.Type{loong64.Int64, loong64.Ptr, loong64.Ptr, loong64.Ptr, loong64.Int64}, nil, nil)
-	b := loong64.NewFunc("gemmMicro8x8LASX", sig, 0)
-	b.LoadArg("kc", "R5").LoadArg("pa", "R6").LoadArg("pb", "R7").LoadArg("c", "R8").LoadArg("ldc", "R9")
-	b.Raw("SLLV $3, R9") // ldc -> bytes
-	zero(b, 16)
-	b.Raw("BEQ R5, gstore")
-	b.Label("gloop")
-	b.Raw("XVMOVQ 0(R7), X16").Raw("XVMOVQ 32(R7), X17")
-	for r := 0; r < gemmMR; r++ {
-		b.Raw("XVMOVQ %d(R6), X%d.V4", 8*r, 18+r) // xvldrepl.d: pa[r] in all four lanes
-	}
-	for r := 0; r < gemmMR; r++ {
-		b.XVFMADDD(2*r, 18+r, 16, 2*r)
-		b.XVFMADDD(2*r+1, 18+r, 17, 2*r+1)
-	}
-	b.Raw("ADDV $%d, R6", 8*gemmMR).Raw("ADDV $%d, R7", 8*gemmNR).Raw("ADDV $-1, R5").Raw("BNE R5, gloop")
-	b.Label("gstore")
-	for r := 0; r < gemmMR; r++ {
-		b.Raw("XVMOVQ 0(R8), X16").Raw("XVMOVQ 32(R8), X17")
-		b.Raw("XVADDD X%d, X16, X16", 2*r).Raw("XVADDD X%d, X17, X17", 2*r+1)
-		b.Raw("XVMOVQ X16, 0(R8)").Raw("XVMOVQ X17, 32(R8)")
-		if r < gemmMR-1 {
-			b.Raw("ADDV R9, R8")
-		}
-	}
-	b.Ret()
 	return b.Func()
 }
 

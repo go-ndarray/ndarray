@@ -10,14 +10,13 @@ import (
 // withThresholds runs f with the parallel thresholds forced and restores them
 // after, so a test can exercise both the serial (below-threshold) and the
 // parallel (above-threshold) branches deterministically. The gemm argument pins
-// BOTH compute thresholds — GemmThreshold (MatMulP) and matVecThreshold
-// (MatVecP) — to the same value, so a single low/high gemm flips every
-// GEMM-family kernel onto the serial or parallel path; ParThreshold drives the
-// elementwise/reduction kernels.
+// matVecThreshold (MatVecP), so a single low/high value flips the mat-vec
+// kernel onto the serial or parallel path; ParThreshold drives the
+// elementwise/reduction kernels. (The GEMM has its own threshold, in go-blas.)
 func withThresholds(par, gemm int, f func()) {
-	op, og, omv := ParThreshold, GemmThreshold, matVecThreshold
-	ParThreshold, GemmThreshold, matVecThreshold = par, gemm, gemm
-	defer func() { ParThreshold, GemmThreshold, matVecThreshold = op, og, omv }()
+	op, omv := ParThreshold, matVecThreshold
+	ParThreshold, matVecThreshold = par, gemm
+	defer func() { ParThreshold, matVecThreshold = op, omv }()
 	f()
 }
 
@@ -160,31 +159,6 @@ func TestRunAxisP(t *testing.T) {
 			// Pin GOMAXPROCS above the outer extents so the worker>outer clamp
 			// fires regardless of the runner's core count.
 			withMaxProcs(128, run)
-		}
-	}
-}
-
-// TestParallelMatMul checks MatMulP equals the serial MatMul for non-square
-// shapes, both below and above the (forced-low) GEMM threshold.
-func TestParallelMatMul(t *testing.T) {
-	// The {2,..} case with GOMAXPROCS>2 and the parallel threshold forced to 1
-	// exercises the w>m clamp (more cores than output rows). {0,..} hits the
-	// m==0 path; the rest cover assorted non-square bands.
-	cases := []struct{ m, k, n int }{{0, 3, 4}, {1, 1, 1}, {2, 6, 8}, {3, 5, 2}, {7, 4, 9}, {64, 48, 40}}
-	for _, c := range cases {
-		a, b := randVec(c.m*c.k, 10), randVec(c.k*c.n, 11)
-		for _, gemm := range []int{1 << 20, 1} { // serial, then parallel
-			withThresholds(1<<14, gemm, func() {
-				gotP := make([]float64, c.m*c.n)
-				gotS := make([]float64, c.m*c.n)
-				MatMulP(gotP, a, b, c.m, c.k, c.n)
-				MatMul(gotS, a, b, c.m, c.k, c.n)
-				for i := range gotP {
-					if gotP[i] != gotS[i] {
-						t.Fatalf("MatMulP %v gemm=%d [%d]: %v != %v", c, gemm, i, gotP[i], gotS[i])
-					}
-				}
-			})
 		}
 	}
 }

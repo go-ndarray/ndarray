@@ -9,7 +9,6 @@ import "testing"
 // past a slice inside the kernel.
 func TestWrappersRefuseShortOperands(t *testing.T) {
 	long, short := make([]float64, 8), make([]float64, 7)
-	ldc := NR
 	for name, f := range map[string]func(){
 		"sqrt src": func() { sqrtSIMD(long, short) },
 		"add a":    func() { addBin(long, short, long) },
@@ -17,9 +16,6 @@ func TestWrappersRefuseShortOperands(t *testing.T) {
 		"mul a":    func() { mulBin(long, short, long) },
 		"div b":    func() { divBin(long, long, short) },
 		"dot b":    func() { dotSIMD(long, short) },
-		"gemm pa":  func() { gemmMicro(1, make([]float64, MR-1), make([]float64, NR), make([]float64, (MR-1)*ldc+NR), ldc) },
-		"gemm pb":  func() { gemmMicro(1, make([]float64, MR), make([]float64, NR-1), make([]float64, (MR-1)*ldc+NR), ldc) },
-		"gemm dst": func() { gemmMicro(1, make([]float64, MR), make([]float64, NR), make([]float64, (MR-1)*ldc+NR-1), ldc) },
 	} {
 		func() {
 			defer func() {
