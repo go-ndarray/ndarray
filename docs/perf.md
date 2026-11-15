@@ -62,27 +62,77 @@ go test -run 'TestDataParity|TestRefSmoke' -perf.parity . # needs uv
 
 ## Status
 
-The table is **measured** at v0.41.0 (`de3f41ac`) on one pinned core of cfarm420
-(AMD EPYC 7773X, Zen 3). The 1-minute load over the rounds was 4.12 to 5.56,
-and all 256 rows are valid.
+The table is **measured** at `c198892` (the head of the `feat/ravel-real-views`
+branch, clean) on 2026-11-15, on one pinned core of cfarm420 (AMD EPYC 7773X,
+Zen 3), NumPy 2.5.4. The 1-minute load over the rounds was 3.01 to 3.86, and
+all 256 rows are valid. It replaces the table measured at v0.41.0
+(`de3f41ac`, 2026-11-14, load 4.12 to 5.56), and the section below lists what
+differs.
 
-**188 rows are slower than NumPy and 54 are faster.** Every slower row is an
+**186 rows are slower than NumPy, 51 are faster and 19 tie** (v0.41.0: 188, 54
+and 14). Every slower row is an
 open defect. They are tracked by cause in
 [#118](https://github.com/go-ndarray/ndarray/issues/118) rather than in one
 issue per row:
-- result allocation: the allocating `Add` is 3.1× slower, while `AddInto` ties (1.03);
-- elementwise operations without a vector kernel: `Ceil` is 20× slower, `Abs` 12×;
-- copies where NumPy returns a view or wraps the buffer;
-- `linalg` at 64 × 64 (1.4–4×);
-- the `fft` shifts;
+- result allocation: the allocating `Add` is 3.7× slower, while `AddInto` is
+  within 7% (1.07);
+- elementwise operations: the unary `Ceil` (5.4×), `Floor` (5.3×), `Square`
+  (4.9×), `Round`, `Abs` and `Neg` (4.6×) now run on vector kernels and what
+  remains is the result allocation; `Maximum`, `Minimum` and `Power`
+  (5.3–5.5×) and `Log2` (4.2×) are the worst of the others;
+- copies where NumPy returns a view or wraps the buffer (`Flatten` 5.0×,
+  `Copy` 4.8×, `Imag` 4.9×);
+- `linalg` at 64 × 64 (1.5–4×);
+- the `fft` shifts (9.7× and 9.9×);
 - the `random` draws built on `log`/`exp`.
 
-Faster, for example: `SqrtInto` (0.51), `fft.FFT` (0.54), `Sum` (0.70), `Exp` (0.89).
+Faster, for example: `SqrtInto` (0.52), `fft.FFT` (0.64), `Sum` (0.76), `Log10`
+(0.57). `Exp` (0.92) ties.
 
-### Since the table
+### Since the v0.41.0 table
 
-Fixed after v0.41.0, measured by `go test -bench` on the same core, not yet
-by a new table run. On 10⁵ float64 at load 2.2–2.4, over three interleaved
+The changes below were made after v0.41.0 and are included in the table above.
+The ratios of this table against the v0.41.0 table (Go time / NumPy time, 10⁵
+float64):
+
+| row | v0.41.0 | now | allocations |
+|---|---:|---:|---|
+| `Ravel` | 566.8 | 0.35 | 4 → 3 |
+| `Real` | 565.9 | 0.57 | 4 → 3 |
+| `Ceil` | 20.4 | 5.44 | 5 |
+| `Floor` | 19.2 | 5.28 | 5 |
+| `Round` | 13.8 | 4.63 | 5 |
+| `Abs` | 11.9 | 4.61 | 5 |
+| `Square` | 11.0 | 4.88 | 5 |
+| `Neg` | 10.3 | 4.59 | 5 |
+| `AddScalar` | 8.56 | 5.40 | 8 |
+| `Full` | 8.00 | 5.96 | 5 |
+| `Ones` | 7.34 | 5.83 | 5 |
+| `fft.RFFT2` | 1.41 | 1.14 | 31 → 30 |
+| `fft.RFFT2With` | 1.50 | 1.28 | 31 → 30 |
+| `fft.IHFFT` | 1.33 | 1.10 | 35 → 34 |
+| `fft.IHFFTWith` | 1.22 | 1.20 | 35 → 34 |
+| `fft.RFFTN` | 0.95 | 0.89 | 32 → 31 |
+| `fft.RFFTNWith` | 0.92 | 0.81 | 32 → 31 |
+| `fft.RFFT` | 0.90 | 0.84 | 30 → 29 |
+| `fft.RFFTWith` | 0.95 | 0.97 | 30 → 29 |
+
+`Ravel` and `Real` are now faster than NumPy, and the `fft` real-input
+transforms each save one allocation because they call `x.Real()`, which is a
+view. The unary rows remain slower than NumPy, by about 5× instead of 10–20×:
+they still allocate the result, which `AddInto` shows to be the main part of
+the remaining gap (`Add` 3.74, `AddInto` 1.07).
+
+Treat small ratio changes with care: the two tables were measured at different
+loads, and rows whose code did not change moved by as much as 0.2 to 0.3
+(`Sqrt` 1.01 to 1.20, `fft.IRFFT` 0.72 to 1.06, `AddInto` 1.03 to 1.07,
+`fft.HFFT` 1.01 to 1.11). Only the rows above whose
+change comes from a known code change, and whose size exceeds that spread, are
+claimed as effects. The `fft` ratios in the table above (0.03 to 0.2 lower) are
+within that spread, so only the allocation counts are attributed to `Real`.
+
+The measurements that follow were made at the time by `go test -bench` on the
+same core. On 10⁵ float64 at load 2.2–2.4, over three interleaved
 rounds:
 - The scalar forms (`AddScalar` … `DivScalar`, `AddInto` … `DivInto`, and
   any Float64 operation with a one-element operand against a contiguous
@@ -121,8 +171,14 @@ rounds:
   `Round` was measured in a second run of the same kind (four interleaved
   rounds, load 2.25 to 2.42), v0.42.0 against this change. `RoundHalfAway`,
   the control on the scalar path, takes 324–345 µs in the same run. These are
-  times of the Go code against itself; no NumPy ratio is claimed here, as the
-  new table run has not been made.
+  times of the Go code against itself; the NumPy ratios are in the table above.
+- `Ravel` of a contiguous array and `Real` of a real array return views, as
+  NumPy does, instead of copying (the table's rows were 566× slower than
+  NumPy, which returns views). On 10⁵ float64, cfarm420, one pinned core, three
+  interleaved rounds at load 2.1 to 2.3: `Ravel` went from 83–90 µs to 93–101
+  ns and `Real` from 84–91 µs to 101–104 ns, 803 kB to 128 B per call. The
+  new table measures them against NumPy at 61 ns and 90 ns against 174 ns and
+  157 ns (ratios 0.35 and 0.57). This is a behaviour change (see the README).
 
 What remains of the allocation cause is Go's own cost. A CPU profile of a bare
 `make([]float64, 100000)` shows about 60% garbage-collector marking (assists
@@ -130,7 +186,7 @@ in the allocating goroutine) and about 23% zeroing. NumPy frees each result
 when its last reference goes and reuses that memory warm. In Go, the way to
 avoid both costs is to not allocate: use the `*Into` forms or a `Workspace`.
 
-The run was made from the release's own code. The test binary was
-cross-compiled from a clean v0.41.0 worktree, the tag was shipped to the host
-as a git bundle, and the binary ran from outside the clone so that the tree
-stayed clean. Done that way, the recorded commit is the tag itself.
+The run was made from the measured commit's own code. The test binary was
+cross-compiled from a clean checkout of `c198892`, the commit was shipped to
+the host as a git bundle, and the binary ran from outside the clone so that the
+tree stayed clean. Done that way, the recorded commit is `c198892` itself.

@@ -471,10 +471,14 @@ func whereTyped(cond, t, f *Array, shape []int) *Array {
 }
 
 // Real returns the real part of the elements: a float array of the same
-// precision for a complex array, a copy otherwise (as numpy.real).
+// precision for a complex array (a copy), and for any other dtype a VIEW of
+// the array itself, as numpy.real returns: it shares the storage, so a Set
+// through the result changes the array too. Use Copy for an independent array.
 func (a *Array) Real() *Array {
 	if !a.dtype.IsComplex() {
-		return a.Copy()
+		r := a.view(append([]int(nil), a.shape...), append([]int(nil), a.strides...), a.offset)
+		r.weak = a.weak
+		return r
 	}
 	return a.AsType(complexPart(a.dtype))
 }

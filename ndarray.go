@@ -341,18 +341,25 @@ func (a *Array) materialize() []float64 {
 	return out
 }
 
-// isContiguous reports whether the array is a row-major contiguous view with no
-// offset, so its data slice can be used directly.
-func (a *Array) isContiguous() bool {
-	if a.offset != 0 {
-		return false
-	}
+// isRowMajor reports whether a's elements are one run in row-major order
+// starting at a.offset, whatever the storage around them: the strides are
+// the row-major ones (a length-1 dimension's stride is ignored). Unlike
+// isContiguous it does not ask that the run be the whole storage.
+func (a *Array) isRowMajor() bool {
 	expect := rowMajorStrides(a.shape)
 	for i := range expect {
-		// A dimension of length 1 has an arbitrary stride; ignore it.
 		if a.shape[i] != 1 && a.strides[i] != expect[i] {
 			return false
 		}
+	}
+	return true
+}
+
+// isContiguous reports whether the array starts at offset 0, is row-major, and
+// its run is the whole storage, so its data slice can be used directly.
+func (a *Array) isContiguous() bool {
+	if a.offset != 0 || !a.isRowMajor() {
+		return false
 	}
 	if a.dtype != Float64 {
 		return a.Size() == storeLen(a.ext)
@@ -437,8 +444,17 @@ func (a *Array) Reshape(shape ...int) (*Array, error) {
 }
 
 // Ravel returns a contiguous 1-D array containing the elements in row-major
-// order.
+// order. Like numpy.ravel, it is a VIEW when the elements are already one
+// row-major run (a contiguous array, or a contiguous slice of one):
+// it shares the array's storage, so a Set through the result changes the
+// array too. Otherwise it is a copy. Use Flatten or Copy for an independent
+// array (Flatten always copies, as numpy.flatten does).
 func (a *Array) Ravel() *Array {
+	if a.isRowMajor() {
+		// Row-major at any offset (a contiguous slice of a larger array
+		// included) is one run of elements: a view, as numpy.ravel.
+		return a.view([]int{a.Size()}, []int{1}, a.offset)
+	}
 	if a.dtype != Float64 {
 		return a.result(cloneStore(a.contiguousStore()), []int{a.Size()})
 	}
