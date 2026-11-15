@@ -179,6 +179,50 @@ func RepeatP(k func(dst, a, b []float64), dst, full, rep []float64, repFirst boo
 	parallelFor(blocks, min(numWorkers(len(dst)), blocks), body)
 }
 
+// scalarBlock is the length of the block ScalarP fills with the scalar: long
+// enough that a kernel call per block costs little next to the block's work,
+// short enough (4 KiB) to stay in L1 for the whole pass.
+const scalarBlock = 512
+
+// ScalarP computes dst = full OP s, where s is a single value broadcast over
+// full (x + 1.5): it fills one block of scalarBlock copies of s and streams it
+// through the elementwise kernel k like RepeatP, so s is never materialised to
+// full's size. Each element goes through the same kernel as the materialised
+// broadcast, so the result is the same, bit for bit. With sFirst the operands
+// are swapped (dst = s OP full). len(dst) == len(full).
+func ScalarP(k func(dst, a, b []float64), dst, full []float64, s float64, sFirst bool) {
+	if len(dst) == 0 {
+		return
+	}
+	// Heap, not stack: the parallel workers share it, so it would escape
+	// anyway, and a short array then pays for its own length only.
+	rep := make([]float64, min(scalarBlock, len(dst)))
+	Fill(rep, s)
+	whole := len(dst) / len(rep) * len(rep)
+	RepeatP(k, dst[:whole], full[:whole], rep, sFirst)
+	if tail := len(dst) - whole; tail > 0 {
+		if sFirst {
+			k(dst[whole:], rep[:tail], full[whole:])
+		} else {
+			k(dst[whole:], full[whole:], rep[:tail])
+		}
+	}
+}
+
+// Fill sets every element of dst to v, for every element type. It writes one
+// element, then doubles the filled prefix with copy, whose memmove stores
+// whole vectors: 3.5× faster than an element-by-element loop on 10⁵ float64
+// (Zen 3, #118).
+func Fill[T any](dst []T, v T) {
+	if len(dst) == 0 {
+		return
+	}
+	dst[0] = v
+	for k := 1; k < len(dst); k *= 2 {
+		copy(dst[k:], dst[:k])
+	}
+}
+
 // AddP writes a[i]+b[i] into dst[i], parallelised above ParThreshold.
 func AddP(dst, a, b []float64) { runBinaryP(addBin, dst, a, b) }
 
