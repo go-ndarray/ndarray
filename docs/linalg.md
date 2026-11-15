@@ -2,7 +2,8 @@
 
 Package [`linalg`](../linalg) gives ndarray arrays the functions of
 `numpy.linalg`, written in Go without cgo or assembly of its own: the
-matrix products it relies on are the ndarray package's packed SIMD GEMM.
+matrix products it relies on are the packed SIMD GEMM of [go-blas/blas](https://github.com/go-blas/blas), which
+ndarray's `MatMul` uses too (the same kernels, moved there in v0.42.0, #122).
 
 | numpy.linalg | linalg |
 |---|---|

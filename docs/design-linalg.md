@@ -365,7 +365,7 @@ kd = 1, 5, 50; allocations counted exactly.
 
 ```text
 internal/libm/            correctly rounded log, log1p, exp, expm1, pow (moved from random/), + exp2, log2, hypot
-internal/kernels/         refgemm micro-kernels (go-asmgen, every GOARCH), no FMA
+internal/kernels/         dot, mat-vec and elementwise kernels (the GEMM micro-kernels are in go-blas/blas since v0.42.0)
 linalg/internal/lapack/   exact column-major ports of Reference-LAPACK v3.12.1, generic over 4 types
   refblas.go              level 1-3 BLAS in netlib loop order (dnrm2 Blue, ddot, daxpy, dgemv, dger, dtrmv, dtrsv, dgemm, dtrmm, dtrsm, dsyrk)
   arith.go                no-fuse helpers, gfortran complex mul/div, lamch, ilaenv, iparmq
