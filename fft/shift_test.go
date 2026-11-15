@@ -61,11 +61,13 @@ func TestShiftMatchesConcat(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		inputs := map[string]*ndarray.Array{
-			"float64":    f64,
-			"int16":      f64.AsType(ndarray.Int16),
-			"complex128": f64.AsType(ndarray.Complex128),
-			"bool":       f64.AsType(ndarray.Bool),
+		// Every dtype: the roll is generic, but each goes through its own
+		// branch of shift's switch.
+		inputs := map[string]*ndarray.Array{"float64": f64}
+		for _, dt := range []ndarray.DType{ndarray.Bool, ndarray.Int8, ndarray.Int16, ndarray.Int32,
+			ndarray.Int64, ndarray.Uint8, ndarray.Uint16, ndarray.Uint32, ndarray.Uint64,
+			ndarray.Float32, ndarray.Complex64, ndarray.Complex128} {
+			inputs[dt.String()] = f64.AsType(dt)
 		}
 		if len(sh) >= 2 {
 			inputs["transposed"] = f64.Transpose() // not contiguous

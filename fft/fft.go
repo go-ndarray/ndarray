@@ -551,11 +551,8 @@ func shift(a *ndarray.Array, axes []int, inverse bool) (*ndarray.Array, error) {
 // Data of a contiguous array is its own storage, which may be written since
 // the array is ours, so the result is allocated once and never copied.
 func rollAs[T bool | int8 | int16 | int32 | int64 | uint8 | uint16 | uint32 | uint64 | float32 | float64 | complex64 | complex128](a *ndarray.Array, shape, s []int) (*ndarray.Array, error) {
-	src, _ := ndarray.Data[T](a) // the switch above chose T from a's dtype
-	out, err := ndarray.ZerosOf(a.DType(), shape...)
-	if err != nil {
-		return nil, err
-	}
+	src, _ := ndarray.Data[T](a)                   // the switch above chose T from a's dtype
+	out, _ := ndarray.ZerosOf(a.DType(), shape...) // a's shape is valid
 	dst, _ := ndarray.Data[T](out)
 	if len(shape) == 0 { // 0-d: nothing to roll
 		copy(dst, src)
