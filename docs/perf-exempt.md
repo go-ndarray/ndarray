@@ -11,6 +11,7 @@ Each is named with the reason it has no case (refbench's coverage rule). Every o
 - `Array.Display`: builds a Jupyter MIME bundle; NumPy has no counterpart
 - `Array.Map`: takes a Go callback per element; the NumPy counterpart (np.vectorize) is a Python loop, not a kernel
 - `Array.Ndim`: attribute read
+- `Array.RoundHalfAway`: rounds halves away from zero (math.Round); NumPy has no counterpart (np.round is half to even, which is `Array.Round`)
 - `Array.SetComplex`: one scalar element access, a few ns; the NumPy counterpart is dominated by the Python interpreter, not a kernel
 - `Array.Set`: one scalar element access, a few ns; the NumPy counterpart is dominated by the Python interpreter, not a kernel
 - `Array.Shape`: attribute read
