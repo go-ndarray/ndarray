@@ -74,14 +74,20 @@ and 14). Every slower row is an
 open defect. They are tracked by cause in
 [#118](https://github.com/go-ndarray/ndarray/issues/118) rather than in one
 issue per row:
-- result allocation: the allocating `Add` is 3.1× slower, while `AddInto` ties (1.03);
-- elementwise operations without a vector kernel: `Ceil` is 20× slower, `Abs` 12×;
-- copies where NumPy returns a view or wraps the buffer;
-- `linalg` at 64 × 64 (1.4–4×);
-- the `fft` shifts;
+- result allocation: the allocating `Add` is 3.7× slower, while `AddInto` is
+  within 7% (1.07);
+- elementwise operations: the unary `Ceil` (5.4×), `Floor` (5.3×), `Square`
+  (4.9×), `Round`, `Abs` and `Neg` (4.6×) now run on vector kernels and what
+  remains is the result allocation; the binary `Maximum`, `Minimum` and `Power`
+  (5.3–5.5×) and `Log2` (4.2×) are the worst of the others;
+- copies where NumPy returns a view or wraps the buffer (`Flatten` 5.0×,
+  `Copy` 4.8×, `Imag` 4.9×);
+- `linalg` at 64 × 64 (1.5–4×);
+- the `fft` shifts (9.7× and 9.9×);
 - the `random` draws built on `log`/`exp`.
 
-Faster, for example: `SqrtInto` (0.51), `fft.FFT` (0.54), `Sum` (0.70), `Exp` (0.89).
+Faster, for example: `SqrtInto` (0.52), `fft.FFT` (0.64), `Sum` (0.76), `Log10`
+(0.57). `Exp` (0.92) ties.
 
 ### Since the v0.41.0 table
 
