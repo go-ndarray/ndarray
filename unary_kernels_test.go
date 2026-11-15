@@ -21,6 +21,8 @@ func unaryEdge() []float64 {
 		0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 0.49999999999999994, -0.49999999999999994,
 		1, -1, 0.1, -0.1, 3.7, -3.7, 1e-10, -1e-10, 1e10, -1e10,
 		1e154, -1e154, 1e155, 1e-155,
+		3.5, -3.5, 4.5, -4.5, 1e15 + 0.5, -(1e15 + 0.5), 1e15 + 1.5, 4503599627370495.5,
+		-4503599627370495.5, 4503599627370494.5, 2.5000000000000004, 1.4999999999999998,
 	}
 	for _, b := range []float64{two52, two63, math.Ldexp(1, 53), math.Ldexp(1, 62), math.Ldexp(1, 64)} {
 		for _, s := range []float64{1, -1} {
@@ -31,9 +33,12 @@ func unaryEdge() []float64 {
 	return v
 }
 
-func sameBits(got, want float64) bool {
-	if math.IsNaN(want) {
-		return math.IsNaN(got) // a signalling NaN may come back quieted
+// sameBits compares bit patterns. Unless strict, a NaN matches any NaN: a
+// signalling NaN may come back quieted from Square, Floor, Ceil and Round. Abs
+// and Neg keep NaN bits exactly, so they are compared strictly.
+func sameBits(got, want float64, strict bool) bool {
+	if !strict && math.IsNaN(want) {
+		return math.IsNaN(got)
 	}
 	return math.Float64bits(got) == math.Float64bits(want)
 }
@@ -43,15 +48,18 @@ func sameBits(got, want float64) bool {
 // parallel threshold, cut from the edge table and random values.
 func TestUnaryKernelsBitIdentical(t *testing.T) {
 	ops := []struct {
-		name string
-		do   func(*Array) *Array
-		ref  func(float64) float64
+		name   string
+		do     func(*Array) *Array
+		ref    func(float64) float64
+		strict bool // NaN bits must match exactly
 	}{
-		{"Abs", (*Array).Abs, math.Abs},
-		{"Neg", (*Array).Neg, func(x float64) float64 { return -x }},
-		{"Square", (*Array).Square, func(x float64) float64 { return x * x }},
-		{"Floor", (*Array).Floor, math.Floor},
-		{"Ceil", (*Array).Ceil, math.Ceil},
+		{"Abs", (*Array).Abs, math.Abs, true},
+		{"Neg", (*Array).Neg, func(x float64) float64 { return -x }, true},
+		{"Square", (*Array).Square, func(x float64) float64 { return x * x }, false},
+		{"Floor", (*Array).Floor, math.Floor, false},
+		{"Ceil", (*Array).Ceil, math.Ceil, false},
+		{"Round", (*Array).Round, math.RoundToEven, false},
+		{"RoundHalfAway", (*Array).RoundHalfAway, math.Round, false},
 	}
 	rng := rand.New(rand.NewSource(1))
 	pool := unaryEdge()
@@ -83,14 +91,14 @@ func TestUnaryKernelsBitIdentical(t *testing.T) {
 					t.Fatalf("%s n=%d: len %d", op.name, n, len(got))
 				}
 				for i, x := range src {
-					if w := op.ref(x); !sameBits(got[i], w) {
+					if w := op.ref(x); !sameBits(got[i], w, op.strict) {
 						t.Fatalf("%s n=%d [%d] %#x: got %#x want %#x", op.name, n, i,
 							math.Float64bits(x), math.Float64bits(got[i]), math.Float64bits(w))
 					}
 				}
 				in := a.materialize()
 				for i := range src { // the input is not modified
-					if !sameBits(in[i], src[i]) {
+					if !sameBits(in[i], src[i], true) {
 						t.Fatalf("%s n=%d: input modified at %d", op.name, n, i)
 					}
 				}
@@ -113,14 +121,16 @@ func TestUnaryKernelsStrided(t *testing.T) {
 		got []float64
 		ref func(float64) float64
 	}{
-		"Abs":    {tr.Abs().materialize(), math.Abs},
-		"Neg":    {tr.Neg().materialize(), func(x float64) float64 { return -x }},
-		"Square": {tr.Square().materialize(), func(x float64) float64 { return x * x }},
-		"Floor":  {tr.Floor().materialize(), math.Floor},
-		"Ceil":   {tr.Ceil().materialize(), math.Ceil},
+		"Abs":           {tr.Abs().materialize(), math.Abs},
+		"Neg":           {tr.Neg().materialize(), func(x float64) float64 { return -x }},
+		"Square":        {tr.Square().materialize(), func(x float64) float64 { return x * x }},
+		"Floor":         {tr.Floor().materialize(), math.Floor},
+		"Ceil":          {tr.Ceil().materialize(), math.Ceil},
+		"Round":         {tr.Round().materialize(), math.RoundToEven},
+		"RoundHalfAway": {tr.RoundHalfAway().materialize(), math.Round},
 	} {
 		for i, x := range view {
-			if !sameBits(c.got[i], c.ref(x)) {
+			if !sameBits(c.got[i], c.ref(x), name == "Abs" || name == "Neg") {
 				t.Fatalf("%s strided [%d]: got %#x want %#x", name, i,
 					math.Float64bits(c.got[i]), math.Float64bits(c.ref(x)))
 			}

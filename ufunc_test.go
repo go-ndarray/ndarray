@@ -43,10 +43,11 @@ func TestMathUfuncs(t *testing.T) {
 	cc := mustArr(t, ok(FromData([]float64{1.2, -1.7}, 2)))
 	eqFloats(t, cc.Ceil().materialize(), []float64{2, -1})
 
-	// Round here is math.Round (half away from zero); this intentionally differs
-	// from numpy's banker's rounding, so 0.5 -> 1 and 2.5 -> 3.
+	// Round is half to even, as np.round: 0.5 -> 0 and 2.5 -> 2. RoundHalfAway
+	// is the old math.Round: 0.5 -> 1 and 2.5 -> 3.
 	rc := mustArr(t, ok(FromData([]float64{0.5, 1.5, 2.5, -0.5}, 4)))
-	eqFloats(t, rc.Round().materialize(), []float64{1, 2, 3, -1})
+	eqFloats(t, rc.Round().materialize(), []float64{0, 2, 2, 0})
+	eqFloats(t, rc.RoundHalfAway().materialize(), []float64{1, 2, 3, -1})
 
 	sq := mustArr(t, ok(FromData([]float64{2, -3}, 2)))
 	eqFloats(t, sq.Square().materialize(), []float64{4, 9})

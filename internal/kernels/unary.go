@@ -32,5 +32,8 @@ func SquareP(dst, src []float64) { unaryP(floats.Square, dst, src) }
 // FloorP writes math.Floor(src[i]) into dst[i].
 func FloorP(dst, src []float64) { unaryP(floats.Floor, dst, src) }
 
+// RoundEvenP writes math.RoundToEven(src[i]) into dst[i].
+func RoundEvenP(dst, src []float64) { unaryP(floats.RoundEven, dst, src) }
+
 // CeilP writes math.Ceil(src[i]) into dst[i].
 func CeilP(dst, src []float64) { unaryP(floats.Ceil, dst, src) }

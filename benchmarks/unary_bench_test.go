@@ -3,9 +3,8 @@ package benchmarks
 import "testing"
 
 // BenchmarkUnary times the float64 unary ufuncs on 10^5 elements, the size of
-// the single-core table (#118). Round is not routed through a SIMD kernel (it
-// rounds half away from zero, which go-simd/floats does not provide); it is
-// here as the unchanged control.
+// the single-core table (#118). RoundHalfAway stays on the scalar path and is
+// the control: it is what Round did before it became half-to-even.
 func BenchmarkUnary(b *testing.B) {
 	const n = 100000
 	x := vec(n)
@@ -19,6 +18,7 @@ func BenchmarkUnary(b *testing.B) {
 		{"Floor", func() { _ = x.Floor() }},
 		{"Ceil", func() { _ = x.Ceil() }},
 		{"Round", func() { _ = x.Round() }},
+		{"RoundHalfAway", func() { _ = x.RoundHalfAway() }},
 	}
 	for _, op := range ops {
 		b.Run(op.name, func(b *testing.B) {

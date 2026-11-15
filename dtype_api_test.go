@@ -310,8 +310,11 @@ func TestTypedUnary(t *testing.T) {
 	if got := data[float32](t, h.Ceil()); !reflect.DeepEqual(got, []float32{2, -2}) {
 		t.Errorf("float32 ceil = %v", got)
 	}
-	if got := data[float32](t, h.Round()); !reflect.DeepEqual(got, []float32{2, -3}) {
+	if got := data[float32](t, h.Round()); !reflect.DeepEqual(got, []float32{2, -2}) {
 		t.Errorf("float32 round = %v", got)
+	}
+	if got := data[float32](t, h.RoundHalfAway()); !reflect.DeepEqual(got, []float32{2, -3}) {
+		t.Errorf("float32 RoundHalfAway = %v", got)
 	}
 	if got := data[float32](t, h.Power(2)); !reflect.DeepEqual(got, []float32{2.25, 6.25}) {
 		t.Errorf("float32 power = %v", got)
@@ -322,6 +325,17 @@ func TestTypedUnary(t *testing.T) {
 	c := must(FromSlice([]complex128{3 + 4i}, 1))
 	if got := c.Round(); got.AtComplex(0) != 3+4i {
 		t.Errorf("complex round = %v", got)
+	}
+	cz := must(FromSlice([]complex128{2.5 - 3.5i, -0.5 + 1.5i}, 2))
+	if got := cz.Round(); got.AtComplex(0) != 2-4i || got.AtComplex(1) != complex(math.Copysign(0, -1), 2) {
+		t.Errorf("complex round half to even = %v", got)
+	}
+	if got := cz.RoundHalfAway(); got.AtComplex(0) != 3-4i || got.AtComplex(1) != -1+2i {
+		t.Errorf("complex RoundHalfAway = %v", got)
+	}
+	ii := must(FromSlice([]int32{-3, 4}, 2))
+	if got := data[int32](t, ii.RoundHalfAway()); !reflect.DeepEqual(got, []int32{-3, 4}) {
+		t.Errorf("int RoundHalfAway = %v", got)
 	}
 	mustPanic(t, "not defined for complex128", func() { c.Ceil() })
 	if r := i.Map(func(x float64) float64 { return x + 0.5 }); r.DType() != Float64 || r.At(0) != 1.5 {

@@ -178,10 +178,30 @@ func (a *Array) Ceil() *Array {
 	return a.unary(kernels.CeilP)
 }
 
-// Round returns the elementwise round-half-away-from-zero, matching math.Round.
+// Round returns the elementwise rounding to the nearest integer, a half going
+// to the even neighbour (2.5 gives 2, 3.5 gives 4, -0.5 gives -0), as
+// np.round(a) with no decimals does and as math.RoundToEven. Float32 and
+// complex elements round the same way (each part of a complex number), and
+// integers and bools are returned unchanged. Before v0.43.0 Round rounded halves
+// away from zero; that is RoundHalfAway.
+//
+// A Float64 array runs on the go-simd/floats RoundEven kernel.
 func (a *Array) Round() *Array {
 	if a.dtype != Float64 {
 		return a.exactUnary(uRound, (*Array).Round)
+	}
+	return a.unary(kernels.RoundEvenP)
+}
+
+// RoundHalfAway returns the elementwise rounding to the nearest integer, a half
+// going away from zero (2.5 gives 3, -2.5 gives -3, 0.5 gives 1), as math.Round
+// does and as Round did before v0.43.0. It differs from Round, and from
+// np.round, only on exact halves: Round sends those to the even neighbour.
+// The dtypes are the same as for Round (integers and bools unchanged, float32
+// and complex rounded part by part). It runs on the scalar path.
+func (a *Array) RoundHalfAway() *Array {
+	if a.dtype != Float64 {
+		return a.exactUnary(uRoundHalfAway, (*Array).RoundHalfAway)
 	}
 	return a.Map(math.Round)
 }
