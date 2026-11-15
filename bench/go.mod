@@ -8,7 +8,7 @@ require (
 )
 
 require (
-	github.com/go-blas/blas v0.2.0 // indirect
+	github.com/go-blas/blas v0.2.1 // indirect
 	github.com/go-fft/fft v0.29.0 // indirect
 	github.com/go-fleettools/fleettools v0.81.0 // indirect
 	github.com/go-simd/floats v0.17.0 // indirect
