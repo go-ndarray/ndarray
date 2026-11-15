@@ -30,6 +30,26 @@ func TestRavelIsAViewWhenContiguous(t *testing.T) {
 		t.Fatalf("non-contiguous Ravel aliases the original: m[0,0] = %v", got)
 	}
 
+	// A contiguous slice of a larger array (offset ≠ 0) is still one run: a
+	// view, as numpy.ravel of a C-contiguous slice.
+	big, _ := Arange(0, 10, 1)
+	sl, _ := big.Slice(R(3, 7))
+	rs := sl.Ravel()
+	if rs.At(0) != 3 || rs.At(3) != 6 {
+		t.Fatalf("Ravel of a slice reads %v..%v, want 3..6", rs.At(0), rs.At(3))
+	}
+	rs.Set(77, 2)
+	if got := big.At(5); got != 77 {
+		t.Fatalf("Ravel of a contiguous slice is not a view: big[5] = %v, want 77", got)
+	}
+	// A strided slice is not one run: a copy.
+	st, _ := big.Slice(Rng(0, 10, 2))
+	cs := st.Ravel()
+	cs.Set(-3, 0)
+	if got := big.At(0); got != 0 {
+		t.Fatalf("Ravel of a strided slice aliases: big[0] = %v", got)
+	}
+
 	// Another dtype goes through the same path.
 	i8, _ := FromSlice([]int8{1, 2, 3, 4}, 2, 2)
 	ri := i8.Ravel()

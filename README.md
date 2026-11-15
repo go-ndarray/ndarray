@@ -150,7 +150,8 @@ on 10⁵ float64 on one core of cfarm420 they went from 243–464 µs to 70–81
 ([docs/perf.md](docs/perf.md), *Since the table*).
 
 **Behaviour change in the next release (a MINOR): `Ravel` and `Real` return
-views, as NumPy does.** `Ravel` of a contiguous array shares its storage
+views, as NumPy does.** `Ravel` of an array whose elements are one row-major
+run (a contiguous array, or a contiguous slice of one) shares its storage
 (`numpy.ravel`), and `Real` of a non-complex array is the array itself
 (`numpy.real`). A `Set` through the result therefore changes the original.
 `Ravel` of a non-contiguous array still copies, and `Real` of a complex array
