@@ -71,7 +71,7 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 ## Audit log
 
 **2026-11-15 (unreleased).** The GEMM moved to
-[go-blas/blas](https://github.com/go-blas/blas) v0.2.0 (the micro-kernels, their
+[go-blas/blas](https://github.com/go-blas/blas) v0.2.1 (the micro-kernels, their
 wrappers, the packing and their fence tests, byte for byte; the audit of that
 code is that repository's). What ndarray adds is `internal/blasmm`, which hands
 an operand's row and column strides to `DgemmStrided`/`SgemmStrided`. go-blas
