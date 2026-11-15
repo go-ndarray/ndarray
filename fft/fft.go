@@ -488,7 +488,9 @@ func IFFTShift(a *ndarray.Array, axes ...int) (*ndarray.Array, error) {
 }
 
 // shift rolls each axis by n/2 (FFTShift) or -(n/2) (IFFTShift), for any
-// dtype, by taking the two halves and joining them the other way round.
+// dtype, in ONE pass: output index i along an axis reads input index
+// (i - s) mod n, so whole rows are copied and the innermost axis is two
+// copies. An axis given twice is rolled twice, as numpy does.
 func shift(a *ndarray.Array, axes []int, inverse bool) (*ndarray.Array, error) {
 	if axes == nil {
 		axes = make([]int, a.Ndim())
@@ -503,26 +505,86 @@ func shift(a *ndarray.Array, axes []int, inverse bool) (*ndarray.Array, error) {
 			return nil, err
 		}
 	}
-	x := a
 	shape := a.Shape()
+	s := make([]int, len(shape)) // roll of each axis, in [0, n)
 	for _, ax := range norm {
 		n := shape[ax]
-		cut := n - n/2 // fftshift moves the last n/2 to the front
+		r := n / 2 // fftshift moves the last n/2 to the front
 		if inverse {
-			cut = n / 2
+			r = n - n/2
 		}
-		idx := make([]ndarray.Index, len(shape))
-		for i := range idx {
-			idx[i] = ndarray.All()
+		if n > 0 {
+			s[ax] = (s[ax] + r) % n
 		}
-		idx[ax] = ndarray.From(cut)
-		tail, _ := x.Slice(idx...)
-		idx[ax] = ndarray.To(cut)
-		head, _ := x.Slice(idx...)
-		x, _ = ndarray.Concatenate([]*ndarray.Array{tail, head}, ax)
 	}
-	if x == a {
-		return a.Copy(), nil
+	switch a.DType() {
+	case ndarray.Bool:
+		return rollAs[bool](a, shape, s)
+	case ndarray.Int8:
+		return rollAs[int8](a, shape, s)
+	case ndarray.Int16:
+		return rollAs[int16](a, shape, s)
+	case ndarray.Int32:
+		return rollAs[int32](a, shape, s)
+	case ndarray.Int64:
+		return rollAs[int64](a, shape, s)
+	case ndarray.Uint8:
+		return rollAs[uint8](a, shape, s)
+	case ndarray.Uint16:
+		return rollAs[uint16](a, shape, s)
+	case ndarray.Uint32:
+		return rollAs[uint32](a, shape, s)
+	case ndarray.Uint64:
+		return rollAs[uint64](a, shape, s)
+	case ndarray.Float32:
+		return rollAs[float32](a, shape, s)
+	case ndarray.Complex64:
+		return rollAs[complex64](a, shape, s)
+	case ndarray.Complex128:
+		return rollAs[complex128](a, shape, s)
 	}
-	return x, nil
+	return rollAs[float64](a, shape, s)
+}
+
+// rollAs reads a's elements as T (a copy only when a is not contiguous) and
+// rolls them straight into the storage of a new array of a's dtype and shape:
+// Data of a contiguous array is its own storage, which may be written since
+// the array is ours, so the result is allocated once and never copied.
+func rollAs[T bool | int8 | int16 | int32 | int64 | uint8 | uint16 | uint32 | uint64 | float32 | float64 | complex64 | complex128](a *ndarray.Array, shape, s []int) (*ndarray.Array, error) {
+	src, _ := ndarray.Data[T](a)                   // the switch above chose T from a's dtype
+	out, _ := ndarray.ZerosOf(a.DType(), shape...) // a's shape is valid
+	dst, _ := ndarray.Data[T](out)
+	if len(shape) == 0 { // 0-d: nothing to roll
+		copy(dst, src)
+	} else if len(src) > 0 {
+		strides := make([]int, len(shape))
+		st := 1
+		for i := len(shape) - 1; i >= 0; i-- {
+			strides[i] = st
+			st *= shape[i]
+		}
+		roll(dst, src, shape, strides, s, 0, 0, 0)
+	}
+	return out, nil
+}
+
+// roll writes into dst, at offset do, the sub-array of src at offset so along
+// axes ax.., each axis d rolled by s[d]: dst index i reads src (i - s) mod n.
+// The innermost axis is two contiguous copies.
+func roll[T any](dst, src []T, shape, strides, s []int, ax, do, so int) {
+	n := shape[ax]
+	if ax == len(shape)-1 {
+		k := s[ax]
+		copy(dst[do:do+k], src[so+n-k:so+n])
+		copy(dst[do+k:do+n], src[so:so+n-k])
+		return
+	}
+	st := strides[ax]
+	for i := range n {
+		j := i - s[ax]
+		if j < 0 {
+			j += n
+		}
+		roll(dst, src, shape, strides, s, ax+1, do+i*st, so+j*st)
+	}
 }
