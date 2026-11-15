@@ -757,6 +757,10 @@ func (a *Array) binOpInto(out, b *Array, kernel func(dst, x, y []float64)) error
 		return fmt.Errorf("%w: out shape %v != result shape %v",
 			ErrBroadcast, out.shape, shape)
 	}
+	if full, s, sFirst, ok := scalarOperand(a, b, shape); ok {
+		kernels.ScalarP(kernel, out.data, full, s, sFirst)
+		return nil
+	}
 	x := a.operandFor(shape)
 	y := b.operandFor(shape)
 	kernel(out.data, x, y)

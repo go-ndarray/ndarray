@@ -31,6 +31,14 @@ func TestScalarOperandPaths(t *testing.T) {
 		{"view at offset", func() (*Array, error) { return x.Sub(view) }, func(v float64) float64 { return v - 4 }},
 		{"view first", func() (*Array, error) { return view.Div(x) }, func(v float64) float64 { return 4 / v }},
 		{"1x1 against matrix", func() (*Array, error) { return mat.Mul(oneByOne) }, func(v float64) float64 { return v * 4 }},
+		{"DivInto scalar first", func() (*Array, error) {
+			out, _ := New(n)
+			return out, scalarArray(0.1).DivInto(out, x)
+		}, func(v float64) float64 { return 0.1 / v }},
+		{"SubInto aliasing x", func() (*Array, error) {
+			y := x.Copy()
+			return y, y.SubInto(y, scalarArray(0.1))
+		}, func(v float64) float64 { return v - 0.1 }},
 	}
 	for _, op := range ops {
 		r, err := op.got()
@@ -66,4 +74,14 @@ func TestScalarOperandAllocs(t *testing.T) {
 		t.Fatalf("AddScalar allocates %d B per call, want at most %d (result + one block)", bytes, limit)
 	}
 	_ = r
+	out, _ := New(100_000)
+	intoBytes := testing.Benchmark(func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = x.AddInto(out, scalarArray(1.5))
+		}
+	}).AllocedBytesPerOp()
+	if intoBytes > 8*1024 {
+		t.Fatalf("AddInto with a scalar allocates %d B per call, want at most one block", intoBytes)
+	}
 }
