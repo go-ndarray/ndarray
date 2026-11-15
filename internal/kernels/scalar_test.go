@@ -30,9 +30,15 @@ func TestScalarPSameBits(t *testing.T) {
 				}
 				got := make([]float64, n)
 				ScalarP(k, got, full, s, sFirst)
+				// In place, as AddInto(out = x) does: dst is full itself.
+				inPlace := append([]float64(nil), full...)
+				ScalarP(k, inPlace, inPlace, s, sFirst)
 				for i := range want {
 					if math.Float64bits(got[i]) != math.Float64bits(want[i]) {
 						t.Fatalf("%s n=%d sFirst=%v [%d]: got %v, want %v", name, n, sFirst, i, got[i], want[i])
+					}
+					if math.Float64bits(inPlace[i]) != math.Float64bits(want[i]) {
+						t.Fatalf("%s n=%d sFirst=%v in place [%d]: got %v, want %v", name, n, sFirst, i, inPlace[i], want[i])
 					}
 				}
 			}
