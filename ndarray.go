@@ -842,7 +842,7 @@ func (a *Array) Neg() *Array {
 	if a.dtype != Float64 {
 		return a.intUnary(uNeg, (*Array).Neg)
 	}
-	return a.Map(func(x float64) float64 { return -x })
+	return a.unary(kernels.NegP)
 }
 
 // Abs returns the elementwise absolute value.
@@ -852,7 +852,7 @@ func (a *Array) Abs() *Array {
 	if a.dtype != Float64 {
 		return a.intUnary(uAbs, (*Array).Abs)
 	}
-	return a.Map(kernels.Abs)
+	return a.unary(kernels.AbsP)
 }
 
 // --- reductions ------------------------------------------------------------

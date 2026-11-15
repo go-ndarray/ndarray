@@ -95,6 +95,34 @@ rounds:
   element at a time. `Full` went from 131–135 µs to 84–104 µs. `Ones` calls
   `Full`. `FullOf`, which fills the other dtypes, was not timed.
 
+- Float64 `Abs`, `Neg`, `Square`, `Floor` and `Ceil` run on the go-simd/floats
+  v0.23.0 kernels (above the parallel threshold, split across cores as before)
+  instead of a scalar loop through `Map`. The results are bit for bit those of
+  `math.Abs`, `-x`, `x*x`, `math.Floor` and `math.Ceil`, except that a
+  signalling NaN may come back quieted
+  (`TestUnaryKernelsBitIdentical`: edge table, lengths 0–33 and one above the
+  threshold). `go test -bench Unary` (`benchmarks/unary_bench_test.go`), 10⁵
+  float64 including the result allocation, one pinned core of cfarm420
+  (`GOMAXPROCS=1`, `taskset -c 9`), a test binary of v0.42.0 and one of this
+  change, four interleaved rounds of 1 s, 1-minute load 2.34 at the start and
+  3.32 at the end. Before → after, range over the rounds:
+
+  | operation | before (µs) | after (µs) |
+  |---|---|---|
+  | `Abs` | 244–258 | 70–75 |
+  | `Neg` | 243–249 | 72–75 |
+  | `Square` | 243–247 | 72–80 |
+  | `Floor` | 432–457 | 73–81 |
+  | `Ceil` | 437–464 | 72–81 |
+
+  These are times of the Go code against itself; no NumPy ratio is claimed
+  here, as the new table run has not been made. `Round` is not on a kernel and
+  stays at 316–339 µs before and 291–303 µs after (the control): it rounds
+  half away from zero as `math.Round` does, while `floats.RoundEven` rounds
+  half to even, which is `np.round` but a different result on every half.
+  Changing `Round` to half-to-even is a decision for the maintainers, not part
+  of this change.
+
 What remains of the allocation cause is Go's own cost. A CPU profile of a bare
 `make([]float64, 100000)` shows about 60% garbage-collector marking (assists
 in the allocating goroutine) and about 23% zeroing. NumPy frees each result

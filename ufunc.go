@@ -167,7 +167,7 @@ func (a *Array) Floor() *Array {
 	if a.dtype != Float64 {
 		return a.exactUnary(uFloor, (*Array).Floor)
 	}
-	return a.Map(math.Floor)
+	return a.unary(kernels.FloorP)
 }
 
 // Ceil returns the elementwise ceiling (least integer >= x).
@@ -175,7 +175,7 @@ func (a *Array) Ceil() *Array {
 	if a.dtype != Float64 {
 		return a.exactUnary(uCeil, (*Array).Ceil)
 	}
-	return a.Map(math.Ceil)
+	return a.unary(kernels.CeilP)
 }
 
 // Round returns the elementwise round-half-away-from-zero, matching math.Round.
@@ -192,7 +192,7 @@ func (a *Array) Square() *Array {
 	if a.dtype != Float64 {
 		return a.intUnary(uSquare, (*Array).Square)
 	}
-	return a.Map(func(x float64) float64 { return x * x })
+	return a.unary(kernels.SquareP)
 }
 
 // Power returns the elementwise a**p (every element raised to p).

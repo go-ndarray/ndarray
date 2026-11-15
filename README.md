@@ -141,6 +141,12 @@ one-core rule does not allow; it is kept as
 [docs/perf-history.md](docs/perf-history.md) for its kernel-level analysis, and
 its ratios are not a verdict.
 
+Float64 `Abs`, `Neg`, `Square`, `Floor` and `Ceil` run on the SIMD kernels of
+go-simd/floats (v0.23.0), bit for bit the results of `math.Abs`, `-x`, `x*x`,
+`math.Floor` and `math.Ceil` (a signalling NaN may come back quieted): on 10⁵
+float64 on one core of cfarm420 they went from 243–464 µs to 70–81 µs
+([docs/perf.md](docs/perf.md), *Since the table*). `Round` is unchanged.
+
 On Apple silicon the GEMM reached parity with tuned BLAS at 1024² (OpenBLAS in
 an arm64 VM, single-threaded vecLib on an M4 Max), and every product beats the
 pure-Go `gonum` 4–10× (**[BENCHMARKS.md](BENCHMARKS.md)**). On the other
