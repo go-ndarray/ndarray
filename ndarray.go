@@ -437,8 +437,14 @@ func (a *Array) Reshape(shape ...int) (*Array, error) {
 }
 
 // Ravel returns a contiguous 1-D array containing the elements in row-major
-// order.
+// order. Like numpy.ravel, it is a VIEW when the array is already contiguous:
+// it shares the array's storage, so a Set through the result changes the
+// array too. Otherwise it is a copy. Use Flatten or Copy for an independent
+// array (Flatten always copies, as numpy.flatten does).
 func (a *Array) Ravel() *Array {
+	if a.isContiguous() {
+		return a.view([]int{a.Size()}, []int{1}, 0)
+	}
 	if a.dtype != Float64 {
 		return a.result(cloneStore(a.contiguousStore()), []int{a.Size()})
 	}

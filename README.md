@@ -149,8 +149,15 @@ keep NaN bits exactly; for the others a signalling NaN may come back quieted):
 on 10⁵ float64 on one core of cfarm420 they went from 243–464 µs to 70–81 µs
 ([docs/perf.md](docs/perf.md), *Since the table*).
 
-**Behaviour change in the next release (a MINOR): `Round` rounds halves to
-even.** It is now `np.round` with no decimals, on every dtype (float64, float32
+**Behaviour change in the next release (a MINOR): `Ravel` and `Real` return
+views, as NumPy does.** `Ravel` of a contiguous array shares its storage
+(`numpy.ravel`), and `Real` of a non-complex array is the array itself
+(`numpy.real`). A `Set` through the result therefore changes the original.
+`Ravel` of a non-contiguous array still copies, and `Real` of a complex array
+is still a new float array. For an independent array use `Flatten` (always a
+copy, as `numpy.flatten`) or `Copy`. Until v0.43.1 both always copied.
+
+**Behaviour change in v0.43.0: `Round` rounds halves to even.** It is now `np.round` with no decimals, on every dtype (float64, float32
 and each part of a complex number): `Round` of 0.5, 1.5, 2.5 and -0.5 gives 0, 2,
 2 and -0. Until v0.42.0 it rounded halves away from zero (1, 2, 3, -1), and
 that behaviour is now `RoundHalfAway` (`math.Round`, the scalar path, the same

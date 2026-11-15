@@ -8,7 +8,9 @@ import "fmt"
 // always-copy contract).
 func (a *Array) Flatten() *Array {
 	if a.dtype != Float64 {
-		return a.Ravel()
+		// Not Ravel: that is a view of a contiguous array, and Flatten
+		// always copies (numpy.flatten).
+		return a.result(cloneStore(a.contiguousStore()), []int{a.Size()})
 	}
 	data := a.materialize()
 	return &Array{data: data, shape: []int{len(data)}, strides: []int{1}, ws: a.ws}

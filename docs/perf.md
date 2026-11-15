@@ -123,6 +123,13 @@ rounds:
   the control on the scalar path, takes 324–345 µs in the same run. These are
   times of the Go code against itself; no NumPy ratio is claimed here, as the
   new table run has not been made.
+- `Ravel` of a contiguous array and `Real` of a real array return views, as
+  NumPy does, instead of copying (the table's rows were 566× slower than
+  NumPy, which returns views). On 10⁵ float64, cfarm420, one pinned core, three
+  interleaved rounds at load 2.1 to 2.3: `Ravel` went from 83–90 µs to 93–101
+  ns and `Real` from 84–91 µs to 101–104 ns, 803 kB to 128 B per call. The
+  table's NumPy times were 176 ns and 164 ns; that comparison is not a new
+  measurement against NumPy. This is a behaviour change (see the README).
 
 What remains of the allocation cause is Go's own cost. A CPU profile of a bare
 `make([]float64, 100000)` shows about 60% garbage-collector marking (assists
