@@ -22,9 +22,9 @@ func TestParallelStress(t *testing.T) {
 	if testing.Short() {
 		dur = 200 * time.Millisecond
 	}
-	op, og, omv := ParThreshold, GemmThreshold, matVecThreshold
-	ParThreshold, GemmThreshold, matVecThreshold = 64, 64, 64 // parallel from tiny sizes
-	defer func() { ParThreshold, GemmThreshold, matVecThreshold = op, og, omv }()
+	op, omv := ParThreshold, matVecThreshold
+	ParThreshold, matVecThreshold = 64, 64 // parallel from tiny sizes
+	defer func() { ParThreshold, matVecThreshold = op, omv }()
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(0))
 
 	stop := make(chan struct{})

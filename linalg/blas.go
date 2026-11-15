@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/cmplx"
 
-	"github.com/go-ndarray/ndarray/internal/kernels"
+	"github.com/go-ndarray/ndarray/internal/blasmm"
 )
 
 // The algorithms are written once, generic over the two computation types.
@@ -209,7 +209,7 @@ func fastGemm[T scalar](m, n, k int, alpha T, a, b mview[T], c []T, ldc int) {
 	tmp := *tp
 	if cf, ok := any(c).([]float64); ok {
 		av, bv := any(a).(mview[float64]), any(b).(mview[float64])
-		kernels.MatMulStridedP(tmp, kmat(av), kmat(bv), m, k, n)
+		blasmm.MatMul(tmp, kmat(av), kmat(bv), m, k, n)
 		al := any(alpha).(float64)
 		for i := 0; i < m; i++ {
 			row := cf[i*ldc : i*ldc+n]
@@ -223,17 +223,16 @@ func fastGemm[T scalar](m, n, k int, alpha T, a, b mview[T], c []T, ldc int) {
 	ar, ai := split(m, k, a)
 	br, bi := split(k, n, b)
 	ti := make([]float64, m*n)
-	ra, rb := kernels.Mat{Data: ar, RS: k, CS: 1}, kernels.Mat{Data: br, RS: n, CS: 1}
-	ia, ib := kernels.Mat{Data: ai, RS: k, CS: 1}, kernels.Mat{Data: bi, RS: n, CS: 1}
-	kernels.MatMulStridedP(tmp, ra, rb, m, k, n) // Re·Re
-	kernels.MatMulStridedP(ti, ia, ib, m, k, n)  // Im·Im
+	ra, rb := blasmm.Mat[float64]{Data: ar, RS: k, CS: 1}, blasmm.Mat[float64]{Data: br, RS: n, CS: 1}
+	ia, ib := blasmm.Mat[float64]{Data: ai, RS: k, CS: 1}, blasmm.Mat[float64]{Data: bi, RS: n, CS: 1}
+	blasmm.MatMul(tmp, ra, rb, m, k, n) // Re·Re
+	blasmm.MatMul(ti, ia, ib, m, k, n)  // Im·Im
 	for i := range tmp {
 		tmp[i] -= ti[i]
 	}
 	t3 := make([]float64, m*n)
-	clear(ti)
-	kernels.MatMulStridedP(ti, ra, ib, m, k, n) // Re·Im
-	kernels.MatMulStridedP(t3, ia, rb, m, k, n) // Im·Re
+	blasmm.MatMul(ti, ra, ib, m, k, n) // Re·Im
+	blasmm.MatMul(t3, ia, rb, m, k, n) // Im·Re
 	cz := any(c).([]complex128)
 	al := any(alpha).(complex128)
 	for i := 0; i < m; i++ {
@@ -244,8 +243,8 @@ func fastGemm[T scalar](m, n, k int, alpha T, a, b mview[T], c []T, ldc int) {
 	}
 }
 
-func kmat(v mview[float64]) kernels.Mat {
-	return kernels.Mat{Data: v.d, Off: v.off, RS: v.rs, CS: v.cs}
+func kmat(v mview[float64]) blasmm.Mat[float64] {
+	return blasmm.Mat[float64]{Data: v.d, Off: v.off, RS: v.rs, CS: v.cs}
 }
 
 // split copies an r×c complex operand into contiguous real and imaginary

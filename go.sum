@@ -1,3 +1,5 @@
+github.com/go-blas/blas v0.2.1 h1:5uZfmvXVZn9CjE+I3DalALqWHdKz+rbBs8VffH3dAZo=
+github.com/go-blas/blas v0.2.1/go.mod h1:WjhlqzQ+RA8tS473f18QtcJl5Q0GonPs3RJIxT5G7Bk=
 github.com/go-fft/fft v0.29.0 h1:WtJb5K3dmbLWREvvZ50od0fxtjIBiXrg7mVybz/nPoA=
 github.com/go-fft/fft v0.29.0/go.mod h1:GN5V4TWCjV05ECqH1ONfjFM6Z1m2shqCdssxKGqQ41s=
 github.com/go-simd/floats v0.17.0 h1:Dv0ZmZ3k0IavvHwQgstpUz+TeIf/gGJ9HEGQ/UART8Q=

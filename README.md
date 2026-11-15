@@ -17,7 +17,7 @@
   scalars with `Scalar`). Float64 is the default and the most SIMD-accelerated
   one. Float32 has SIMD `Sum`, `Add`/`Sub`/`Mul`/`Div` and `Sqrt` on every
   64-bit target, and `Max`/`Min` on every 64-bit target, bit-identical to its
-  scalar loops. Its `MatMul` runs on a native float32 GEMM on arm64 (NEON),
+  scalar loops. Its `MatMul` runs on go-blas/blas's native float32 GEMM on arm64 (NEON),
   amd64 with FMA (AVX2), ppc64le (VSX), s390x (z14 vector) and riscv64 (RVV 1.0), accumulating in float32 like NumPy's sgemm, and
   elsewhere on the float64 GEMM (accumulated in float64, rounded once).
   Its `Exp` and `Log` are **correctly rounded**, proven by an exhaustive test
@@ -115,9 +115,13 @@ loops are [go-asmgen](https://github.com/go-asmgen)-generated SIMD kernels: sum,
 add/sub/mul/div, sqrt and the dot product (SSE2 or AVX2/FMA on amd64, NEON on
 arm64, VSX on ppc64le, LASX on loong64, RVV on riscv64 and the vector facility
 on s390x, the last three when the CPU has them), max/min too on
-amd64, arm64 and s390x (z14 and later), and a **panel-packed, cache-blocked GEMM** with an SIMD-FMA
-micro-kernel (NEON 4×8; AVX2/FMA 6×8 chosen at run time, SSE2 fallback; VSX
-8×8; LASX 8×8; RVV 6×8; s390x 4×8), the OpenBLAS/BLIS structure. The 32-bit
+amd64, arm64 and s390x (z14 and later). The **panel-packed, cache-blocked GEMM**
+with its SIMD-FMA micro-kernels (NEON 4×8; AVX2/FMA 6×8 chosen at run time, SSE2
+fallback; VSX 8×8; LASX 8×8; RVV 6×8; s390x 4×8; the OpenBLAS/BLIS structure)
+no longer lives here: `MatMul`, `Dot` and the linalg products call
+[go-blas/blas](https://github.com/go-blas/blas) (`DgemmStrided`/`SgemmStrided`,
+which read a transposed or sliced view through its strides without copying), the
+one implementation of that kernel. The 32-bit
 targets run the same pure-Go code those kernels are tested against. `Exp` and `Log` are ports of Arm's optimized-routines
 (≤ 0.51 ULP measured, against up to 0.88 and 0.72 for Go's
 `math.Exp`/`math.Log` on arm64),
