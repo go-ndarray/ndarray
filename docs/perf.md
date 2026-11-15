@@ -78,7 +78,7 @@ issue per row:
   within 7% (1.07);
 - elementwise operations: the unary `Ceil` (5.4×), `Floor` (5.3×), `Square`
   (4.9×), `Round`, `Abs` and `Neg` (4.6×) now run on vector kernels and what
-  remains is the result allocation; the binary `Maximum`, `Minimum` and `Power`
+  remains is the result allocation; `Maximum`, `Minimum` and `Power`
   (5.3–5.5×) and `Log2` (4.2×) are the worst of the others;
 - copies where NumPy returns a view or wraps the buffer (`Flatten` 5.0×,
   `Copy` 4.8×, `Imag` 4.9×);

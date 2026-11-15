@@ -341,8 +341,6 @@ func (a *Array) materialize() []float64 {
 	return out
 }
 
-// isContiguous reports whether the array is a row-major contiguous view with no
-// offset, so its data slice can be used directly.
 // isRowMajor reports whether a's elements are one run in row-major order
 // starting at a.offset, whatever the storage around them: the strides are
 // the row-major ones (a length-1 dimension's stride is ignored). Unlike
@@ -357,6 +355,8 @@ func (a *Array) isRowMajor() bool {
 	return true
 }
 
+// isContiguous reports whether the array starts at offset 0, is row-major, and
+// its run is the whole storage, so its data slice can be used directly.
 func (a *Array) isContiguous() bool {
 	if a.offset != 0 || !a.isRowMajor() {
 		return false
