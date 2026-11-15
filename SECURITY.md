@@ -70,7 +70,7 @@ standard library's known vulnerabilities; `govulncheck ./...` reports none.
 
 ## Audit log
 
-**2026-11-15 (unreleased).** The GEMM moved to
+**2026-11-15 (v0.42.0, #122).** The GEMM moved to
 [go-blas/blas](https://github.com/go-blas/blas) v0.2.1 (the micro-kernels, their
 wrappers, the packing and their fence tests, byte for byte; the audit of that
 code is that repository's). What ndarray adds is `internal/blasmm`, which hands
@@ -82,7 +82,7 @@ on an axis longer than one (a broadcast or reversed view) is copied to a
 contiguous matrix first. ndarray keeps the dot kernels (`dot_<arch>.go`), the
 mat-vec and the thread pool, with their wrappers and fences.
 
-**2026-11-12 (unreleased, #103).** The gather of `random`'s `Choice`
+**2026-11-12 (v0.40.2, #115, Refs #103).** The gather of `random`'s `Choice`
 (`takeAxis`, random/arrays.go) now copies bytes through `bytesOf`, an
 `unsafe.Slice` view of a slice's backing array of exactly `Len()·size` bytes.
 Every dtype the package stores is a fixed-size value without pointers

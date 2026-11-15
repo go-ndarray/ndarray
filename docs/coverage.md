@@ -114,7 +114,7 @@ backticked name in the first column. See "Counting" at the end.
 | `equal`, `not_equal`, `greater`, `greater_equal`, `less`, `less_equal` | `==`, `~=`, `>`, `>=`, `<`, `<=` | `Equal`, `NotEqual`, `Greater`, `GreaterEqual`, `Less`, `LessEqual` | done | |
 | `logical_and`, `logical_or`, `logical_xor`, `logical_not` | `&`, `\|`, `xor`, `~` | `LogicalAnd`, `LogicalOr`, `LogicalXor`, `LogicalNot` | done | |
 | `power`, `pow` | `.^` | `Power` | partial | scalar exponent only: no array exponent, no integer-power semantics |
-| `around`, `round` | `round` | `Round` | partial | rounds half away from zero (NumPy: half to even); no `decimals` |
+| `around`, `round` | `round` | `Round` | partial | half to even, as NumPy (`RoundHalfAway` is the old half away from zero); no `decimals` |
 | `clip` | `min(max(..))`, `rescale` | `Clip` | partial | array bounds, one-sided (`a_min` or `a_max` alone) |
 | `sinh`, `cosh`, `tanh`, `arcsinh`, `arccosh`, `arctanh`, `asinh`, `acosh`, `atanh` | `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh` | | missing | scalar kernels (go-numerics/special or math), SIMD later |
 | `arcsin`, `arccos`, `arctan`, `asin`, `acos`, `atan` | `asin`, `acos`, `atan` | | missing | same |

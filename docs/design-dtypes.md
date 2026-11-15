@@ -101,7 +101,6 @@ dtype by dtype after correctness, `float32` first.
 | NumPy | here | why |
 |---|---|---|
 | `float16` exists; `sqrt(int8)` is `float16` | no `float16`; `sqrt(int8)`, `sqrt(uint8)` and `sqrt(bool)` give `float32` | Go has no half-precision arithmetic; `float32` is the smallest type that holds the result exactly |
-| `round` is half-to-even | half-away-from-zero (unchanged) | documented since v0.1.0 |
 | `datetime64`, `str_`, `object`, structured dtypes | absent | out of scope for a numeric library |
 
 ## Element access

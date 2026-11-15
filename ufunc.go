@@ -167,7 +167,7 @@ func (a *Array) Floor() *Array {
 	if a.dtype != Float64 {
 		return a.exactUnary(uFloor, (*Array).Floor)
 	}
-	return a.Map(math.Floor)
+	return a.unary(kernels.FloorP)
 }
 
 // Ceil returns the elementwise ceiling (least integer >= x).
@@ -175,13 +175,33 @@ func (a *Array) Ceil() *Array {
 	if a.dtype != Float64 {
 		return a.exactUnary(uCeil, (*Array).Ceil)
 	}
-	return a.Map(math.Ceil)
+	return a.unary(kernels.CeilP)
 }
 
-// Round returns the elementwise round-half-away-from-zero, matching math.Round.
+// Round returns the elementwise rounding to the nearest integer, a half going
+// to the even neighbour (2.5 gives 2, 3.5 gives 4, -0.5 gives -0), as
+// np.round(a) with no decimals does and as math.RoundToEven. Float32 and
+// complex elements round the same way (each part of a complex number), and
+// integers and bools are returned unchanged. Before v0.43.0 Round rounded halves
+// away from zero; that is RoundHalfAway.
+//
+// A Float64 array runs on the go-simd/floats RoundEven kernel.
 func (a *Array) Round() *Array {
 	if a.dtype != Float64 {
 		return a.exactUnary(uRound, (*Array).Round)
+	}
+	return a.unary(kernels.RoundEvenP)
+}
+
+// RoundHalfAway returns the elementwise rounding to the nearest integer, a half
+// going away from zero (2.5 gives 3, -2.5 gives -3, 0.5 gives 1), as math.Round
+// does and as Round did before v0.43.0. It differs from Round, and from
+// np.round, only on exact halves: Round sends those to the even neighbour.
+// The dtypes are the same as for Round (integers and bools unchanged, float32
+// and complex rounded part by part). It runs on the scalar path.
+func (a *Array) RoundHalfAway() *Array {
+	if a.dtype != Float64 {
+		return a.exactUnary(uRoundHalfAway, (*Array).RoundHalfAway)
 	}
 	return a.Map(math.Round)
 }
@@ -192,7 +212,7 @@ func (a *Array) Square() *Array {
 	if a.dtype != Float64 {
 		return a.intUnary(uSquare, (*Array).Square)
 	}
-	return a.Map(func(x float64) float64 { return x * x })
+	return a.unary(kernels.SquareP)
 }
 
 // Power returns the elementwise a**p (every element raised to p).

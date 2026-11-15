@@ -252,16 +252,18 @@ const (
 	uNeg
 	uAbs
 	uPow
+	uRoundHalfAway
 )
 
 // realFuncs are the float64 functions behind the unary codes.
 var realFuncs = [...]func(float64) float64{
 	uSqrt: math.Sqrt, uExp: math.Exp, uLog: math.Log, uLog2: log2,
 	uLog10: math.Log10, uSin: math.Sin, uCos: math.Cos, uTan: math.Tan,
-	uFloor: math.Floor, uCeil: math.Ceil, uRound: math.Round,
-	uSquare: func(x float64) float64 { return x * x },
-	uNeg:    func(x float64) float64 { return -x },
-	uAbs:    math.Abs,
+	uFloor: math.Floor, uCeil: math.Ceil, uRound: math.RoundToEven,
+	uRoundHalfAway: math.Round,
+	uSquare:        func(x float64) float64 { return x * x },
+	uNeg:           func(x float64) float64 { return -x },
+	uAbs:           math.Abs,
 }
 
 // complexFuncs are the complex128 functions behind the unary codes; nil where
@@ -271,10 +273,11 @@ var complexFuncs = [...]func(complex128) complex128{
 	uLog2:  func(z complex128) complex128 { return cmplx.Log(z) / math.Ln2 },
 	uLog10: cmplx.Log10, uSin: cmplx.Sin, uCos: cmplx.Cos, uTan: cmplx.Tan,
 	uFloor: nil, uCeil: nil,
-	uRound:  func(z complex128) complex128 { return complex(math.Round(real(z)), math.Round(imag(z))) },
-	uSquare: func(z complex128) complex128 { return z * z },
-	uNeg:    func(z complex128) complex128 { return -z },
-	uAbs:    nil, // complex abs is real-valued: see absStore
+	uRound:         func(z complex128) complex128 { return complex(math.RoundToEven(real(z)), math.RoundToEven(imag(z))) },
+	uRoundHalfAway: func(z complex128) complex128 { return complex(math.Round(real(z)), math.Round(imag(z))) },
+	uSquare:        func(z complex128) complex128 { return z * z },
+	uNeg:           func(z complex128) complex128 { return -z },
+	uAbs:           nil, // complex abs is real-valued: see absStore
 }
 
 // unaryFloat32 applies f, computed in float64 and rounded, to float32
