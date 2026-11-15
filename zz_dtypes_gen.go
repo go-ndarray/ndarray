@@ -2,7 +2,11 @@
 
 package ndarray
 
-import "strconv"
+import (
+	"strconv"
+
+	"github.com/go-ndarray/ndarray/internal/kernels"
+)
 
 // dtypeOfStore returns the dtype of a storage slice.
 func dtypeOfStore(s any) DType {
@@ -139,70 +143,31 @@ func cloneStore(s any) any {
 func fillStore(dst, one any) {
 	switch d := dst.(type) {
 	case []bool:
-		v := one.([]bool)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]bool)[0])
 	case []int8:
-		v := one.([]int8)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]int8)[0])
 	case []int16:
-		v := one.([]int16)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]int16)[0])
 	case []int32:
-		v := one.([]int32)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]int32)[0])
 	case []int64:
-		v := one.([]int64)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]int64)[0])
 	case []uint8:
-		v := one.([]uint8)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]uint8)[0])
 	case []uint16:
-		v := one.([]uint16)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]uint16)[0])
 	case []uint32:
-		v := one.([]uint32)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]uint32)[0])
 	case []uint64:
-		v := one.([]uint64)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]uint64)[0])
 	case []float32:
-		v := one.([]float32)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]float32)[0])
 	case []float64:
-		v := one.([]float64)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]float64)[0])
 	case []complex64:
-		v := one.([]complex64)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]complex64)[0])
 	case []complex128:
-		v := one.([]complex128)[0]
-		for i := range d {
-			d[i] = v
-		}
+		kernels.Fill(d, one.([]complex128)[0])
 	}
 }
 

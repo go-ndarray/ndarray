@@ -79,6 +79,25 @@ issue per row:
 
 Faster, for example: `SqrtInto` (0.51), `fft.FFT` (0.54), `Sum` (0.70), `Exp` (0.89).
 
+### Since the table
+
+Fixed after v0.41.0, measured by `go test -bench` on the same core, not yet
+by a new table run. On 10⁵ float64 at load 2.2–2.4, over three interleaved
+rounds:
+- The scalar forms (`AddScalar` … `DivScalar`, and any operation with a
+  one-element operand) no longer copy the scalar to the result's size. They
+  stream it through the same SIMD kernel, so the result is bit for bit the
+  same. `AddScalar` went from 183–203 µs to 95–110 µs, and from 1.6 MB to
+  0.8 MB per call.
+- `Full`, `Ones` and `FullOf` fill by doubling `copy` instead of storing one
+  element at a time: `Full` went from 131–135 µs to 84–104 µs.
+
+What remains of the allocation cause is Go's own cost. A CPU profile of a bare
+`make([]float64, 100000)` shows about 60% garbage-collector marking (assists
+in the allocating goroutine) and about 23% zeroing. NumPy frees each result
+when its last reference goes and reuses that memory warm. In Go, the way to
+avoid both costs is to not allocate: use the `*Into` forms or a `Workspace`.
+
 The run was made from the release's own code. The test binary was
 cross-compiled from a clean v0.41.0 worktree, the tag was shipped to the host
 as a git bundle, and the binary ran from outside the clone so that the tree

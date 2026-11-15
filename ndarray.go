@@ -125,9 +125,7 @@ func Full(v float64, shape ...int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := range a.data {
-		a.data[i] = v
-	}
+	kernels.Fill(a.data, v)
 	return a, nil
 }
 
@@ -661,6 +659,12 @@ func (a *Array) binOp(b *Array, kernel func(dst, x, y []float64)) (*Array, error
 	if err != nil {
 		return nil, err
 	}
+	if full, s, sFirst, ok := scalarOperand(a, b, shape); ok {
+		dst := a.alloc(prod(shape), false)
+		kernels.ScalarP(kernel, dst, full, s, sFirst)
+		cp := append([]int(nil), shape...)
+		return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: a.ws}, nil
+	}
 	if full, rep, repFirst, ok := repeatOperands(a, b, shape); ok {
 		dst := a.alloc(prod(shape), false)
 		kernels.RepeatP(kernel, dst, full, rep, repFirst)
@@ -673,6 +677,21 @@ func (a *Array) binOp(b *Array, kernel func(dst, x, y []float64)) (*Array, error
 	kernel(dst, x, y)
 	cp := append([]int(nil), shape...)
 	return &Array{data: dst, shape: cp, strides: rowMajorStrides(cp), ws: a.ws}, nil
+}
+
+// scalarOperand recognises the broadcast of a single element (x + 1.5, or a
+// 1×1 array against a matrix): one operand holds one element, the other is
+// contiguous with the full result shape. binOp then streams the value through
+// the kernel (kernels.ScalarP) instead of materialising it to the result's size.
+func scalarOperand(a, b *Array, shape []int) (full []float64, s float64, sFirst, ok bool) {
+	isFull := func(f *Array) bool { return f.isContiguous() && sameShape(f.shape, shape) }
+	switch {
+	case b.Size() == 1 && isFull(a):
+		return a.data, b.data[b.offset], false, true
+	case a.Size() == 1 && isFull(b):
+		return b.data, a.data[a.offset], true, true
+	}
+	return nil, 0, false, false
 }
 
 // repeatMin is the shortest repeated operand binOp streams block by block;
