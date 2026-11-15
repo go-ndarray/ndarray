@@ -20,7 +20,8 @@ import (
 //     and N (the result does not depend on the worker count);
 //   - that sixteen goroutines multiplying the same views at once agree.
 //
-// Under -short (the emulated CI lanes) the two largest shapes are left out.
+// Under -short (the emulated CI lanes) the two shapes past the parallel
+// threshold are left out.
 
 type matLayout struct {
 	name string
@@ -99,11 +100,16 @@ func rvHash(r *Array) uint64 {
 	return h.Sum64()
 }
 
-func rvRun(t *testing.T, ws *Workspace) []string {
+// rvRun multiplies every case, from the workspace ws if not nil, and returns a
+// hash of each result; with check it also compares each result with the naive
+// loop (the other runs are compared with that one by their hashes).
+func rvRun(t *testing.T, ws *Workspace, check bool) []string {
 	shapes := [][3]int{{0, 3, 4}, {3, 0, 4}, {3, 4, 0}, {1, 1, 1}, {1, 5, 1}, {5, 1, 7}, {1, 9, 6}, {6, 9, 1},
 		{3, 4, 5}, {17, 13, 11}, {33, 31, 29}, {64, 64, 64}, {70, 1, 90}}
 	if !testing.Short() {
-		shapes = append(shapes, [3]int{1, 300, 200}, [3]int{130, 67, 150}, [3]int{257, 129, 65})
+		// Past the GEMM's parallel threshold (m*n >= 6000) and past its KC block
+		// (k > 256). Larger shapes cost minutes under -race and coverage.
+		shapes = append(shapes, [3]int{1, 300, 200}, [3]int{100, 40, 70})
 	}
 	var out []string
 	for _, f32 := range []bool{false, true} {
@@ -120,9 +126,8 @@ func rvRun(t *testing.T, ws *Workspace) []string {
 					if err != nil {
 						t.Fatalf("%v %s %s: %v", s, la.name, lb.name, err)
 					}
-					// reference
 					var worst float64
-					for i := 0; i < m; i++ {
+					for i := 0; check && i < m; i++ {
 						for j := 0; j < n; j++ {
 							var ref, mag float64
 							for p := 0; p < k; p++ {
@@ -208,7 +213,7 @@ func TestMatMulConcurrentViews(t *testing.T) {
 }
 
 func TestMatMulLayouts(t *testing.T) {
-	heap := rvRun(t, nil)
+	heap := rvRun(t, nil, true)
 	// A workspace whose memory holds NaN: a product that read its destination
 	// would show it.
 	ws := NewWorkspace()
@@ -217,10 +222,10 @@ func TestMatMulLayouts(t *testing.T) {
 		junk[i] = math.NaN()
 	}
 	ws.Reset()
-	wsr := rvRun(t, ws)
+	wsr := rvRun(t, ws, false)
 	rvCompare(t, "heap vs dirty workspace", heap, wsr)
 	old := runtime.GOMAXPROCS(1)
-	one := rvRun(t, nil)
+	one := rvRun(t, nil, false)
 	runtime.GOMAXPROCS(old)
 	rvCompare(t, "GOMAXPROCS N vs 1", heap, one)
 }
