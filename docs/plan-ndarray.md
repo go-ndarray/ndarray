@@ -84,12 +84,14 @@ suite (plus the per-arch CI jobs already wired in `.github/workflows/ci.yml`).
   non-positive m defaults to square), and `Reshape` `-1` dimension inference.
 - **Ufuncs — DONE.** Unary math (`Sqrt`/`Exp`/`Log`/`Log2`/`Log10`/`Sin`/`Cos`/
   `Tan`/`Floor`/`Ceil`/`Round`/`Square`/`Power`): `Sqrt` has a SIMD kernel,
-  `Exp`/`Log`/`Log10` run ports of Arm's optimized-routines (v0.2.0), and the
-  rest go through the `Map` seam over Go's `math`; and
-  broadcasting comparisons returning 0/1 float masks (`Equal`/`NotEqual`/
-  `Greater`/`GreaterEqual`/`Less`/`LessEqual`) plus pairwise `Maximum`/`Minimum`.
-  (`Round` is math.Round / half-away-from-zero, unlike numpy's banker's
-  rounding — documented.) A bool dtype for true masks is deferred to Phase 2.
+  `Exp`/`Log`/`Log10` run ports of Arm's optimized-routines (v0.2.0); since
+  v0.43.0 float64 `Abs`/`Neg`/`Square`/`Floor`/`Ceil`/`Round` run on
+  go-simd/floats vector kernels, and the rest go through the `Map` seam over
+  Go's `math`; and broadcasting comparisons returning 0/1 float masks
+  (`Equal`/`NotEqual`/`Greater`/`GreaterEqual`/`Less`/`LessEqual`) plus pairwise
+  `Maximum`/`Minimum`. `Round` rounds halves to even, as `np.round`, since
+  v0.43.0 (it was `math.Round`, half away from zero, before); `RoundHalfAway`
+  keeps that older rule. A bool dtype for true masks is deferred to Phase 2.
 - **Manipulation — DONE.** `Flatten` (always copy), `ExpandDims`/`Squeeze`
   (length-1 axis views), `Concatenate` (existing axis), `Stack` (new axis), and
   the `VStack`/`HStack` conveniences with 1-D promotion. Negative axes
