@@ -67,21 +67,21 @@ func sqrtScalar(dst, src []float64) {
 }
 
 // Maximum writes the pairwise maximum of a[i] and b[i] into dst[i]. It is
-// NaN-propagating like numpy.maximum: it uses the builtin max, not math.Max,
-// because math.Max returns +Inf for max(NaN, +Inf) where numpy returns NaN.
+// NaN-propagating like numpy.maximum and bit-identical to the builtin max for
+// numbers and zeros (+0 above -0), not math.Max, because math.Max returns +Inf
+// for max(NaN, +Inf) where numpy returns NaN. It is go-simd/floats' Maximum: a
+// vector kernel where there is one, the builtin loop elsewhere. A NaN result is
+// a NaN; which NaN is target-dependent. len(a), len(b) >= len(dst) is required
+// and dst may alias a or b.
 func Maximum(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = max(a[i], b[i])
-	}
+	floats.Maximum(dst, a[:len(dst)], b[:len(dst)])
 }
 
 // Minimum writes the pairwise minimum of a[i] and b[i] into dst[i],
-// NaN-propagating like numpy.minimum (builtin min; math.Min returns -Inf for
-// min(NaN, -Inf)).
+// NaN-propagating like numpy.minimum (the builtin min; math.Min returns -Inf
+// for min(NaN, -Inf)), through go-simd/floats' Minimum as Maximum is.
 func Minimum(dst, a, b []float64) {
-	for i := range dst {
-		dst[i] = min(a[i], b[i])
-	}
+	floats.Minimum(dst, a[:len(dst)], b[:len(dst)])
 }
 
 // Sum returns the sum of all elements of a.
