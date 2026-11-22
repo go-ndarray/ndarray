@@ -2,6 +2,7 @@ package kernels
 
 import (
 	"math"
+	"math/big"
 	"math/rand"
 	"testing"
 )
@@ -135,30 +136,42 @@ func TestDot1DP(t *testing.T) {
 	}
 }
 
-// TestDotSIMD holds the SIMD inner product (AVX2/FMA, NEON, or dotRange on the
-// other targets) to a sequential oracle: exactly on integer data for every
-// length 0..70 (main loop, folds and tail), within the regrouping bound
-// n*eps*sum|a_i*b_i| on random data, and NaN/Inf propagation.
+// TestDotSIMD holds the shared inner product (go-simd/floats.Dot) to the stated
+// bound gamma_n*sum|a_i*b_i| against a math/big oracle, for every length 0..70
+// (main loop, folds and tail) and on random data, plus NaN/Inf propagation.
 func TestDotSIMD(t *testing.T) {
-	naive := func(a, b []float64) (s, abs float64) {
+	// exact is the extended-precision oracle: every product is exact in 106
+	// bits and the sum runs at 4096, so the only error left is the kernel's.
+	// The contract (go-simd/floats.Dot, as go-blas's Dot) is
+	// |got - exact| <= gamma_n * sum|a_i b_i|, gamma_n = n*u/(1-n*u), u = 2^-53.
+	exact := func(a, b []float64) (s *big.Float, abs float64) {
+		s = new(big.Float).SetPrec(4096)
+		p := new(big.Float).SetPrec(4096)
 		for i := range a {
-			s += a[i] * b[i]
+			p.SetFloat64(a[i])
+			p.Mul(p, new(big.Float).SetPrec(4096).SetFloat64(b[i]))
+			s.Add(s, p)
 			abs += math.Abs(a[i] * b[i])
 		}
 		return s, abs
 	}
-	for n := 0; n <= 70; n++ {
-		a, b := intMat(1, n, int64(n)), intMat(1, n, int64(n+100))
-		if want, _ := naive(a, b); dotSIMD(a, b) != want {
-			t.Fatalf("n=%d: %v != %v", n, dotSIMD(a, b), want)
+	within := func(n int, a, b []float64) {
+		t.Helper()
+		want, abs := exact(a, b)
+		u := 0x1p-53
+		gamma := float64(n) * u / (1 - float64(n)*u)
+		got := new(big.Float).SetPrec(4096).SetFloat64(dotSIMD(a, b))
+		d := new(big.Float).SetPrec(4096).Sub(got, want)
+		diff, _ := d.Abs(d).Float64()
+		if diff > gamma*abs {
+			t.Errorf("n=%d: error %g exceeds gamma_n*sum|ab| = %g", n, diff, gamma*abs)
 		}
 	}
+	for n := 0; n <= 70; n++ { // main loop, folds and tail, integer data
+		within(n, intMat(1, n, int64(n)), intMat(1, n, int64(n+100)))
+	}
 	for _, n := range []int{17, 1000, 4099} {
-		a, b := randVec(n, int64(n)), randVec(n, int64(2*n))
-		want, abs := naive(a, b)
-		if got := dotSIMD(a, b); math.Abs(got-want) > float64(n)*0x1p-52*abs {
-			t.Errorf("n=%d: %v vs %v", n, got, want)
-		}
+		within(n, randVec(n, int64(n)), randVec(n, int64(2*n)))
 	}
 	for _, special := range []float64{math.NaN(), math.Inf(1)} {
 		for _, at := range []int{0, 20, 37} {

@@ -4,8 +4,9 @@ package kernels
 // float64 sum, sqrt, max/min and elementwise kernels, and the exp/log kernels,
 // live in go-simd/floats since K1 of the go-scikit performance campaign, and the
 // GEMM micro-kernels in github.com/go-blas/blas (which generates them); what is
-// generated here is the float64 dot, and the float32 elementwise, sqrt and
-// pairwise-block kernels. The float32 extrema (Max32/Min32) moved to
+// generated here is the pairwise-block kernel (blocks8).
+// The float64 dot is go-simd/floats.Dot (dot.go), the float32 elementwise and
+// sqrt kernels are floats.Add32/Sub32/Mul32/Div32/Sqrt32 (bin32_floats.go). The float32 extrema (Max32/Min32) moved to
 // go-simd/floats as Float32Max/Float32Min (go-ndarray/ndarray#98).
 //
 //go:generate sh -c "cd asmgen/amd64 && GOFLAGS=-mod=mod go run gen.go && mv sum_amd64.s ../../sum_amd64.s"

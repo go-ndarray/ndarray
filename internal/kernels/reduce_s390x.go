@@ -62,18 +62,6 @@ func minSIMD(a []float64) float64 {
 	return minVXE(&a[0], len(a))
 }
 
-// dotSIMD is the inner product (vector kernel, four fused two-lane accumulators).
-func dotSIMD(a, b []float64) float64 {
-	if !useVX || len(a) == 0 {
-		return dotRange(a, b)
-	}
-	_ = b[len(a)-1] // the kernel reads len(a) of b
-	return dotVX(&a[0], &b[0], len(a))
-}
-
-//go:noescape
-func dotVX(a, b *float64, n int) float64
-
 //go:noescape
 func maxVXE(a *float64, n int) float64
 

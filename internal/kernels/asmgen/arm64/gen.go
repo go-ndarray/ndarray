@@ -42,12 +42,6 @@ func main() {
 	// The float64 sum, sqrt, add/sub/mul/div and max/min kernels moved to
 	// go-simd/floats (K1 of the go-scikit performance campaign): sumKernel,
 	// sqrtKernel, binKernel and extremumKernel below are no longer emitted.
-	f.Add(dotKernel())
-	f.Add(bin32Kernel("add32NEON", "VFADD", "FADDS"))
-	f.Add(bin32Kernel("sub32NEON", "VFSUB", "FSUBS"))
-	f.Add(bin32Kernel("mul32NEON", "VFMUL", "FMULS"))
-	f.Add(bin32Kernel("div32NEON", "VFDIV", "FDIVS"))
-	f.Add(sqrt32Kernel())
 	// max32NEON/min32NEON moved to go-simd/floats (Float32Max, Float32Min;
 	// go-ndarray/ndarray#98).
 	// The GEMM kernels moved to github.com/go-blas/blas, which generates them.
@@ -140,63 +134,14 @@ func binKernel(name, vop, sop string) *emit.Function {
 		Raw("VLD1.P 64(R1), [V0.D2, V1.D2, V2.D2, V3.D2]"). // a
 		Raw("VLD1.P 64(R2), [V4.D2, V5.D2, V6.D2, V7.D2]")  // b
 	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r)) // a OP b
+		b.Raw("%s", fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r)) // a OP b
 	}
 	b.Raw("VST1.P [V0.D2, V1.D2, V2.D2, V3.D2], 64(R0)").
 		Raw("SUB $8, R3").Raw("B block").
 		Raw("tail:").Raw("CBZ R3, done").
 		Raw("FMOVD.P 8(R1), F0").Raw("FMOVD.P 8(R2), F1").
-		Raw(sop + " F1, F0, F0").
+		Raw("%s F1, F0, F0", sop).
 		Raw("FMOVD.P F0, 8(R0)").
-		Raw("SUB $1, R3").Raw("B tail").
-		Raw("done:").Ret()
-	return b.Func()
-}
-
-// sqrt32Kernel builds sqrt32NEON(dst, src *float32, n int): VFSQRT on .S4
-// over 16 floats per iteration, FSQRTS for the tail; the correctly rounded
-// float32 square root, bit-identical to float32(math.Sqrt(float64(x))).
-func sqrt32Kernel() *emit.Function {
-	sig := arm64.Layout(
-		[]string{"dst", "src", "n"},
-		[]arm64.Type{arm64.Ptr, arm64.Ptr, arm64.Int64},
-		nil, nil,
-	)
-	b := arm64.NewFunc("sqrt32NEON", sig, 0)
-	b.LoadArg("dst", "R0").LoadArg("src", "R1").LoadArg("n", "R2").
-		Raw("block:").Raw("CMP $16, R2").Raw("BLT tail").
-		Raw("VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]")
-	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("VFSQRT V%d.S4, V%d.S4", r, r))
-	}
-	b.Raw("VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)").
-		Raw("SUB $16, R2").Raw("B block").
-		Raw("tail:").Raw("CBZ R2, done").
-		Raw("FMOVS.P 4(R1), F0").Raw("FSQRTS F0, F0").Raw("FMOVS.P F0, 4(R0)").
-		Raw("SUB $1, R2").Raw("B tail").
-		Raw("done:").Ret()
-	return b.Func()
-}
-
-// bin32Kernel builds NAME(dst, a, b *float32, n int): dst[i] = a[i] OP b[i],
-// 16 floats per iteration on the .S4 arrangement (VOP Vm, Vn, Vd: Vd = Vn OP
-// Vm), then a scalar tail with sop. Each lane is one IEEE float32 operation,
-// so the result is the scalar loop's bit for bit.
-func bin32Kernel(name, vop, sop string) *emit.Function {
-	b := arm64.NewFunc(name, binSig(), 0)
-	b.LoadArg("dst", "R0").LoadArg("a", "R1").LoadArg("b", "R2").LoadArg("n", "R3")
-	b.Raw("block:").Raw("CMP $16, R3").Raw("BLT tail").
-		Raw("VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]"). // a
-		Raw("VLD1.P 64(R2), [V4.S4, V5.S4, V6.S4, V7.S4]")  // b
-	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("%s V%d.S4, V%d.S4, V%d.S4", vop, 4+r, r, r)) // a OP b
-	}
-	b.Raw("VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)").
-		Raw("SUB $16, R3").Raw("B block").
-		Raw("tail:").Raw("CBZ R3, done").
-		Raw("FMOVS.P 4(R1), F0").Raw("FMOVS.P 4(R2), F1").
-		Raw(sop + " F1, F0, F0").
-		Raw("FMOVS.P F0, 4(R0)").
 		Raw("SUB $1, R3").Raw("B tail").
 		Raw("done:").Ret()
 	return b.Func()
@@ -242,21 +187,21 @@ func extremumKernel(name, vop, sop string) *emit.Function {
 		Raw("block:").Raw("CMP $8, R1").Raw("BLT fold").
 		Raw("VLD1.P 64(R0), [V4.D2, V5.D2, V6.D2, V7.D2]")
 	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r))
+		b.Raw("%s", fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r))
 	}
 	b.Raw("SUB $8, R1").Raw("B block").
 		Raw("fold:").
-		Raw(vop+" V1.D2, V0.D2, V0.D2").
-		Raw(vop+" V3.D2, V2.D2, V2.D2").
-		Raw(vop+" V2.D2, V0.D2, V0.D2").
+		Raw("%s V1.D2, V0.D2, V0.D2", vop).
+		Raw("%s V3.D2, V2.D2, V2.D2", vop).
+		Raw("%s V2.D2, V0.D2, V0.D2", vop).
 		Raw("VMOV V0.D[0], R3").
 		Raw("VMOV V0.D[1], R4").
 		Raw("FMOVD R3, F0").
 		Raw("FMOVD R4, F9").
-		Raw(sop+" F9, F0, F0").
+		Raw("%s F9, F0, F0", sop).
 		Raw("tail:").Raw("CBZ R1, done").
 		Raw("FMOVD.P 8(R0), F10").
-		Raw(sop+" F10, F0, F0").
+		Raw("%s F10, F0, F0", sop).
 		Raw("SUB $1, R1").Raw("B tail").
 		Raw("done:").
 		StoreRet("F0", "ret").
@@ -271,59 +216,6 @@ func extremumKernel(name, vop, sop string) *emit.Function {
 // exactly 1.0 is exact, and FMA(src, 1.0, acc) rounds identically to acc+src
 // (the addend is the only inexact step), so this is a true vector add, not an
 // approximation — it simply reaches it through the only vector-FP op available.
-// dotKernel builds dotNEON(a, b *float64, n int) float64, the inner product
-// with eight D2 accumulators V0..V7 (16 doubles per iteration): two loads per
-// FMA make the loop load-bound, and eight chains keep the four FP pipes of an
-// Apple core fed through the FMA latency. The accumulators are folded with
-// FMLA against 1.0 (exact; written before Go 1.27 named VFADD), the two
-// lanes added, and the tail fused in one element at a time with FMADDD, as gc
-// fuses the scalar loop.
-func dotKernel() *emit.Function {
-	sig := arm64.Layout(
-		[]string{"a", "b", "n"}, []arm64.Type{arm64.Ptr, arm64.Ptr, arm64.Int64},
-		[]string{"ret"}, []arm64.Type{arm64.Float64},
-	)
-	b := arm64.NewFunc("dotNEON", sig, 0)
-	b.LoadArg("a", "R0").LoadArg("b", "R1").LoadArg("n", "R2")
-	b.Raw("MOVD $0x3FF0000000000000, R3")
-	b.Raw("VDUP R3, V24.D2")
-	for r := 0; r < 8; r++ {
-		b.Raw(fmt.Sprintf("VEOR V%d.B16, V%d.B16, V%d.B16", r, r, r))
-	}
-	b.Raw("dblock:")
-	b.Raw("CMP $16, R2")
-	b.Raw("BLT dfold")
-	b.Raw("VLD1.P 64(R0), [V8.D2, V9.D2, V10.D2, V11.D2]")
-	b.Raw("VLD1.P 64(R0), [V12.D2, V13.D2, V14.D2, V15.D2]")
-	b.Raw("VLD1.P 64(R1), [V16.D2, V17.D2, V18.D2, V19.D2]")
-	b.Raw("VLD1.P 64(R1), [V20.D2, V21.D2, V22.D2, V23.D2]")
-	for r := 0; r < 8; r++ {
-		b.Raw(fmt.Sprintf("VFMLA V%d.D2, V%d.D2, V%d.D2", 16+r, 8+r, r)) // V(r) += a*b
-	}
-	b.Raw("SUB $16, R2")
-	b.Raw("B dblock")
-	b.Raw("dfold:")
-	for _, p := range [][2]int{{1, 0}, {3, 2}, {5, 4}, {7, 6}, {2, 0}, {6, 4}, {4, 0}} {
-		b.Raw(fmt.Sprintf("VFMLA V%d.D2, V24.D2, V%d.D2", p[0], p[1])) // V(p1) += V(p0)
-	}
-	b.Raw("VMOV V0.D[0], R3")
-	b.Raw("VMOV V0.D[1], R4")
-	b.Raw("FMOVD R3, F0")
-	b.Raw("FMOVD R4, F9")
-	b.Raw("FADDD F9, F0, F0")
-	b.Raw("dtail:")
-	b.Raw("CBZ R2, ddone")
-	b.Raw("FMOVD.P 8(R0), F10")
-	b.Raw("FMOVD.P 8(R1), F11")
-	b.Raw("FMADDD F11, F0, F10, F0") // F0 += F10*F11
-	b.Raw("SUB $1, R2")
-	b.Raw("B dtail")
-	b.Raw("ddone:")
-	b.StoreRet("F0", "ret")
-	b.Ret()
-	return b.Func()
-}
-
 func sumKernel() *emit.Function {
 	b := arm64.NewFunc("sumNEON", reduceSig(), 0)
 	b.LoadArg("a", "R0").
