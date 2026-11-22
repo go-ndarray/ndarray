@@ -42,11 +42,6 @@ func main() {
 	// The float64 sum, sqrt, add/sub/mul/div and max/min kernels moved to
 	// go-simd/floats (K1 of the go-scikit performance campaign): sumKernel,
 	// sqrtKernel, binKernel and extremumKernel below are no longer emitted.
-	f.Add(bin32Kernel("add32NEON", "VFADD", "FADDS"))
-	f.Add(bin32Kernel("sub32NEON", "VFSUB", "FSUBS"))
-	f.Add(bin32Kernel("mul32NEON", "VFMUL", "FMULS"))
-	f.Add(bin32Kernel("div32NEON", "VFDIV", "FDIVS"))
-	f.Add(sqrt32Kernel())
 	// max32NEON/min32NEON moved to go-simd/floats (Float32Max, Float32Min;
 	// go-ndarray/ndarray#98).
 	// The GEMM kernels moved to github.com/go-blas/blas, which generates them.
@@ -147,55 +142,6 @@ func binKernel(name, vop, sop string) *emit.Function {
 		Raw("FMOVD.P 8(R1), F0").Raw("FMOVD.P 8(R2), F1").
 		Raw(sop + " F1, F0, F0").
 		Raw("FMOVD.P F0, 8(R0)").
-		Raw("SUB $1, R3").Raw("B tail").
-		Raw("done:").Ret()
-	return b.Func()
-}
-
-// sqrt32Kernel builds sqrt32NEON(dst, src *float32, n int): VFSQRT on .S4
-// over 16 floats per iteration, FSQRTS for the tail; the correctly rounded
-// float32 square root, bit-identical to float32(math.Sqrt(float64(x))).
-func sqrt32Kernel() *emit.Function {
-	sig := arm64.Layout(
-		[]string{"dst", "src", "n"},
-		[]arm64.Type{arm64.Ptr, arm64.Ptr, arm64.Int64},
-		nil, nil,
-	)
-	b := arm64.NewFunc("sqrt32NEON", sig, 0)
-	b.LoadArg("dst", "R0").LoadArg("src", "R1").LoadArg("n", "R2").
-		Raw("block:").Raw("CMP $16, R2").Raw("BLT tail").
-		Raw("VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]")
-	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("VFSQRT V%d.S4, V%d.S4", r, r))
-	}
-	b.Raw("VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)").
-		Raw("SUB $16, R2").Raw("B block").
-		Raw("tail:").Raw("CBZ R2, done").
-		Raw("FMOVS.P 4(R1), F0").Raw("FSQRTS F0, F0").Raw("FMOVS.P F0, 4(R0)").
-		Raw("SUB $1, R2").Raw("B tail").
-		Raw("done:").Ret()
-	return b.Func()
-}
-
-// bin32Kernel builds NAME(dst, a, b *float32, n int): dst[i] = a[i] OP b[i],
-// 16 floats per iteration on the .S4 arrangement (VOP Vm, Vn, Vd: Vd = Vn OP
-// Vm), then a scalar tail with sop. Each lane is one IEEE float32 operation,
-// so the result is the scalar loop's bit for bit.
-func bin32Kernel(name, vop, sop string) *emit.Function {
-	b := arm64.NewFunc(name, binSig(), 0)
-	b.LoadArg("dst", "R0").LoadArg("a", "R1").LoadArg("b", "R2").LoadArg("n", "R3")
-	b.Raw("block:").Raw("CMP $16, R3").Raw("BLT tail").
-		Raw("VLD1.P 64(R1), [V0.S4, V1.S4, V2.S4, V3.S4]"). // a
-		Raw("VLD1.P 64(R2), [V4.S4, V5.S4, V6.S4, V7.S4]")  // b
-	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("%s V%d.S4, V%d.S4, V%d.S4", vop, 4+r, r, r)) // a OP b
-	}
-	b.Raw("VST1.P [V0.S4, V1.S4, V2.S4, V3.S4], 64(R0)").
-		Raw("SUB $16, R3").Raw("B block").
-		Raw("tail:").Raw("CBZ R3, done").
-		Raw("FMOVS.P 4(R1), F0").Raw("FMOVS.P 4(R2), F1").
-		Raw(sop + " F1, F0, F0").
-		Raw("FMOVS.P F0, 4(R0)").
 		Raw("SUB $1, R3").Raw("B tail").
 		Raw("done:").Ret()
 	return b.Func()

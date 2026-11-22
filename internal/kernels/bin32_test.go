@@ -114,3 +114,30 @@ func TestBin32RefusesBadInput(t *testing.T) {
 		}()
 	}
 }
+
+// TestBin32OperandsLongerThanDst pins the contract the floats kernels need: they
+// process len(a) elements and panic on a shorter operand, so Bin32 and Sqrt32
+// must hand them operands of exactly len(dst) -- longer inputs are cut, shorter
+// ones are refused by the wrapper (TestBin32RefusesBadInput), never by floats.
+func TestBin32OperandsLongerThanDst(t *testing.T) {
+	a := []float32{1, 2, 3, 4, 5, 6, 7}
+	b := []float32{7, 6, 5, 4, 3, 2, 1}
+	for op := Add32; op <= Div32; op++ {
+		got, want := make([]float32, 4), make([]float32, 4)
+		Bin32(op, got, a, b)
+		bin32Go(op, want, a, b)
+		for i := range got {
+			if math.Float32bits(got[i]) != math.Float32bits(want[i]) {
+				t.Fatalf("op %d lane %d: %v != %v", op, i, got[i], want[i])
+			}
+		}
+	}
+	got, want := make([]float32, 4), make([]float32, 4)
+	Sqrt32(got, a)
+	sqrt32Go(want, a)
+	for i := range got {
+		if math.Float32bits(got[i]) != math.Float32bits(want[i]) {
+			t.Fatalf("sqrt lane %d: %v != %v", i, got[i], want[i])
+		}
+	}
+}

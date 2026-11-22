@@ -70,9 +70,3 @@ func sqrt32Go(dst, src []float32) {
 		dst[i] = float32(math.Sqrt(float64(src[i])))
 	}
 }
-
-// bin32Func is the shape of the generated float32 kernels: n >= 1 elements.
-type bin32Func func(dst, a, b *float32, n int)
-
-// run32 calls k on dst, a and b, all of length n >= 1.
-func run32(k bin32Func, dst, a, b []float32) { k(&dst[0], &a[0], &b[0], len(dst)) }

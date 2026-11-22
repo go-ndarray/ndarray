@@ -31,14 +31,7 @@ func main() {
 	f := emit.NewFile("riscv64")
 	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
 	// (lanes_riscv64_gen.go there) since floats v0.10.0.
-	for _, k := range []struct{ name, op string }{
-		{"addRVV", "VFADDVV"}, {"subRVV", "VFSUBVV"},
-		{"mulRVV", "VFMULVV"}, {"divRVV", "VFDIVVV"},
-	} {
-		f.Add(bin32Kernel(k.name[:3]+"32RVV", k.op))
-	}
 	f.Add(blocks8Kernel())
-	f.Add(sqrt32Kernel())
 	for _, k := range []struct {
 		name    string
 		bits    int
@@ -155,49 +148,6 @@ func extremumKernel(name string, bits int, vop, red string) *emit.Function {
 		Raw("done:").
 		StoreRet("F0", "ret").
 		Ret()
-	return b.Func()
-}
-
-// sqrt32Kernel builds sqrt32RVV(dst, src *float32, n int) for n >= 1:
-// vfsqrt.v on 32-bit elements, strip-mined; the correctly rounded float32
-// square root, bit-identical to float32(math.Sqrt(float64(x))).
-func sqrt32Kernel() *emit.Function {
-	sig := riscv64.Layout([]string{"dst", "src", "n"},
-		[]riscv64.Type{riscv64.Ptr, riscv64.Ptr, riscv64.Int64}, nil, nil)
-	b := riscv64.NewFunc("sqrt32RVV", sig, 0)
-	b.LoadArg("dst", "X10").LoadArg("src", "X11").LoadArg("n", "X13")
-	b.Raw("loop:").
-		Raw("VSETVLI X13, E32, M8, TA, MA, X14").
-		Raw("VLE32V (X11), V0").
-		Raw("VFSQRTV V0, V16").
-		Raw("VSE32V V16, (X10)").
-		Raw("SLLI $2, X14, X17") // vl elements of 4 bytes
-	for _, p := range []string{"X10", "X11"} {
-		b.Raw("ADD X17, %s, %s", p, p)
-	}
-	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
-	return b.Func()
-}
-
-// bin32Kernel builds NAME(dst, a, b *float32, n int) for n >= 1: dst = a OP b
-// on 32-bit elements, strip-mined by VSETVLI (no tail loop). Each lane is one
-// IEEE float32 operation, so the result is the scalar loop's bit for bit.
-func bin32Kernel(name, op string) *emit.Function {
-	sig := riscv64.Layout([]string{"dst", "a", "b", "n"},
-		[]riscv64.Type{riscv64.Ptr, riscv64.Ptr, riscv64.Ptr, riscv64.Int64}, nil, nil)
-	b := riscv64.NewFunc(name, sig, 0)
-	b.LoadArg("dst", "X10").LoadArg("a", "X11").LoadArg("b", "X12").LoadArg("n", "X13")
-	b.Raw("loop:").
-		Raw("VSETVLI X13, E32, M8, TA, MA, X14").
-		Raw("VLE32V (X11), V0").
-		Raw("VLE32V (X12), V8").
-		Raw("%s V8, V0, V16", op). // V16 = a OP b
-		Raw("VSE32V V16, (X10)").
-		Raw("SLLI $2, X14, X17") // vl elements of 4 bytes
-	for _, p := range []string{"X10", "X11", "X12"} {
-		b.Raw("ADD X17, %s, %s", p, p)
-	}
-	b.Raw("SUB X14, X13, X13").Raw("BNEZ X13, loop").Ret()
 	return b.Func()
 }
 
