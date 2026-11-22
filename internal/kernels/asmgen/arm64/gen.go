@@ -134,13 +134,13 @@ func binKernel(name, vop, sop string) *emit.Function {
 		Raw("VLD1.P 64(R1), [V0.D2, V1.D2, V2.D2, V3.D2]"). // a
 		Raw("VLD1.P 64(R2), [V4.D2, V5.D2, V6.D2, V7.D2]")  // b
 	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r)) // a OP b
+		b.Raw("%s", fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r)) // a OP b
 	}
 	b.Raw("VST1.P [V0.D2, V1.D2, V2.D2, V3.D2], 64(R0)").
 		Raw("SUB $8, R3").Raw("B block").
 		Raw("tail:").Raw("CBZ R3, done").
 		Raw("FMOVD.P 8(R1), F0").Raw("FMOVD.P 8(R2), F1").
-		Raw(sop + " F1, F0, F0").
+		Raw("%s F1, F0, F0", sop).
 		Raw("FMOVD.P F0, 8(R0)").
 		Raw("SUB $1, R3").Raw("B tail").
 		Raw("done:").Ret()
@@ -187,21 +187,21 @@ func extremumKernel(name, vop, sop string) *emit.Function {
 		Raw("block:").Raw("CMP $8, R1").Raw("BLT fold").
 		Raw("VLD1.P 64(R0), [V4.D2, V5.D2, V6.D2, V7.D2]")
 	for r := 0; r < 4; r++ {
-		b.Raw(fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r))
+		b.Raw("%s", fmt.Sprintf("%s V%d.D2, V%d.D2, V%d.D2", vop, 4+r, r, r))
 	}
 	b.Raw("SUB $8, R1").Raw("B block").
 		Raw("fold:").
-		Raw(vop+" V1.D2, V0.D2, V0.D2").
-		Raw(vop+" V3.D2, V2.D2, V2.D2").
-		Raw(vop+" V2.D2, V0.D2, V0.D2").
+		Raw("%s V1.D2, V0.D2, V0.D2", vop).
+		Raw("%s V3.D2, V2.D2, V2.D2", vop).
+		Raw("%s V2.D2, V0.D2, V0.D2", vop).
 		Raw("VMOV V0.D[0], R3").
 		Raw("VMOV V0.D[1], R4").
 		Raw("FMOVD R3, F0").
 		Raw("FMOVD R4, F9").
-		Raw(sop+" F9, F0, F0").
+		Raw("%s F9, F0, F0", sop).
 		Raw("tail:").Raw("CBZ R1, done").
 		Raw("FMOVD.P 8(R0), F10").
-		Raw(sop+" F10, F0, F0").
+		Raw("%s F10, F0, F0", sop).
 		Raw("SUB $1, R1").Raw("B tail").
 		Raw("done:").
 		StoreRet("F0", "ret").

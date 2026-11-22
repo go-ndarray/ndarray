@@ -211,28 +211,28 @@ func extremeKernel(name, vec, sca string) *emit.Function {
 	nanScan(b, "X5")
 	nanScan(b, "X6")
 	nanScan(b, "X7")
-	b.Raw(vec + " X4, X0")
-	b.Raw(vec + " X5, X1")
-	b.Raw(vec + " X6, X2")
-	b.Raw(vec + " X7, X3")
+	b.Raw("%s", vec+" X4, X0")
+	b.Raw("%s", vec+" X5, X1")
+	b.Raw("%s", vec+" X6, X2")
+	b.Raw("%s", vec+" X7, X3")
 	b.Raw("ADDQ $64, AX")
 	b.Raw("SUBQ $8, CX")
 	b.Raw("JMP eblock")
 	// Fold the four accumulators, then the two lanes, into X0 low.
 	b.Raw("efold:")
-	b.Raw(vec + " X1, X0")
-	b.Raw(vec + " X3, X2")
-	b.Raw(vec + " X2, X0")
+	b.Raw("%s", vec+" X1, X0")
+	b.Raw("%s", vec+" X3, X2")
+	b.Raw("%s", vec+" X2, X0")
 	b.Raw("MOVAPS X0, X1")
 	b.Raw("UNPCKHPD X1, X1")
-	b.Raw(sca + " X1, X0")
+	b.Raw("%s", sca+" X1, X0")
 	// Scalar tail: remaining (n mod 8) elements.
 	b.Raw("etail:")
 	b.Raw("TESTQ CX, CX")
 	b.Raw("JZ enan")
 	b.Raw("MOVSD (AX), X4")
 	nanScan(b, "X4")
-	b.Raw(sca + " X4, X0")
+	b.Raw("%s", sca+" X4, X0")
 	b.Raw("ADDQ $8, AX")
 	b.Raw("DECQ CX")
 	b.Raw("JMP etail")
@@ -290,10 +290,10 @@ func binKernel(name, vec, sca string) *emit.Function {
 	b.Raw("MOVUPD 16(DX), X5")
 	b.Raw("MOVUPD 32(DX), X6")
 	b.Raw("MOVUPD 48(DX), X7")
-	b.Raw(vec + " X4, X0")
-	b.Raw(vec + " X5, X1")
-	b.Raw(vec + " X6, X2")
-	b.Raw(vec + " X7, X3")
+	b.Raw("%s", vec+" X4, X0")
+	b.Raw("%s", vec+" X5, X1")
+	b.Raw("%s", vec+" X6, X2")
+	b.Raw("%s", vec+" X7, X3")
 	b.Raw("MOVUPD X0, (DI)")
 	b.Raw("MOVUPD X1, 16(DI)")
 	b.Raw("MOVUPD X2, 32(DI)")
@@ -309,7 +309,7 @@ func binKernel(name, vec, sca string) *emit.Function {
 	b.Raw("JZ bdone")
 	b.Raw("MOVSD (SI), X0")
 	b.Raw("MOVSD (DX), X1")
-	b.Raw(sca + " X1, X0")
+	b.Raw("%s", sca+" X1, X0")
 	b.Raw("MOVSD X0, (DI)")
 	b.Raw("ADDQ $8, SI")
 	b.Raw("ADDQ $8, DX")
@@ -353,36 +353,36 @@ func exp32CRKernel() *emit.Function {
 	)
 	b := amd64.NewFunc("exp32CRAVX2", sig, 0)
 	b.LoadArg("dst", "DI").LoadArg("src", "SI").LoadArg("n", "CX").LoadArg("k", "R8")
-	b.Raw(fmt.Sprintf("LEAQ %d(R8), R9", table)) // the 64 mantissas of 2^(i/64)
+	b.Raw("%s", fmt.Sprintf("LEAQ %d(R8), R9", table)) // the 64 mantissas of 2^(i/64)
 	// half runs expCR on the four doubles in h, leaving the four float32
 	// results in out. Temporaries Y4-Y10.
 	half := func(h, out string) {
-		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y4", shift))
-		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y4", invLn2, h)) // z = x*invln2 + shift
-		b.Raw(fmt.Sprintf("VSUBPD %d(R8), Y4, Y5", shift))          // n = z - shift
-		b.Raw(fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Hi, h)) // r = x - n*ln2hi
-		b.Raw(fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Lo, h)) // r -= n*ln2lo
-		b.Raw(fmt.Sprintf("VMULPD %s, %s, Y6", h, h))               // r2
-		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y7", c0))
-		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y7", c1, h)) // p01 = r*c1 + c0
-		b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y8", c2))
-		b.Raw(fmt.Sprintf("VFMADD231PD %d(R8), %s, Y8", c3, h)) // p23 = r*c3 + c2
-		b.Raw("VFMADD231PD Y8, Y6, Y7")                         // p04 = r2*p23 + p01
-		b.Raw(fmt.Sprintf("VFMADD231PD Y7, Y6, %s", h))         // y = r2*p04 + r
-		b.Raw(fmt.Sprintf("VPAND %d(R8), Y4, Y5", idxMask))     // z & 63
-		b.Raw("VPCMPEQQ Y9, Y9, Y9")                            // gather every lane
-		b.Raw("VPGATHERQQ Y9, (R9)(Y5*8), Y10")                 // mantissa of 2^(i/64)
+		b.Raw("%s", fmt.Sprintf("VMOVUPD %d(R8), Y4", shift))
+		b.Raw("%s", fmt.Sprintf("VFMADD231PD %d(R8), %s, Y4", invLn2, h)) // z = x*invln2 + shift
+		b.Raw("%s", fmt.Sprintf("VSUBPD %d(R8), Y4, Y5", shift))          // n = z - shift
+		b.Raw("%s", fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Hi, h)) // r = x - n*ln2hi
+		b.Raw("%s", fmt.Sprintf("VFNMADD231PD %d(R8), Y5, %s", ln2Lo, h)) // r -= n*ln2lo
+		b.Raw("%s", fmt.Sprintf("VMULPD %s, %s, Y6", h, h))               // r2
+		b.Raw("%s", fmt.Sprintf("VMOVUPD %d(R8), Y7", c0))
+		b.Raw("%s", fmt.Sprintf("VFMADD231PD %d(R8), %s, Y7", c1, h)) // p01 = r*c1 + c0
+		b.Raw("%s", fmt.Sprintf("VMOVUPD %d(R8), Y8", c2))
+		b.Raw("%s", fmt.Sprintf("VFMADD231PD %d(R8), %s, Y8", c3, h)) // p23 = r*c3 + c2
+		b.Raw("VFMADD231PD Y8, Y6, Y7")                               // p04 = r2*p23 + p01
+		b.Raw("%s", fmt.Sprintf("VFMADD231PD Y7, Y6, %s", h))         // y = r2*p04 + r
+		b.Raw("%s", fmt.Sprintf("VPAND %d(R8), Y4, Y5", idxMask))     // z & 63
+		b.Raw("VPCMPEQQ Y9, Y9, Y9")                                  // gather every lane
+		b.Raw("VPGATHERQQ Y9, (R9)(Y5*8), Y10")                       // mantissa of 2^(i/64)
 		b.Raw("VPSLLQ $46, Y4, Y4")
-		b.Raw(fmt.Sprintf("VPAND %d(R8), Y4, Y4", expMask)) // exponent and sign bits
-		b.Raw("VPOR Y10, Y4, Y4")                           // s
-		b.Raw(fmt.Sprintf("VFMADD231PD %s, Y4, Y4", h))     // s*y + s
-		b.Raw(fmt.Sprintf("VCVTPD2PSY Y4, %s", out))        // round once to float32
+		b.Raw("%s", fmt.Sprintf("VPAND %d(R8), Y4, Y4", expMask)) // exponent and sign bits
+		b.Raw("VPOR Y10, Y4, Y4")                                 // s
+		b.Raw("%s", fmt.Sprintf("VFMADD231PD %s, Y4, Y4", h))     // s*y + s
+		b.Raw("%s", fmt.Sprintf("VCVTPD2PSY Y4, %s", out))        // round once to float32
 	}
 	b.Raw("eloop:")
 	b.Raw("VMOVUPS (SI), Y0")
 	b.Raw("VCMPPS $3, Y0, Y0, Y15") // unordered: the NaN lanes
-	b.Raw(fmt.Sprintf("VMAXPS %d(R8), Y0, Y1", lo))
-	b.Raw(fmt.Sprintf("VMINPS %d(R8), Y1, Y1", hi))
+	b.Raw("%s", fmt.Sprintf("VMAXPS %d(R8), Y0, Y1", lo))
+	b.Raw("%s", fmt.Sprintf("VMINPS %d(R8), Y1, Y1", hi))
 	b.Raw("VCVTPS2PD X1, Y2")
 	b.Raw("VEXTRACTF128 $1, Y1, X3")
 	b.Raw("VCVTPS2PD X3, Y3")
@@ -428,45 +428,45 @@ func log32CRKernel() *emit.Function {
 	)
 	b := amd64.NewFunc("log32CRAVX2", sig, 0)
 	b.LoadArg("dst", "DI").LoadArg("src", "SI").LoadArg("n", "CX").LoadArg("k", "R8")
-	b.Raw(fmt.Sprintf("LEAQ %d(R8), R9", tr))
-	b.Raw(fmt.Sprintf("LEAQ %d(R8), R10", tl))
+	b.Raw("%s", fmt.Sprintf("LEAQ %d(R8), R9", tr))
+	b.Raw("%s", fmt.Sprintf("LEAQ %d(R8), R10", tl))
 	b.Raw("XORQ AX, AX")
 	// half runs the float64 part on the four lanes whose j is in X2, mantissa
 	// bits (zero-extended to 64) in Y10 and exponent (as float64) in Y11,
 	// leaving the bounds in ub and lb. Temporaries Y4-Y9, Y12.
 	half := func(ub, lb string) {
-		b.Raw(fmt.Sprintf("VPOR %d(R8), Y10, Y10", expOr))
+		b.Raw("%s", fmt.Sprintf("VPOR %d(R8), Y10, Y10", expOr))
 		b.Raw("VPSLLQ $29, Y10, Y10")           // tz, in [1,2)
 		b.Raw("VPCMPEQQ Y12, Y12, Y12")         // gather every lane
 		b.Raw("VGATHERDPD Y12, (R9)(X2*8), Y4") // tr[j]
 		b.Raw("VPCMPEQQ Y12, Y12, Y12")
-		b.Raw("VGATHERDPD Y12, (R10)(X2*8), Y5")          // tl[j]
-		b.Raw("VMULPD Y4, Y10, Y4")                       // tz*tr
-		b.Raw(fmt.Sprintf("VSUBPD %d(R8), Y4, Y4", one))  // z
-		b.Raw("VMULPD Y4, Y4, Y6")                        // z2
-		b.Raw(fmt.Sprintf("VMULPD %d(R8), Y11, Y7", ln2)) // e*ln2
-		b.Raw("VADDPD Y5, Y7, Y7")                        // + tl
-		b.Raw(fmt.Sprintf("VMULPD %d(R8), Y4, Y8", b0))
+		b.Raw("VGATHERDPD Y12, (R10)(X2*8), Y5")                // tl[j]
+		b.Raw("VMULPD Y4, Y10, Y4")                             // tz*tr
+		b.Raw("%s", fmt.Sprintf("VSUBPD %d(R8), Y4, Y4", one))  // z
+		b.Raw("VMULPD Y4, Y4, Y6")                              // z2
+		b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y11, Y7", ln2)) // e*ln2
+		b.Raw("VADDPD Y5, Y7, Y7")                              // + tl
+		b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y4, Y8", b0))
 		b.Raw("VADDPD Y8, Y7, Y7") // + z*b0
-		b.Raw(fmt.Sprintf("VMULPD %d(R8), Y4, Y8", b2))
-		b.Raw(fmt.Sprintf("VADDPD %d(R8), Y8, Y8", b1)) // b1 + z*b2
+		b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y4, Y8", b2))
+		b.Raw("%s", fmt.Sprintf("VADDPD %d(R8), Y8, Y8", b1)) // b1 + z*b2
 		b.Raw("VMULPD Y8, Y6, Y8")
-		b.Raw("VADDPD Y8, Y7, Y7")                     // r
-		b.Raw(fmt.Sprintf("VADDPD %d(R8), Y7, Y9", w)) // r + 0x1.f06p-33
-		b.Raw(fmt.Sprintf("VCVTPD2PSY Y7, %s", ub))
-		b.Raw(fmt.Sprintf("VCVTPD2PSY Y9, %s", lb))
+		b.Raw("VADDPD Y8, Y7, Y7")                           // r
+		b.Raw("%s", fmt.Sprintf("VADDPD %d(R8), Y7, Y9", w)) // r + 0x1.f06p-33
+		b.Raw("%s", fmt.Sprintf("VCVTPD2PSY Y7, %s", ub))
+		b.Raw("%s", fmt.Sprintf("VCVTPD2PSY Y9, %s", lb))
 	}
 	b.Raw("lloop:")
 	b.Raw("VMOVDQU (SI), Y0")
 	// Lanes that are not positive normals run through the arithmetic below
 	// on meaningless values (j stays at most 64, so the gathers stay inside
 	// the tables) and are rejected at the end of the block.
-	b.Raw(fmt.Sprintf("VPCMPEQD %d(R8), Y0, Y13", oneBits)) // x == 1
-	b.Raw(fmt.Sprintf("VPAND %d(R8), Y0, Y1", mmask))       // m
-	b.Raw(fmt.Sprintf("VPADDD %d(R8), Y1, Y2", jadd))
+	b.Raw("%s", fmt.Sprintf("VPCMPEQD %d(R8), Y0, Y13", oneBits)) // x == 1
+	b.Raw("%s", fmt.Sprintf("VPAND %d(R8), Y0, Y1", mmask))       // m
+	b.Raw("%s", fmt.Sprintf("VPADDD %d(R8), Y1, Y2", jadd))
 	b.Raw("VPSRLD $17, Y2, Y2") // j
 	b.Raw("VPSRLD $23, Y0, Y3")
-	b.Raw(fmt.Sprintf("VPSUBD %d(R8), Y3, Y3", bias)) // e
+	b.Raw("%s", fmt.Sprintf("VPSUBD %d(R8), Y3, Y3", bias)) // e
 	b.Raw("VPMOVZXDQ X1, Y10")
 	b.Raw("VCVTDQ2PD X3, Y11")
 	half("X14", "X15")
@@ -482,8 +482,8 @@ func log32CRKernel() *emit.Function {
 	b.Raw("VPOR Y13, Y15, Y15")           // or x == 1
 	// Positive normals, ux in [2^23, 0x7f7fffff], are exactly the lanes with
 	// ux + 0x7f800000 (wrapping) at most -0x01000001 as int32.
-	b.Raw(fmt.Sprintf("VPADDD %d(R8), Y0, Y4", sub))
-	b.Raw(fmt.Sprintf("VPCMPGTD %d(R8), Y4, Y4", maxv)) // not a positive normal
+	b.Raw("%s", fmt.Sprintf("VPADDD %d(R8), Y0, Y4", sub))
+	b.Raw("%s", fmt.Sprintf("VPCMPGTD %d(R8), Y4, Y4", maxv)) // not a positive normal
 	b.Raw("VPANDN Y15, Y4, Y15")
 	b.Raw("VMOVMSKPS Y15, DX")
 	b.Raw("CMPL DX, $0xff")
@@ -537,50 +537,50 @@ func logKernel() *emit.Function {
 	b.Raw("dloop:")
 	b.Raw("VMOVDQU (SI), Y0") // ix
 	// The lanes Log's loop sends to log1.
-	b.Raw(fmt.Sprintf("VPCMPGTQ %d(R8), Y0, Y1", hiMax)) // ix > largest finite (as int64)
-	b.Raw(fmt.Sprintf("VMOVDQU %d(R8), Y2", lo))
+	b.Raw("%s", fmt.Sprintf("VPCMPGTQ %d(R8), Y0, Y1", hiMax)) // ix > largest finite (as int64)
+	b.Raw("%s", fmt.Sprintf("VMOVDQU %d(R8), Y2", lo))
 	b.Raw("VPCMPGTQ Y0, Y2, Y2") // ix < 0x0010<<48: subnormal, zero or negative
-	b.Raw(fmt.Sprintf("VPCMPGTQ %d(R8), Y0, Y3", n1loM1))
-	b.Raw(fmt.Sprintf("VMOVDQU %d(R8), Y4", n1hi))
+	b.Raw("%s", fmt.Sprintf("VPCMPGTQ %d(R8), Y0, Y3", n1loM1))
+	b.Raw("%s", fmt.Sprintf("VMOVDQU %d(R8), Y4", n1hi))
 	b.Raw("VPCMPGTQ Y0, Y4, Y4")
 	b.Raw("VPAND Y4, Y3, Y3") // within 2^-4 of 1
 	b.Raw("VPOR Y3, Y2, Y2")
 	b.Raw("VPOR Y1, Y2, Y2")
 	b.Raw("VPTEST Y2, Y2")
 	b.Raw("JNZ dbail")
-	b.Raw(fmt.Sprintf("VPSUBQ %d(R8), Y0, Y1", off)) // tmp
+	b.Raw("%s", fmt.Sprintf("VPSUBQ %d(R8), Y0, Y1", off)) // tmp
 	b.Raw("VPSRLQ $45, Y1, Y2")
-	b.Raw(fmt.Sprintf("VPAND %d(R8), Y2, Y2", idxMask))
+	b.Raw("%s", fmt.Sprintf("VPAND %d(R8), Y2, Y2", idxMask))
 	b.Raw("VPADDQ Y2, Y2, Y2") // 2i: entries are two float64 wide
 	b.Raw("VPSRLQ $52, Y1, Y3")
-	b.Raw(fmt.Sprintf("VPXOR %d(R8), Y3, Y3", x2048))
-	b.Raw(fmt.Sprintf("VPOR %d(R8), Y3, Y3", magic))
-	b.Raw(fmt.Sprintf("VSUBPD %d(R8), Y3, Y3", magicSub)) // kd
-	b.Raw(fmt.Sprintf("VPAND %d(R8), Y1, Y4", topMask))
+	b.Raw("%s", fmt.Sprintf("VPXOR %d(R8), Y3, Y3", x2048))
+	b.Raw("%s", fmt.Sprintf("VPOR %d(R8), Y3, Y3", magic))
+	b.Raw("%s", fmt.Sprintf("VSUBPD %d(R8), Y3, Y3", magicSub)) // kd
+	b.Raw("%s", fmt.Sprintf("VPAND %d(R8), Y1, Y4", topMask))
 	b.Raw("VPSUBQ Y4, Y0, Y4") // iz = ix - tmp&(0xfff<<52)
 	b.Raw("VPCMPEQQ Y5, Y5, Y5")
 	b.Raw("VPGATHERQQ Y5, (R9)(Y2*8), Y6") // invc
 	b.Raw("VPCMPEQQ Y5, Y5, Y5")
 	b.Raw("VPGATHERQQ Y5, 8(R9)(Y2*8), Y7") // logc
-	b.Raw(fmt.Sprintf("VMOVUPD %d(R8), Y8", negOne))
-	b.Raw("VFMADD231PD Y6, Y4, Y8")                    // r = z*invc - 1, one rounding
-	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y3, Y9", ln2hi)) // kd*ln2hi
-	b.Raw("VADDPD Y7, Y9, Y9")                         // w = ... + logc
-	b.Raw("VADDPD Y8, Y9, Y10")                        // hi = w + r
-	b.Raw("VSUBPD Y10, Y9, Y11")                       // w - hi
-	b.Raw("VADDPD Y8, Y11, Y11")                       // + r
-	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y3, Y12", ln2lo))
+	b.Raw("%s", fmt.Sprintf("VMOVUPD %d(R8), Y8", negOne))
+	b.Raw("VFMADD231PD Y6, Y4, Y8")                          // r = z*invc - 1, one rounding
+	b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y3, Y9", ln2hi)) // kd*ln2hi
+	b.Raw("VADDPD Y7, Y9, Y9")                               // w = ... + logc
+	b.Raw("VADDPD Y8, Y9, Y10")                              // hi = w + r
+	b.Raw("VSUBPD Y10, Y9, Y11")                             // w - hi
+	b.Raw("VADDPD Y8, Y11, Y11")                             // + r
+	b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y3, Y12", ln2lo))
 	b.Raw("VADDPD Y12, Y11, Y11") // lo = w - hi + r + kd*ln2lo
 	b.Raw("VMULPD Y8, Y8, Y12")   // r2
-	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y8, Y13", a2))
-	b.Raw(fmt.Sprintf("VADDPD %d(R8), Y13, Y13", a1)) // A1 + r*A2
-	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y8, Y14", a4))
-	b.Raw(fmt.Sprintf("VADDPD %d(R8), Y14, Y14", a3)) // A3 + r*A4
+	b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y8, Y13", a2))
+	b.Raw("%s", fmt.Sprintf("VADDPD %d(R8), Y13, Y13", a1)) // A1 + r*A2
+	b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y8, Y14", a4))
+	b.Raw("%s", fmt.Sprintf("VADDPD %d(R8), Y14, Y14", a3)) // A3 + r*A4
 	b.Raw("VMULPD Y14, Y12, Y14")
 	b.Raw("VADDPD Y14, Y13, Y13") // A1 + r*A2 + r2*(A3 + r*A4)
 	b.Raw("VMULPD Y12, Y8, Y14")  // r*r2
 	b.Raw("VMULPD Y13, Y14, Y14") // r*r2*(...)
-	b.Raw(fmt.Sprintf("VMULPD %d(R8), Y12, Y13", a0))
+	b.Raw("%s", fmt.Sprintf("VMULPD %d(R8), Y12, Y13", a0))
 	b.Raw("VADDPD Y13, Y11, Y11") // lo + r2*A0
 	b.Raw("VADDPD Y14, Y11, Y11") // + r*r2*(...)
 	b.Raw("VADDPD Y10, Y11, Y11") // + hi
@@ -608,17 +608,17 @@ const gemm32NR = 16
 // values at that many steps past SI and DI.
 func fmaStep(b *amd64.Builder, step int) {
 	ao, bo := 8*gemmMR*step, 8*gemmNR*step
-	b.Raw(fmt.Sprintf("VMOVUPD %d(DI), Y12", bo))    // B cols 0..3
-	b.Raw(fmt.Sprintf("VMOVUPD %d(DI), Y13", bo+32)) // B cols 4..7
+	b.Raw("%s", fmt.Sprintf("VMOVUPD %d(DI), Y12", bo))    // B cols 0..3
+	b.Raw("%s", fmt.Sprintf("VMOVUPD %d(DI), Y13", bo+32)) // B cols 4..7
 	for r := 0; r < gemmMR; r++ {
-		b.Raw(fmt.Sprintf("VBROADCASTSD %d(SI), Y14", ao+8*r))
-		b.Raw(fmt.Sprintf("VFMADD231PD Y12, Y14, Y%d", 2*r))
-		b.Raw(fmt.Sprintf("VFMADD231PD Y13, Y14, Y%d", 2*r+1))
+		b.Raw("%s", fmt.Sprintf("VBROADCASTSD %d(SI), Y14", ao+8*r))
+		b.Raw("%s", fmt.Sprintf("VFMADD231PD Y12, Y14, Y%d", 2*r))
+		b.Raw("%s", fmt.Sprintf("VFMADD231PD Y13, Y14, Y%d", 2*r+1))
 	}
 }
 
 func nanScan(b *amd64.Builder, reg string) {
-	b.Raw("MOVAPS " + reg + ", X9")
+	b.Raw("MOVAPS %s, X9", reg)
 	b.Raw("CMPPD X9, X9, $3")
 	b.Raw("ORPD X9, X8")
 }
