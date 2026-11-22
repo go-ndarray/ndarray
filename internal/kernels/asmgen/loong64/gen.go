@@ -29,7 +29,6 @@ const (
 
 func main() {
 	f := emit.NewFile("loong64")
-	f.Add(dotKernel())
 	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
 	// (lanes_loong64_gen.go there) since floats v0.10.0.
 	for _, k := range []struct{ name, vec, sca string }{
@@ -68,32 +67,6 @@ func zero(b *loong64.Builder, n int) {
 	for r := 0; r < n; r++ {
 		b.Raw("XVXORV X%d, X%d, X%d", r, r, r)
 	}
-}
-
-// dotKernel builds dotLASX(a, b *float64, n int) float64: four fused
-// multiply-add accumulators (xvfmadd.d), folded, plus a fused scalar tail.
-func dotKernel() *emit.Function {
-	sig := loong64.Layout([]string{"a", "b", "n"}, []loong64.Type{loong64.Ptr, loong64.Ptr, loong64.Int64},
-		[]string{"ret"}, []loong64.Type{loong64.Float64})
-	b := loong64.NewFunc("dotLASX", sig, 0)
-	b.LoadArg("a", "R4").LoadArg("b", "R6").LoadArg("n", "R5")
-	zero(b, 4)
-	b.Label("dloop").Raw("MOVV $16, R12").Raw("BLT R5, R12, dfold")
-	for k := 0; k < 4; k++ {
-		b.Raw("XVMOVQ %d(R4), X%d", 32*k, 4+k)
-		b.Raw("XVMOVQ %d(R6), X%d", 32*k, 8+k)
-	}
-	for k := 0; k < 4; k++ {
-		b.XVFMADDD(k, 4+k, 8+k, k) // X(k) = a*b + X(k)
-	}
-	b.Raw("ADDV $128, R4").Raw("ADDV $128, R6").Raw("ADDV $-16, R5").Raw("JMP dloop")
-	b.Label("dfold")
-	fold(b)
-	b.Label("dtail").Raw("BEQ R5, ddone").
-		Raw("MOVD 0(R4), F1").Raw("MOVD 0(R6), F2").Raw("FMADDD F0, F2, F1, F0"). // F0 = F1*F2 + F0; Go's order is Fa, Fk, Fj, Fd
-		Raw("ADDV $8, R4").Raw("ADDV $8, R6").Raw("ADDV $-1, R5").Raw("JMP dtail")
-	b.Label("ddone").StoreRet("F0", "ret").Ret()
-	return b.Func()
 }
 
 // lanes is a 16-byte vector constant: v in every lane of size bytes, each lane

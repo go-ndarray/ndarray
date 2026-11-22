@@ -60,15 +60,3 @@ func maxRVV(a *float64, n int) float64
 
 //go:noescape
 func minRVV(a *float64, n int) float64
-
-// dotSIMD is the inner product (RVV kernel, one fused accumulator per lane).
-func dotSIMD(a, b []float64) float64 {
-	if !useRVV || len(a) == 0 {
-		return dotRange(a, b)
-	}
-	_ = b[len(a)-1] // the kernel reads len(a) of b
-	return dotRVV(&a[0], &b[0], len(a))
-}
-
-//go:noescape
-func dotRVV(a, b *float64, n int) float64

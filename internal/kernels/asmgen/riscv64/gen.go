@@ -29,7 +29,6 @@ const gemm8x16Unroll = 2
 
 func main() {
 	f := emit.NewFile("riscv64")
-	f.Add(reduceKernel("dotRVV", true))
 	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
 	// (lanes_riscv64_gen.go there) since floats v0.10.0.
 	for _, k := range []struct{ name, op string }{

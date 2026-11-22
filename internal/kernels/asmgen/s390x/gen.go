@@ -27,7 +27,6 @@ import (
 
 func main() {
 	f := emit.NewFile("s390x")
-	f.Add(reduceKernel("dotVX", true))
 	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
 	// (lanes_s390x_gen.go there) since floats v0.10.0.
 	for _, k := range []struct{ name, vec, sca string }{

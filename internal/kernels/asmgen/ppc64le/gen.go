@@ -31,7 +31,6 @@ const (
 
 func main() {
 	f := emit.NewFile("ppc64le")
-	f.Add(dotKernel())
 	// The float64 sum, sqrt and Add/Sub/Mul/Div kernels live in go-simd/floats
 	// (lanes_ppc64le_gen.go there) since floats v0.10.0.
 	for _, k := range []struct {
@@ -78,35 +77,6 @@ func fold(b *ppc64.Builder) {
 func reduceSig() ppc64.Signature {
 	return ppc64.Layout([]string{"a", "n"}, []ppc64.Type{ppc64.Ptr, ppc64.Int64},
 		[]string{"ret"}, []ppc64.Type{ppc64.Float64})
-}
-
-// dotKernel builds dotVSX(a, b *float64, n int) float64: four fused
-// multiply-add accumulators (XVMADDADP), folded, plus a scalar tail.
-func dotKernel() *emit.Function {
-	sig := ppc64.Layout([]string{"a", "b", "n"}, []ppc64.Type{ppc64.Ptr, ppc64.Ptr, ppc64.Int64},
-		[]string{"ret"}, []ppc64.Type{ppc64.Float64})
-	b := ppc64.NewFunc("dotVSX", sig, 0)
-	b.LoadArg("a", "R3").LoadArg("b", "R5").LoadArg("n", "R4")
-	offsets(b, false)
-	for r := 0; r < 4; r++ {
-		b.Raw("XXLXOR VS%d, VS%d, VS%d", r, r, r)
-	}
-	b.Label("dloop").Raw("CMP R4, $8").Raw("BLT dfold")
-	for k := 0; k < 4; k++ {
-		b.Raw("LXVD2X (R3)(%s), VS%d", vidx(k), 32+k)
-		b.Raw("LXVD2X (R5)(%s), VS%d", vidx(k), 36+k)
-	}
-	for k := 0; k < 4; k++ {
-		b.XVMADDADP(k, 32+k, 36+k)
-	}
-	b.Raw("ADD $64, R3").Raw("ADD $64, R5").Raw("ADD $-8, R4").Raw("BR dloop")
-	b.Label("dfold")
-	fold(b)
-	b.Label("dtail").Raw("CMP R4, $0").Raw("BEQ ddone").
-		Raw("FMOVD 0(R3), F1").Raw("FMOVD 0(R5), F2").Raw("FMUL F2, F1").Raw("FADD F1, F0").
-		Raw("ADD $8, R3").Raw("ADD $8, R5").Raw("ADD $-1, R4").Raw("BR dtail")
-	b.Label("ddone").StoreRet("F0", "ret").Ret()
-	return b.Func()
 }
 
 // lanes is a 16-byte vector constant: v in every lane of size bytes, each lane

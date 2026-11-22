@@ -4,67 +4,6 @@
 
 #include "textflag.h"
 
-TEXT ·dotFMA(SB), NOSPLIT, $0-32
-	MOVQ a+0(FP), SI
-	MOVQ b+8(FP), DI
-	MOVQ n+16(FP), CX
-	VXORPD Y0, Y0, Y0
-	VXORPD Y1, Y1, Y1
-	VXORPD Y2, Y2, Y2
-	VXORPD Y3, Y3, Y3
-	dloop:
-	CMPQ CX, $16
-	JL dfold
-	VMOVUPD 0(SI), Y4
-	VFMADD231PD 0(DI), Y4, Y0
-	VMOVUPD 32(SI), Y5
-	VFMADD231PD 32(DI), Y5, Y1
-	VMOVUPD 64(SI), Y6
-	VFMADD231PD 64(DI), Y6, Y2
-	VMOVUPD 96(SI), Y7
-	VFMADD231PD 96(DI), Y7, Y3
-	ADDQ $128, SI
-	ADDQ $128, DI
-	SUBQ $16, CX
-	JMP dloop
-	dfold:
-	VADDPD Y1, Y0, Y0
-	VADDPD Y3, Y2, Y2
-	VADDPD Y2, Y0, Y0
-	VEXTRACTF128 $1, Y0, X1
-	VADDPD X1, X0, X0
-	VUNPCKHPD X0, X0, X1
-	VADDSD X1, X0, X0
-	dtail:
-	TESTQ CX, CX
-	JZ ddone
-	VMOVSD (SI), X1
-	VFMADD231SD (DI), X1, X0
-	ADDQ $8, SI
-	ADDQ $8, DI
-	DECQ CX
-	JMP dtail
-	ddone:
-	VZEROUPPER
-	MOVSD X0, ret+24(FP)
-	RET
-
-TEXT ·hasFMA(SB), NOSPLIT, $0-1
-	MOVB $0, ret+0(FP)
-	MOVL $1, AX
-	CPUID
-	ANDL $0x18001000, CX // FMA, AVX and OSXSAVE
-	CMPL CX, $0x18001000
-	JNE hasFMA_unsupported
-	XORL CX, CX
-	XGETBV
-	ANDL $6, AX // XMM and YMM state enabled in XCR0
-	CMPL AX, $6
-	JNE hasFMA_unsupported
-	MOVB $1, ret+0(FP)
-hasFMA_unsupported:
-	RET
-
 TEXT ·blocks8SSE2(SB), NOSPLIT, $0-24
 	MOVQ r+0(FP), DI
 	MOVQ a+8(FP), SI

@@ -4,48 +4,6 @@
 
 #include "textflag.h"
 
-TEXT ·dotVX(SB), NOSPLIT, $0-32
-	MOVD a+0(FP), R1
-	MOVD b+8(FP), R3
-	MOVD n+16(FP), R2
-	VZERO V16
-	VZERO V17
-	VZERO V18
-	VZERO V19
-	loop:
-	CMP R2, $8
-	BLT fold
-	VLM (R1), V0, V3
-	VLM (R3), V4, V7
-	VFMADB V0, V4, V16, V16
-	VFMADB V1, V5, V17, V17
-	VFMADB V2, V6, V18, V18
-	VFMADB V3, V7, V19, V19
-	ADD $64, R3
-	ADD $64, R1
-	SUB $8, R2
-	BR loop
-	fold:
-	VFADB V17, V16, V16
-	VFADB V19, V18, V18
-	VFADB V18, V16, V0
-	VREPG $1, V0, V1
-	WFADB V0, V1, V0
-	tail:
-	CMP R2, $0
-	BEQ done
-	FMOVD (R1), F1
-	FMOVD (R3), F2
-	FMUL F2, F1
-	ADD $8, R3
-	FADD F1, F0
-	ADD $8, R1
-	SUB $1, R2
-	BR tail
-	done:
-	FMOVD F0, ret+24(FP)
-	RET
-
 TEXT ·add32VXE(SB), NOSPLIT, $0-32
 	MOVD dst+0(FP), R1
 	MOVD a+8(FP), R2
