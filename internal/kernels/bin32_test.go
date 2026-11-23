@@ -1,6 +1,7 @@
 package kernels
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -108,6 +109,43 @@ func TestBin32RefusesBadInput(t *testing.T) {
 			defer func() {
 				if recover() == nil {
 					t.Error("bad input was accepted")
+				}
+			}()
+			f()
+		}()
+	}
+}
+
+// TestShortOperandWithSpareCapacityIsRefused is #130: a reslice x[:n] is
+// checked against cap(x), not len(x), so an operand of length 3 and capacity 8
+// passed with a dst of length 4 used to be read one element past its length.
+// Every entry point must refuse it by length. The hidden element is a NaN so
+// an over-read that slipped through would also show in the result.
+func TestShortOperandWithSpareCapacityIsRefused(t *testing.T) {
+	short := func() []float32 {
+		s := make([]float32, 8)
+		for i := range s {
+			s[i] = float32(i + 1)
+		}
+		s[3] = float32(math.NaN())
+		return s[:3] // len 3, cap 8
+	}
+	full := func() []float32 { return []float32{1, 2, 3, 4} }
+	cases := map[string]func(){}
+	for op := Add32; op <= Div32; op++ {
+		op := op
+		cases[fmt.Sprintf("Bin32 op %d short a", op)] = func() { Bin32(op, make([]float32, 4), short(), full()) }
+		cases[fmt.Sprintf("Bin32 op %d short b", op)] = func() { Bin32(op, make([]float32, 4), full(), short()) }
+		cases[fmt.Sprintf("bin32Go op %d short a", op)] = func() { bin32Go(op, make([]float32, 4), short(), full()) }
+		cases[fmt.Sprintf("bin32Go op %d short b", op)] = func() { bin32Go(op, make([]float32, 4), full(), short()) }
+	}
+	cases["Sqrt32 short src"] = func() { Sqrt32(make([]float32, 4), short()) }
+	cases["sqrt32Go short src"] = func() { sqrt32Go(make([]float32, 4), short()) }
+	for name, f := range cases {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: a short operand with spare capacity was accepted", name)
 				}
 			}()
 			f()

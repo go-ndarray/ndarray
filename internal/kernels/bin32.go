@@ -17,6 +17,11 @@ const (
 // operation, so the result is the scalar loop's bit for bit.
 func Bin32(op int, dst, a, b []float32) {
 	n := len(dst)
+	// By length, not by reslice: a[:n] is checked against cap(a), so a short
+	// operand with spare capacity would be over-read (#130).
+	if len(a) < n || len(b) < n {
+		panic("kernels: Bin32 operand shorter than dst")
+	}
 	if n == 0 {
 		return
 	}
@@ -26,6 +31,9 @@ func Bin32(op int, dst, a, b []float32) {
 // bin32Go is the scalar oracle the kernels are tested against, and the
 // implementation where there is no kernel.
 func bin32Go(op int, dst, a, b []float32) {
+	if len(a) < len(dst) || len(b) < len(dst) {
+		panic("kernels: Bin32 operand shorter than dst")
+	}
 	a, b = a[:len(dst)], b[:len(dst)]
 	switch op {
 	case Add32:
@@ -56,6 +64,9 @@ func bin32Go(op int, dst, a, b []float32) {
 // twice float32's precision.
 func Sqrt32(dst, src []float32) {
 	n := len(dst)
+	if len(src) < n { // by length: src[:n] is checked against cap (#130)
+		panic("kernels: Sqrt32 src shorter than dst")
+	}
 	if n == 0 {
 		return
 	}
@@ -65,6 +76,9 @@ func Sqrt32(dst, src []float32) {
 // sqrt32Go is the scalar oracle for Sqrt32, and the implementation where
 // there is no kernel.
 func sqrt32Go(dst, src []float32) {
+	if len(src) < len(dst) {
+		panic("kernels: Sqrt32 src shorter than dst")
+	}
 	src = src[:len(dst)]
 	for i := range dst {
 		dst[i] = float32(math.Sqrt(float64(src[i])))
